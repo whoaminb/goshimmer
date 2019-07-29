@@ -9,7 +9,6 @@ import (
 	"github.com/iotaledger/goshimmer/plugins/fcob"
 	"github.com/iotaledger/goshimmer/plugins/fpc"
 	"github.com/iotaledger/goshimmer/plugins/gossip"
-	gossip_on_solidification "github.com/iotaledger/goshimmer/plugins/gossip-on-solidification"
 	"github.com/iotaledger/goshimmer/plugins/gracefulshutdown"
 	"github.com/iotaledger/goshimmer/plugins/metrics"
 	"github.com/iotaledger/goshimmer/plugins/statusscreen"
@@ -29,7 +28,7 @@ func main() {
 		fpc.PLUGIN,
 		fcob.PLUGIN,
 		gossip.PLUGIN,
-		gossip_on_solidification.PLUGIN,
+		//gossip_on_solidification.PLUGIN,
 		tangle.PLUGIN,
 		bundleprocessor.PLUGIN,
 		analysis.PLUGIN,

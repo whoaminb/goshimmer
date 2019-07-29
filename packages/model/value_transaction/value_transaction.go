@@ -182,7 +182,7 @@ func (this *ValueTransaction) SetTimestamp(timestamp uint) bool {
 			this.timestamp = &timestamp
 
 			this.BlockHasher()
-			copy(this.trits[TIMESTAMP_OFFSET:TIMESTAMP_END], trinary.IntToTrits(int64(timestamp))[:TIMESTAMP_SIZE])
+			copy(this.trits[TIMESTAMP_OFFSET:TIMESTAMP_END], trinary.PadTrits(trinary.IntToTrits(int64(timestamp)), TIMESTAMP_SIZE)[:TIMESTAMP_SIZE])
 			this.UnblockHasher()
 
 			this.SetModified(true)
@@ -197,22 +197,20 @@ func (this *ValueTransaction) SetTimestamp(timestamp uint) bool {
 	return false
 }
 
-func (this *ValueTransaction) GetBundleEssence() (result trinary.Trits) {
-	this.addressMutex.RLock()
-	this.valueMutex.RLock()
+func (this *ValueTransaction) GetBundleEssence(includeSignatureMessageFragment bool) (result trinary.Trits) {
 	this.signatureMessageFragmentMutex.RLock()
 
 	result = make(trinary.Trits, BUNDLE_ESSENCE_SIZE)
 
+	this.addressMutex.RLock()
 	copy(result[0:], this.trits[ADDRESS_OFFSET:VALUE_END])
+	this.addressMutex.RUnlock()
 
-	if this.GetValue() >= 0 {
+	if includeSignatureMessageFragment {
 		copy(result[VALUE_END:], this.trits[SIGNATURE_MESSAGE_FRAGMENT_OFFSET:SIGNATURE_MESSAGE_FRAGMENT_END])
 	}
 
 	this.signatureMessageFragmentMutex.RUnlock()
-	this.valueMutex.RUnlock()
-	this.addressMutex.RUnlock()
 
 	return
 }

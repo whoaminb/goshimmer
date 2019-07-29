@@ -1,7 +1,6 @@
 package curl
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/iotaledger/goshimmer/packages/batchworkerpool"
@@ -21,7 +20,7 @@ func NewBatchHasher(hashLength int, rounds int) (result *BatchHasher) {
 		rounds:     rounds,
 	}
 
-	result.workerPool = batchworkerpool.New(result.processHashes, batchworkerpool.BatchSize(strconv.IntSize))
+	result.workerPool = batchworkerpool.New(result.processHashes, batchworkerpool.BatchSize(strconv.IntSize), batchworkerpool.WorkerCount(100), batchworkerpool.QueueSize(500000))
 	result.workerPool.Start()
 
 	return
@@ -40,11 +39,11 @@ func (this *BatchHasher) processHashes(tasks []batchworkerpool.Task) {
 		}
 		bcTrits, err := multiplexer.Extract()
 		if err != nil {
-			fmt.Println(err)
+			panic(err)
 		}
 
 		// calculate the hash
-		bctCurl := NewBCTCurl(this.hashLength, this.rounds)
+		bctCurl := NewBCTCurl(this.hashLength, this.rounds, strconv.IntSize)
 		bctCurl.Reset()
 		bctCurl.Absorb(bcTrits)
 

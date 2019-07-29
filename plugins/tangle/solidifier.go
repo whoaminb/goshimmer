@@ -21,7 +21,9 @@ var workerPool *workerpool.WorkerPool
 func configureSolidifier(plugin *node.Plugin) {
 	workerPool = workerpool.New(func(task workerpool.Task) {
 		processMetaTransaction(plugin, task.Param(0).(*meta_transaction.MetaTransaction))
-	}, workerpool.WorkerCount(WORKER_COUNT), workerpool.QueueSize(2*WORKER_COUNT))
+
+		task.Return(nil)
+	}, workerpool.WorkerCount(WORKER_COUNT), workerpool.QueueSize(10000))
 
 	gossip.Events.ReceiveTransaction.Attach(events.NewClosure(func(rawTransaction *meta_transaction.MetaTransaction) {
 		workerPool.Submit(rawTransaction)
@@ -80,8 +82,8 @@ func checkSolidity(transaction *value_transaction.ValueTransaction) (result bool
 		}
 	}
 
-	// check solidity of branch transaction if it is not genesis
-	if trunkTransactionHash := transaction.GetBranchTransactionHash(); trunkTransactionHash != meta_transaction.BRANCH_NULL_HASH {
+	// check solidity of trunk transaction if it is not genesis
+	if trunkTransactionHash := transaction.GetTrunkTransactionHash(); trunkTransactionHash != meta_transaction.BRANCH_NULL_HASH {
 		if trunkTransaction, trunkErr := GetTransaction(trunkTransactionHash); trunkErr != nil {
 			err = trunkErr
 
@@ -186,4 +188,4 @@ func processTransaction(plugin *node.Plugin, transaction *value_transaction.Valu
 	}
 }
 
-const WORKER_COUNT = 400
+const WORKER_COUNT = 5000

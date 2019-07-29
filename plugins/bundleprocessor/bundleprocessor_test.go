@@ -1,42 +1,147 @@
 package bundleprocessor
 
 import (
-	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/iotaledger/goshimmer/packages/events"
 	"github.com/iotaledger/goshimmer/packages/model/bundle"
 	"github.com/iotaledger/goshimmer/packages/model/value_transaction"
+
+	"github.com/iotaledger/goshimmer/plugins/tipselection"
+
+	"github.com/iotaledger/goshimmer/packages/client"
+
+	"github.com/iotaledger/goshimmer/packages/node"
+
 	"github.com/iotaledger/goshimmer/plugins/tangle"
-	"github.com/iotaledger/iota.go/trinary"
+	"github.com/iotaledger/iota.go/consts"
 	"github.com/magiconair/properties/assert"
 )
 
-func TestProcessSolidBundleHead(t *testing.T) {
-	tangle.PLUGIN.InitTest()
+var seed = client.NewSeed("YFHQWAUPCXC9S9DSHP9NDF9RLNPMZVCMSJKUKQP9SWUSUCPRQXCMDVDVZ9SHHESHIQNCXWBJF9UJSWE9Z", consts.SecurityLevelMedium)
 
-	tx := value_transaction.New()
-	tx.SetTail(true)
-	tx.SetValue(3)
+func BenchmarkValidateSignatures(b *testing.B) {
+	bundleFactory := client.NewBundleFactory()
+	bundleFactory.AddInput(seed.GetAddress(0), -400)
+	bundleFactory.AddOutput(seed.GetAddress(1), 400, "Testmessage")
+	bundleFactory.AddOutput(client.NewAddress("SJKUKQP9SWUSUCPRQXCMDVDVZ9SHHESHIQNCXWBJF9UJSWE9ZYFHQWAUPCXC9S9DSHP9NDF9RLNPMZVCM"), 400, "Testmessage")
 
-	tx1 := value_transaction.New()
-	tx1.SetTrunkTransactionHash(tx.GetHash())
-	tx1.SetHead(true)
+	generatedBundle := bundleFactory.GenerateBundle(tipselection.GetRandomTip(), tipselection.GetRandomTip())
 
-	tangle.StoreTransaction(tx)
-	tangle.StoreTransaction(tx1)
+	b.ResetTimer()
 
-	Events.BundleSolid.Attach(events.NewClosure(func(bundle *bundle.Bundle, transactions []*value_transaction.ValueTransaction) {
-		fmt.Println("IT HAPPENED")
-		fmt.Println(bundle.GetHash())
-		fmt.Println(bundle.GetBundleEssenceHash())
-	}))
+	var wg sync.WaitGroup
 
-	result, err := ProcessSolidBundleHead(tx1)
+	for i := 0; i < b.N; i++ {
+		wg.Add(1)
+
+		go func() {
+			ValidateSignatures(generatedBundle.GetEssenceHash(), generatedBundle.GetTransactions())
+
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+}
+
+func TestValidateSignatures(t *testing.T) {
+	bundleFactory := client.NewBundleFactory()
+	bundleFactory.AddInput(seed.GetAddress(0), -400)
+	bundleFactory.AddOutput(seed.GetAddress(1), 400, "Testmessage")
+	bundleFactory.AddOutput(client.NewAddress("SJKUKQP9SWUSUCPRQXCMDVDVZ9SHHESHIQNCXWBJF9UJSWE9ZYFHQWAUPCXC9S9DSHP9NDF9RLNPMZVCM"), 400, "Testmessage")
+
+	generatedBundle := bundleFactory.GenerateBundle(tipselection.GetRandomTip(), tipselection.GetRandomTip())
+
+	successful, err := ValidateSignatures(generatedBundle.GetEssenceHash(), generatedBundle.GetTransactions())
 	if err != nil {
 		t.Error(err)
-	} else {
-		assert.Equal(t, result.GetHash(), trinary.Trytes("UFWJYEWKMEQDNSQUCUWBGOFRHVBGHVVYEZCLCGRDTRQSMAFALTIPMJEEYFDPMQCNJWLXUWFMBZGHQRO99"), "invalid bundle hash")
-		assert.Equal(t, result.IsValueBundle(), true, "invalid value bundle status")
 	}
+	assert.Equal(t, successful, true, "validation failed")
+}
+
+func TestProcessSolidBundleHead_Data(t *testing.T) {
+	// show all error messages for tests
+	*node.LOG_LEVEL.Value = node.LOG_LEVEL_FAILURE
+
+	// start a test node
+	node.Start(tangle.PLUGIN, PLUGIN)
+
+	bundleFactory := client.NewBundleFactory()
+	bundleFactory.AddOutput(seed.GetAddress(1), 400, "Testmessage")
+	bundleFactory.AddOutput(client.NewAddress("SJKUKQP9SWUSUCPRQXCMDVDVZ9SHHESHIQNCXWBJF9UJSWE9ZYFHQWAUPCXC9S9DSHP9NDF9RLNPMZVCM"), 400, "Testmessage")
+
+	generatedBundle := bundleFactory.GenerateBundle(tipselection.GetRandomTip(), tipselection.GetRandomTip())
+
+	for _, transaction := range generatedBundle.GetTransactions() {
+		tangle.StoreTransaction(transaction)
+	}
+
+	var wg sync.WaitGroup
+
+	testResults := events.NewClosure(func(bundle *bundle.Bundle, transactions []*value_transaction.ValueTransaction) {
+		assert.Equal(t, bundle.GetHash(), generatedBundle.GetTransactions()[0].GetHash(), "invalid bundle hash")
+		assert.Equal(t, bundle.IsValueBundle(), false, "invalid value bundle status")
+
+		wg.Done()
+	})
+	Events.BundleSolid.Attach(testResults)
+
+	wg.Add(1)
+
+	if err := ProcessSolidBundleHead(generatedBundle.GetTransactions()[0]); err != nil {
+		t.Error(err)
+	}
+
+	wg.Wait()
+
+	Events.BundleSolid.Detach(testResults)
+
+	// shutdown test node
+	node.Shutdown()
+}
+
+func TestProcessSolidBundleHead_Value(t *testing.T) {
+	// show all error messages for tests
+	*node.LOG_LEVEL.Value = node.LOG_LEVEL_FAILURE
+
+	// start a test node
+	node.Start(tangle.PLUGIN, PLUGIN)
+
+	bundleFactory := client.NewBundleFactory()
+	bundleFactory.AddInput(seed.GetAddress(0), -400)
+	bundleFactory.AddOutput(seed.GetAddress(1), 400, "Testmessage")
+	bundleFactory.AddOutput(client.NewAddress("SJKUKQP9SWUSUCPRQXCMDVDVZ9SHHESHIQNCXWBJF9UJSWE9ZYFHQWAUPCXC9S9DSHP9NDF9RLNPMZVCM"), 400, "Testmessage")
+
+	generatedBundle := bundleFactory.GenerateBundle(tipselection.GetRandomTip(), tipselection.GetRandomTip())
+
+	for _, transaction := range generatedBundle.GetTransactions() {
+		tangle.StoreTransaction(transaction)
+	}
+
+	var wg sync.WaitGroup
+
+	testResults := events.NewClosure(func(bundle *bundle.Bundle, transactions []*value_transaction.ValueTransaction) {
+		assert.Equal(t, bundle.GetHash(), generatedBundle.GetTransactions()[0].GetHash(), "invalid bundle hash")
+		assert.Equal(t, bundle.GetBundleEssenceHash(), generatedBundle.GetEssenceHash(), "invalid bundle essence hash")
+		assert.Equal(t, bundle.IsValueBundle(), true, "invalid value bundle status")
+
+		wg.Done()
+	})
+
+	Events.BundleSolid.Attach(testResults)
+
+	wg.Add(1)
+
+	if err := ProcessSolidBundleHead(generatedBundle.GetTransactions()[0]); err != nil {
+		t.Error(err)
+	}
+
+	wg.Wait()
+
+	Events.BundleSolid.Detach(testResults)
+
+	// shutdown test node
+	node.Shutdown()
 }
