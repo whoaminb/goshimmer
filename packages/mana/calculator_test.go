@@ -30,12 +30,12 @@ func TestCalculator_GenerateMana(t *testing.T) {
 func TestCalculator_ManaSymmetry(t *testing.T) {
 	calculator := NewCalculator(500, 0.1, ManaScaleFactor(2))
 
-	// 1st case: generate mana by spending two times
+	// 1st case: generate mana by spending multiple times
 	generatedManaStep1, _ := calculator.GenerateMana(1000, 500)
 	generatedManaStep2, _ := calculator.GenerateMana(1000, 500)
 	generatedManaStep3, _ := calculator.GenerateMana(1000, 500)
 
-	// the first "realized" mana part starts decaying while the coins of the 2nd spend are gaining weight again
+	// the first "realized" mana parts starts decaying while the coins of the last spend are gaining weight again
 	erodedMana1, _ := calculator.ErodeMana(generatedManaStep1, 1000)
 	erodedMana2, _ := calculator.ErodeMana(generatedManaStep2, 500)
 
