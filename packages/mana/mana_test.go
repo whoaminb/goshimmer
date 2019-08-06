@@ -1,83 +1,47 @@
 package mana
 
 import (
-	"fmt"
-	"math"
 	"testing"
 
 	"github.com/magiconair/properties/assert"
 )
 
-func BenchmarkCalculator_ManaOfTransferContinuous(b *testing.B) {
-	calculator := NewCalculator(10, 0.1, 1)
-
-	b.ResetTimer()
+func BenchmarkCalculator_GenerateMana(b *testing.B) {
+	calculator := NewCalculator(10, 0.1)
 
 	for i := 0; i < b.N; i++ {
-		calculator.ManaOfTransferContinuous(10000000, 100000000000)
+		calculator.GenerateMana(1000000, 100000000000)
 	}
 }
 
-func TestBalance_Erode(t *testing.T) {
-	calculator := NewCalculator(50, 0.1, 9)
-	balance := NewBalance(calculator)
+func TestCalculator_GenerateMana(t *testing.T) {
+	calculator := NewCalculator(500, 0.1, ManaScaleFactor(2))
 
-	calculator1 := NewCalculator(5000, 0.2, 1)
+	generatedMana, _ := calculator.GenerateMana(1000, 0)
+	assert.Equal(t, generatedMana, uint64(0))
 
-	fmt.Println("===")
-	fmt.Println(calculator1.ManaOfTransferContinuous(1000, 5000000))
-	fmt.Println(calculator.ManaOfTransferDiscrete(1000, 0, 50))
+	generatedMana, _ = calculator.GenerateMana(1000, 500)
+	assert.Equal(t, generatedMana, uint64(200))
 
-	balance.AddTransfer(500, 0, 10)
-
-	assert.Equal(t, balance.GetValue(), uint64(450))
-
-	balance.Erode(20)
-
-	assert.Equal(t, balance.GetValue(), uint64(405))
-
-	balance.Erode(40)
-
-	assert.Equal(t, balance.GetValue(), uint64(328))
+	generatedMana, _ = calculator.GenerateMana(1000, 5000000)
+	assert.Equal(t, generatedMana, uint64(2000))
 }
 
-func calcManaContinuous(calculator *Calculator, coins uint64, timeHeld uint64) (result uint64, roundingError float64) {
-	scaleFactor := 1 - math.Pow(1-calculator.decayRate, float64(timeHeld)/float64(calculator.decayInterval))
-	fmt.Println(scaleFactor)
-	erodedGains := float64(coins) * float64(calculator.decayInterval) * scaleFactor
+func TestCalculator_ManaSymmetry(t *testing.T) {
+	calculator := NewCalculator(500, 0.1, ManaScaleFactor(2))
 
-	result = uint64(erodedGains)
-	roundingError = erodedGains - float64(result)
+	// 1st case: generate mana by spending two times
+	generatedManaStep1, _ := calculator.GenerateMana(1000, 500)
+	generatedManaStep2, _ := calculator.GenerateMana(1000, 500)
+	generatedManaStep3, _ := calculator.GenerateMana(1000, 500)
 
-	return
-}
+	// the first "realized" mana part starts decaying while the coins of the 2nd spend are gaining weight again
+	erodedMana1, _ := calculator.ErodeMana(generatedManaStep1, 1000)
+	erodedMana2, _ := calculator.ErodeMana(generatedManaStep2, 500)
 
-func TestCalculator_ManaOfTransfer(t *testing.T) {
-	manaCalculator := NewCalculator(10, 0.1, 10)
+	// 2nd case: generate mana by spending only once
+	generatedManaWithoutSpends, _ := calculator.GenerateMana(1000, 1500)
 
-	var mana, lastErosion uint64
-	var roundingError float64
-
-	mana, lastErosion, _ = manaCalculator.ManaOfTransferDiscrete(49, 0, 0)
-	assert.Equal(t, mana, uint64(0))
-	assert.Equal(t, lastErosion, uint64(0))
-
-	fmt.Println(calcManaContinuous(manaCalculator, 50, 10))
-	fmt.Println(manaCalculator.ManaOfTransferDiscrete(50, 0, 10))
-	fmt.Println(calcManaContinuous(manaCalculator, 50, 20))
-	fmt.Println(manaCalculator.ManaOfTransferDiscrete(50, 0, 20))
-
-	mana, lastErosion, _ = manaCalculator.ManaOfTransferDiscrete(49, 0, 1)
-	assert.Equal(t, mana, uint64(4))
-	assert.Equal(t, lastErosion, uint64(0))
-
-	mana, lastErosion, _ = manaCalculator.ManaOfTransferDiscrete(49, 0, 10)
-	assert.Equal(t, mana, uint64(36))
-	assert.Equal(t, lastErosion, uint64(10))
-
-	mana, lastErosion, _ = manaCalculator.ManaOfTransferDiscrete(50, 0, 31)
-	assert.Equal(t, mana, uint64(101))
-	assert.Equal(t, lastErosion, uint64(30))
-
-	fmt.Println(roundingError)
+	// the two mana values should be equal
+	assert.Equal(t, generatedManaWithoutSpends, erodedMana1+erodedMana2+generatedManaStep3)
 }

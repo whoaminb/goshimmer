@@ -25,10 +25,10 @@ func (balance *Balance) GetValue() uint64 {
 }
 
 func (balance *Balance) AddTransfer(movedCoins uint64, receivedTime uint64, spentTime uint64) {
-	gainedMana, lastErosion, _ := balance.calculator.ManaOfTransferDiscrete(movedCoins, receivedTime, spentTime)
+	gainedMana, _ := balance.calculator.GenerateMana(movedCoins, spentTime-receivedTime)
 
-	if lastErosion >= balance.lastErosion {
-		balance.Erode(lastErosion)
+	if spentTime >= balance.lastErosion {
+		balance.Erode(spentTime)
 	} else {
 		fmt.Println("empty")
 		// revert old actions
@@ -41,7 +41,7 @@ func (balance *Balance) AddTransfer(movedCoins uint64, receivedTime uint64, spen
 
 func (balance *Balance) Erode(erosionTime uint64) {
 	if balance.lastErosion <= erosionTime {
-		balance.currentBalance, balance.lastErosion, _ = balance.calculator.ErodedManaDiscrete(balance.currentBalance, balance.lastErosion, erosionTime)
+		balance.currentBalance, _ = balance.calculator.ErodeMana(balance.currentBalance, erosionTime-balance.lastErosion)
 	} else {
 		fmt.Println("empty")
 		// revert old erosions
