@@ -142,7 +142,7 @@ func (f *fundamental) Derive(msg string) *fundamental {
 func (f *fundamental) Error() string { return f.msg }
 
 func (f *fundamental) Equals(err IdentifiableError) bool {
-	return f.id == err.Id()
+	return err != nil && f.id == err.Id()
 }
 
 func (f *fundamental) Id() int {

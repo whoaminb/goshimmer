@@ -18,13 +18,13 @@ func NewCalculator(decayInterval float64, decayRate float64, optionalOptions ...
 		// store key settings
 		decayInterval: decayInterval,
 
-		// configure optional parameters
-		options: DEFAULT_OPTIONS.Override(optionalOptions...),
-
 		// derive important factors ...
 		// ... make mana reach exactly the token supply as it's max value (n coins => n mana)
 		decayFactor:            1 - decayRate,
 		tokenSupplyScalefactor: decayRate / (1 - decayRate),
+
+		// configure optional parameters
+		options: DEFAULT_OPTIONS.Override(optionalOptions...),
 	}
 }
 
