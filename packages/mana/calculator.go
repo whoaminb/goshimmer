@@ -34,7 +34,7 @@ func (calculator *Calculator) GenerateMana(coins uint64, heldTime uint64) (resul
 	gainedMana := float64(coins) * calculator.options.ManaScaleFactor * (1 - math.Pow(calculator.decayFactor, float64(heldTime)/calculator.decayInterval))
 
 	// assign rounded results & determine roundingErrors
-	result = uint64(math.Round(gainedMana))
+	result = uint64(gainedMana)
 	roundingError = gainedMana - float64(result)
 
 	return
@@ -53,7 +53,7 @@ func (calculator *Calculator) ErodeMana(mana uint64, decayTime uint64) (result u
 	erodedMana := float64(mana) * math.Pow(calculator.decayFactor, float64(decayTime)/calculator.decayInterval)
 
 	// assign rounded results & determine roundingErrors
-	result = uint64(math.Round(erodedMana))
+	result = uint64(erodedMana)
 	roundingError = erodedMana - float64(result)
 
 	return
