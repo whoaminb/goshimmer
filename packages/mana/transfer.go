@@ -6,12 +6,3 @@ type Transfer struct {
 	receivedTime uint64
 	spentTime    uint64
 }
-
-func NewTransfer(movedCoins uint64, burnedMana uint64, receivedTime uint64, spentTime uint64) *Transfer {
-	return &Transfer{
-		movedCoins:   movedCoins,
-		burnedMana:   burnedMana,
-		receivedTime: receivedTime,
-		spentTime:    spentTime,
-	}
-}

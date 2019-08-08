@@ -1,6 +1,8 @@
 package mana
 
 import (
+	"sync"
+
 	"github.com/iotaledger/goshimmer/packages/datastructure"
 	"github.com/iotaledger/goshimmer/packages/errors"
 )
@@ -8,6 +10,7 @@ import (
 type Balance struct {
 	calculator      *Calculator
 	transferHistory *datastructure.DoublyLinkedList
+	mutex           sync.RWMutex
 }
 
 func NewBalance(calculator *Calculator) *Balance {
@@ -19,6 +22,9 @@ func NewBalance(calculator *Calculator) *Balance {
 
 // Returns the current mana balance.
 func (balance *Balance) GetValue(now ...uint64) (result uint64, err errors.IdentifiableError) {
+	balance.mutex.RLock()
+	defer balance.mutex.RUnlock()
+
 	if lastBalanceHistoryEntry, historyErr := balance.transferHistory.GetLast(); historyErr != nil {
 		if !datastructure.ErrNoSuchElement.Equals(historyErr) {
 			err = historyErr
@@ -46,6 +52,9 @@ func (balance *Balance) GetValue(now ...uint64) (result uint64, err errors.Ident
 
 // Returns the timestamp of the last mana erosion.
 func (balance *Balance) GetLastErosion() uint64 {
+	balance.mutex.RLock()
+	defer balance.mutex.RUnlock()
+
 	if lastBalanceHistoryEntry, err := balance.transferHistory.GetLast(); datastructure.ErrNoSuchElement.Equals(err) {
 		return 0
 	} else {
@@ -54,7 +63,10 @@ func (balance *Balance) GetLastErosion() uint64 {
 }
 
 // Books a new transfer to the balance.
-func (balance *Balance) AddTransfer(transfer *Transfer) {
+func (balance *Balance) BookTransfer(transfer *Transfer) {
+	balance.mutex.Lock()
+	defer balance.mutex.Unlock()
+
 	// check if we need to rollback transfers (to prevent rounding errors)
 	rolledBackTransactions := balance.rollbackTransfers(transfer.spentTime)
 
@@ -65,6 +77,32 @@ func (balance *Balance) AddTransfer(transfer *Transfer) {
 	for i := len(rolledBackTransactions) - 1; i >= 0; i-- {
 		balance.applyTransfer(rolledBackTransactions[i])
 	}
+}
+
+// Cleans up old transfer history entries to reduce the size of the data.
+func (balance *Balance) CleanupTransferHistory(referenceTime uint64) (err errors.IdentifiableError) {
+	balance.mutex.Lock()
+	defer balance.mutex.Unlock()
+
+	if currentTransferHistoryEntry, historyErr := balance.transferHistory.GetFirstEntry(); historyErr != nil {
+		if !datastructure.ErrNoSuchElement.Equals(historyErr) {
+			err = historyErr
+		}
+	} else {
+		for currentTransferHistoryEntry.GetNext() != nil && currentTransferHistoryEntry.GetValue().(*BalanceHistoryEntry).transfer.spentTime < referenceTime {
+			nextTransferHistoryEntry := currentTransferHistoryEntry.GetNext()
+
+			if historyErr := balance.transferHistory.RemoveEntry(currentTransferHistoryEntry); historyErr != nil {
+				err = historyErr
+
+				break
+			}
+
+			currentTransferHistoryEntry = nextTransferHistoryEntry
+		}
+	}
+
+	return
 }
 
 // Rolls back transfers that have their spentTime after the given referenceTime and returns a slice containing the
