@@ -2,6 +2,7 @@ package mana
 
 import (
 	"github.com/iotaledger/goshimmer/packages/datastructure"
+	"github.com/iotaledger/goshimmer/packages/errors"
 )
 
 type Balance struct {
@@ -17,12 +18,30 @@ func NewBalance(calculator *Calculator) *Balance {
 }
 
 // Returns the current mana balance.
-func (balance *Balance) GetValue() uint64 {
-	if lastBalanceHistoryEntry, err := balance.transferHistory.GetLast(); datastructure.ErrNoSuchElement.Equals(err) {
-		return 0
+func (balance *Balance) GetValue(now ...uint64) (result uint64, err errors.IdentifiableError) {
+	if lastBalanceHistoryEntry, historyErr := balance.transferHistory.GetLast(); historyErr != nil {
+		if !datastructure.ErrNoSuchElement.Equals(historyErr) {
+			err = historyErr
+		}
 	} else {
-		return lastBalanceHistoryEntry.(*BalanceHistoryEntry).balance
+		switch len(now) {
+		case 0:
+			result = lastBalanceHistoryEntry.(*BalanceHistoryEntry).balance
+
+		case 1:
+			lastErosionTime := lastBalanceHistoryEntry.(*BalanceHistoryEntry).transfer.spentTime
+			if lastErosionTime > now[0] {
+				panic("watt")
+			} else {
+				result, _ = balance.calculator.ErodeMana(lastBalanceHistoryEntry.(*BalanceHistoryEntry).balance, now[0]-lastErosionTime)
+			}
+
+		default:
+			err = errors.New("Test")
+		}
 	}
+
+	return
 }
 
 // Returns the timestamp of the last mana erosion.
@@ -109,7 +128,7 @@ func (balance *Balance) applyTransfer(transfer *Transfer) {
 	// store results
 	balance.transferHistory.AddLast(&BalanceHistoryEntry{
 		transfer:                 transfer,
-		balance:                  currentBalance + gainedMana,
+		balance:                  currentBalance + gainedMana - transfer.burnedMana,
 		accumulatedRoundingError: roundingError,
 	})
 }

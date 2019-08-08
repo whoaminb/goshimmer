@@ -11,15 +11,37 @@ func TestBalance_AddTransfer(t *testing.T) {
 
 	// spend coins multiple times
 	balance1 := NewBalance(calculator)
-	balance1.AddTransfer(NewTransfer(1000, 1000, 1700))
-	balance1.AddTransfer(NewTransfer(1000, 700, 1000))
-	balance1.AddTransfer(NewTransfer(1000, 0, 700))
+	balance1.AddTransfer(&Transfer{
+		movedCoins:   1000,
+		burnedMana:   10,
+		receivedTime: 1000,
+		spentTime:    1700,
+	})
+	balance1.AddTransfer(&Transfer{
+		movedCoins:   1000,
+		burnedMana:   0,
+		receivedTime: 700,
+		spentTime:    1000,
+	})
+	balance1.AddTransfer(&Transfer{
+		movedCoins:   1000,
+		burnedMana:   0,
+		receivedTime: 0,
+		spentTime:    700,
+	})
 
 	// hold coins for the full time
 	balance2 := NewBalance(calculator)
-	balance2.AddTransfer(NewTransfer(1000, 0, 1700))
+	balance2.AddTransfer(&Transfer{
+		movedCoins:   1000,
+		burnedMana:   10,
+		receivedTime: 0,
+		spentTime:    1700,
+	})
 
 	// check result
-	assert.Equal(t, balance1.GetValue(), uint64(301))
-	assert.Equal(t, balance2.GetValue(), uint64(301))
+	val1, _ := balance1.GetValue()
+	assert.Equal(t, val1, uint64(291))
+	val2, _ := balance2.GetValue()
+	assert.Equal(t, val2, uint64(291))
 }
