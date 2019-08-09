@@ -161,12 +161,17 @@ func (balance *Balance) applyTransfer(transfer *Transfer) {
 	}
 
 	// calculate mana gains
-	gainedMana, roundingError := balance.calculator.GenerateMana(transfer.movedCoins, transfer.spentTime-transfer.receivedTime)
+	var gainedMana uint64
+	for _, input := range transfer.inputs {
+		generatedMana, _ := balance.calculator.GenerateMana(input.coinAmount, transfer.spentTime-input.receivedTime)
+
+		gainedMana += generatedMana
+	}
 
 	// store results
 	balance.transferHistory.AddLast(&BalanceHistoryEntry{
 		transfer:                 transfer,
 		balance:                  currentBalance + gainedMana - transfer.burnedMana,
-		accumulatedRoundingError: roundingError,
+		accumulatedRoundingError: 0, // TODO: remove
 	})
 }
