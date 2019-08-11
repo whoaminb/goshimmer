@@ -13,26 +13,17 @@ func TestBalance_CleanupTransferHistory(t *testing.T) {
 	// fill transfer history
 	balance1 := NewBalance(calculator)
 	balance1.BookTransfer(&Transfer{
-		inputs: []*Input{{
-			coinAmount:   1000,
-			receivedTime: 1000,
-		}},
+		inputs: []*Input{NewInput(1000, 1000)},
 		spentTime:  1700,
 		burnedMana: 10,
 	})
 	balance1.BookTransfer(&Transfer{
-		inputs: []*Input{{
-			coinAmount:   1000,
-			receivedTime: 700,
-		}},
+		inputs: []*Input{NewInput(1000, 700)},
 		spentTime:  1000,
 		burnedMana: 0,
 	})
 	balance1.BookTransfer(&Transfer{
-		inputs: []*Input{{
-			coinAmount:   1000,
-			receivedTime: 0,
-		}},
+		inputs: []*Input{NewInput(1000, 0)},
 		spentTime:  700,
 		burnedMana: 0,
 	})
@@ -62,26 +53,17 @@ func TestBalance_AddTransfer(t *testing.T) {
 	// spend coins multiple times
 	balance1 := NewBalance(calculator)
 	balance1.BookTransfer(&Transfer{
-		inputs: []*Input{{
-			coinAmount:   1000,
-			receivedTime: 1000,
-		}},
+		inputs: []*Input{NewInput(1000, 1000)},
 		spentTime:  1700,
 		burnedMana: 10,
 	})
 	balance1.BookTransfer(&Transfer{
-		inputs: []*Input{{
-			coinAmount:   1000,
-			receivedTime: 700,
-		}},
+		inputs: []*Input{NewInput(1000, 700)},
 		spentTime:  1000,
 		burnedMana: 0,
 	})
 	balance1.BookTransfer(&Transfer{
-		inputs: []*Input{{
-			coinAmount:   1000,
-			receivedTime: 0,
-		}},
+		inputs: []*Input{NewInput(1000, 0)},
 		spentTime:  700,
 		burnedMana: 0,
 	})
@@ -89,10 +71,7 @@ func TestBalance_AddTransfer(t *testing.T) {
 	// hold coins for the full time
 	balance2 := NewBalance(calculator)
 	balance2.BookTransfer(&Transfer{
-		inputs: []*Input{{
-			coinAmount:   1000,
-			receivedTime: 0,
-		}},
+		inputs: []*Input{NewInput(1000, 0)},
 		spentTime:  1700,
 		burnedMana: 10,
 	})

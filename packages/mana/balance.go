@@ -163,7 +163,7 @@ func (balance *Balance) applyTransfer(transfer *Transfer) {
 	// calculate mana gains
 	var gainedMana uint64
 	for _, input := range transfer.inputs {
-		generatedMana, _ := balance.calculator.GenerateMana(input.coinAmount, transfer.spentTime-input.receivedTime)
+		generatedMana, _ := balance.calculator.GenerateMana(input.GetCoinAmount(), transfer.spentTime-input.GetReceivedTime())
 
 		gainedMana += generatedMana
 	}

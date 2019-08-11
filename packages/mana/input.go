@@ -1,76 +1,95 @@
 package mana
 
 import (
-	"encoding/binary"
-	"fmt"
+	"sync"
 
-	"github.com/iotaledger/goshimmer/packages/marshal"
+	"github.com/golang/protobuf/proto"
 
 	"github.com/iotaledger/goshimmer/packages/errors"
+	manaproto "github.com/iotaledger/goshimmer/packages/mana/proto"
 )
 
 type Input struct {
-	coinAmount   uint64
-	receivedTime uint64
+	coinAmount        uint64
+	coinAmountMutex   sync.RWMutex
+	receivedTime      uint64
+	receivedTimeMutex sync.RWMutex
 }
 
-func (input *Input) MarshalBinary() (data []byte, err errors.IdentifiableError) {
-	data = inputSchema.Marshal(input)
+func NewInput(coinAmount uint64, receivedTime uint64) *Input {
+	return &Input{
+		coinAmount:   coinAmount,
+		receivedTime: receivedTime,
+	}
+}
+
+func (input *Input) GetCoinAmount() uint64 {
+	input.coinAmountMutex.RLock()
+	defer input.coinAmountMutex.RUnlock()
+
+	return input.coinAmount
+}
+
+func (input *Input) SetCoinAmount(coinAmount uint64) {
+	input.coinAmountMutex.Lock()
+	defer input.coinAmountMutex.Unlock()
+
+	input.coinAmount = coinAmount
+}
+
+func (input *Input) GetReceivedTime() uint64 {
+	input.receivedTimeMutex.RLock()
+	defer input.receivedTimeMutex.RUnlock()
+
+	return input.receivedTime
+}
+
+func (input *Input) SetReceivedTime(receivedTime uint64) {
+	input.receivedTimeMutex.Lock()
+	defer input.receivedTimeMutex.Unlock()
+
+	input.receivedTime = receivedTime
+}
+
+func (input *Input) ToProto() (result *manaproto.Input) {
+	input.receivedTimeMutex.RLock()
+	input.coinAmountMutex.RLock()
+	defer input.receivedTimeMutex.RUnlock()
+	defer input.coinAmountMutex.RUnlock()
+
+	return &manaproto.Input{
+		CoinAmount:   input.coinAmount,
+		ReceivedTime: input.receivedTime,
+	}
+}
+
+func (input *Input) FromProto(proto *manaproto.Input) {
+	input.receivedTimeMutex.Lock()
+	input.coinAmountMutex.Lock()
+	defer input.receivedTimeMutex.Unlock()
+	defer input.coinAmountMutex.Unlock()
+
+	input.coinAmount = proto.CoinAmount
+	input.receivedTime = proto.ReceivedTime
+}
+
+func (input *Input) MarshalBinary() (result []byte, err errors.IdentifiableError) {
+	if marshaledData, marshalErr := proto.Marshal(input.ToProto()); marshalErr != nil {
+		err = ErrMarshalFailed.Derive(marshalErr, "marshal failed")
+	} else {
+		result = marshaledData
+	}
 
 	return
 }
 
 func (input *Input) UnmarshalBinary(data []byte) (err errors.IdentifiableError) {
-	if len(data) < INPUT_TOTAL_MARSHALED_SIZE {
-		err = ErrUnmarshalFailed.Derive("byte sequence of marshaled input is not long enough")
+	var unmarshaledProto manaproto.Input
+	if unmarshalError := proto.Unmarshal(data, &unmarshaledProto); unmarshalError != nil {
+		err = ErrUnmarshalFailed.Derive(unmarshalError, "unmarshal failed")
+	} else {
+		input.FromProto(&unmarshaledProto)
 	}
-
-	input.coinAmount = binary.BigEndian.Uint64(data[INPUT_COIN_AMOUNT_BYTE_OFFSET_START:INPUT_COIN_AMOUNT_BYTE_OFFSET_END])
-	input.receivedTime = binary.BigEndian.Uint64(data[INPUT_RECEIVED_TIME_BYTE_OFFSET_START:INPUT_RECEIVED_TIME_BYTE_OFFSET_END])
 
 	return
 }
-
-func (input *Input) GetCoinAmount() uint64 {
-	return input_getCoinAmount(input)
-}
-
-func input_getCoinAmount(input interface{}) uint64 {
-	return input.(*Input).coinAmount
-}
-
-func input_setCoinAmount(input interface{}, coinAmount uint64) {
-	input.(*Input).coinAmount = coinAmount
-}
-
-func input_getReceivedTime(input interface{}) uint64 {
-	return input.(*Input).receivedTime
-}
-
-func input_setReceivedTime(input interface{}, receivedTime uint64) {
-	input.(*Input).coinAmount = receivedTime
-}
-
-var inputSchema = marshal.Schema(
-	marshal.Uint64(input_getCoinAmount, input_setCoinAmount),
-	marshal.Uint64(input_getReceivedTime, input_setReceivedTime),
-)
-
-func init() {
-	fmt.Println((&Input{
-		coinAmount:   10,
-		receivedTime: 20,
-	}).MarshalBinary())
-}
-
-const (
-	INPUT_COIN_AMOUNT_BYTE_OFFSET_START  = 0
-	INPUT_COIN_AMOUNT_BYTE_OFFSET_LENGTH = 8
-	INPUT_COIN_AMOUNT_BYTE_OFFSET_END    = INPUT_COIN_AMOUNT_BYTE_OFFSET_START + INPUT_COIN_AMOUNT_BYTE_OFFSET_LENGTH
-
-	INPUT_RECEIVED_TIME_BYTE_OFFSET_START  = INPUT_COIN_AMOUNT_BYTE_OFFSET_END
-	INPUT_RECEIVED_TIME_BYTE_OFFSET_LENGTH = 8
-	INPUT_RECEIVED_TIME_BYTE_OFFSET_END    = INPUT_RECEIVED_TIME_BYTE_OFFSET_START + INPUT_RECEIVED_TIME_BYTE_OFFSET_LENGTH
-
-	INPUT_TOTAL_MARSHALED_SIZE = INPUT_RECEIVED_TIME_BYTE_OFFSET_END
-)

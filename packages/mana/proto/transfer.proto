@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+import "input.proto";
+
+package proto;
+
+message Transfer {
+    repeated Input inputs = 1;
+    uint64 spentTime = 2;
+    uint64 burnedMana = 3;
+};

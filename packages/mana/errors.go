@@ -5,5 +5,6 @@ import (
 )
 
 var (
-	ErrUnmarshalFailed = errors.New("unmarshal failed")
+	ErrUnmarshalFailed = errors.Wrap(errors.New("unmarshal failed"), "unmarshal failed")
+	ErrMarshalFailed = errors.Wrap(errors.New("marshal failed"), "marshal failed")
 )
