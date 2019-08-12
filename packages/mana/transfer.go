@@ -27,6 +27,48 @@ func NewTransfer(inputs []*Input, spentTime uint64, burnedMana uint64) *Transfer
 	}
 }
 
+func (transfer *Transfer) GetInputs() []*Input {
+	transfer.inputsMutex.RLock()
+	defer transfer.inputsMutex.RUnlock()
+
+	return transfer.inputs
+}
+
+func (transfer *Transfer) SetInputs(inputs []*Input) {
+	transfer.inputsMutex.Lock()
+	defer transfer.inputsMutex.Unlock()
+
+	transfer.inputs = inputs
+}
+
+func (transfer *Transfer) GetBurnedMana() uint64 {
+	transfer.burnedManaMutex.RLock()
+	defer transfer.burnedManaMutex.RUnlock()
+
+	return transfer.burnedMana
+}
+
+func (transfer *Transfer) SetBurnedMana(burnedMana uint64) {
+	transfer.burnedManaMutex.Lock()
+	defer transfer.burnedManaMutex.Unlock()
+
+	transfer.burnedMana = burnedMana
+}
+
+func (transfer *Transfer) GetSpentTime() uint64 {
+	transfer.spentTimeMutex.RLock()
+	defer transfer.spentTimeMutex.RUnlock()
+
+	return transfer.spentTime
+}
+
+func (transfer *Transfer) SetSpentTime(spentTime uint64) {
+	transfer.spentTimeMutex.Lock()
+	defer transfer.spentTimeMutex.Unlock()
+
+	transfer.spentTime = spentTime
+}
+
 // Returns a protobuf representation of this transfer.
 func (transfer *Transfer) ToProto() (result proto.Message) {
 	transfer.inputsMutex.RLock()
@@ -43,7 +85,7 @@ func (transfer *Transfer) ToProto() (result proto.Message) {
 	}
 
 	for i, input := range transfer.inputs {
-		protoTransfer.Inputs[i] = input.ToProto()
+		protoTransfer.Inputs[i] = input.ToProto().(*manaproto.Input)
 	}
 
 	return protoTransfer
@@ -77,5 +119,44 @@ func (transfer *Transfer) MarshalBinary() ([]byte, errors.IdentifiableError) {
 }
 
 func (transfer *Transfer) UnmarshalBinary(data []byte) (err errors.IdentifiableError) {
-	return marshaling.Unmarshal(transfer, &manaproto.Transfer{}, data)
+	return marshaling.Unmarshal(transfer, data, &manaproto.Transfer{})
+}
+
+func (transfer *Transfer) Equals(other *Transfer) bool {
+	if transfer == other {
+		return true
+	}
+
+	if transfer == nil || other == nil {
+		return false
+	}
+
+	transfer.inputsMutex.RLock()
+	transfer.spentTimeMutex.RLock()
+	transfer.burnedManaMutex.RLock()
+	other.inputsMutex.RLock()
+	other.spentTimeMutex.RLock()
+	other.burnedManaMutex.RLock()
+	defer transfer.inputsMutex.RUnlock()
+	defer transfer.spentTimeMutex.RUnlock()
+	defer transfer.burnedManaMutex.RUnlock()
+	defer other.inputsMutex.RUnlock()
+	defer other.spentTimeMutex.RUnlock()
+	defer other.burnedManaMutex.RUnlock()
+
+	if transfer.spentTime != other.spentTime || transfer.burnedMana != other.burnedMana {
+		return false
+	}
+
+	if len(transfer.inputs) != len(other.inputs) {
+		return false
+	}
+
+	for i, input := range transfer.inputs {
+		if !input.Equals(other.inputs[i]) {
+			return false
+		}
+	}
+
+	return true
 }

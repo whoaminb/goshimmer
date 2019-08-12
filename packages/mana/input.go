@@ -5,6 +5,8 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
+	"github.com/iotaledger/goshimmer/packages/marshaling"
+
 	"github.com/iotaledger/goshimmer/packages/errors"
 	manaproto "github.com/iotaledger/goshimmer/packages/mana/proto"
 )
@@ -51,7 +53,7 @@ func (input *Input) SetReceivedTime(receivedTime uint64) {
 	input.receivedTime = receivedTime
 }
 
-func (input *Input) ToProto() (result *manaproto.Input) {
+func (input *Input) ToProto() (result proto.Message) {
 	input.receivedTimeMutex.RLock()
 	input.coinAmountMutex.RLock()
 	defer input.receivedTimeMutex.RUnlock()
@@ -63,33 +65,43 @@ func (input *Input) ToProto() (result *manaproto.Input) {
 	}
 }
 
-func (input *Input) FromProto(proto *manaproto.Input) {
+func (input *Input) FromProto(proto proto.Message) {
 	input.receivedTimeMutex.Lock()
 	input.coinAmountMutex.Lock()
 	defer input.receivedTimeMutex.Unlock()
 	defer input.coinAmountMutex.Unlock()
 
-	input.coinAmount = proto.CoinAmount
-	input.receivedTime = proto.ReceivedTime
+	inputProto := proto.(*manaproto.Input)
+
+	input.coinAmount = inputProto.CoinAmount
+	input.receivedTime = inputProto.ReceivedTime
 }
 
-func (input *Input) MarshalBinary() (result []byte, err errors.IdentifiableError) {
-	if marshaledData, marshalErr := proto.Marshal(input.ToProto()); marshalErr != nil {
-		err = ErrMarshalFailed.Derive(marshalErr, "marshal failed")
-	} else {
-		result = marshaledData
-	}
-
-	return
+func (input *Input) MarshalBinary() ([]byte, errors.IdentifiableError) {
+	return marshaling.Marshal(input)
 }
 
-func (input *Input) UnmarshalBinary(data []byte) (err errors.IdentifiableError) {
-	var unmarshaledProto manaproto.Input
-	if unmarshalError := proto.Unmarshal(data, &unmarshaledProto); unmarshalError != nil {
-		err = ErrUnmarshalFailed.Derive(unmarshalError, "unmarshal failed")
-	} else {
-		input.FromProto(&unmarshaledProto)
+func (input *Input) UnmarshalBinary(data []byte) errors.IdentifiableError {
+	return marshaling.Unmarshal(input, data, &manaproto.Input{})
+}
+
+func (input *Input) Equals(other *Input) bool {
+	if input == other {
+		return true
 	}
 
-	return
+	if input == nil || other == nil {
+		return false
+	}
+
+	input.receivedTimeMutex.RLock()
+	input.coinAmountMutex.RLock()
+	other.receivedTimeMutex.RLock()
+	other.coinAmountMutex.RLock()
+	defer input.receivedTimeMutex.RUnlock()
+	defer input.coinAmountMutex.RUnlock()
+	defer other.receivedTimeMutex.RUnlock()
+	defer other.coinAmountMutex.RUnlock()
+
+	return input.coinAmount == other.coinAmount && input.receivedTime == other.receivedTime
 }

@@ -3,20 +3,24 @@ package mana
 import (
 	"sync"
 
+	"github.com/golang/protobuf/proto"
+
 	"github.com/iotaledger/goshimmer/packages/datastructure"
 	"github.com/iotaledger/goshimmer/packages/errors"
+	manaproto "github.com/iotaledger/goshimmer/packages/mana/proto"
+	"github.com/iotaledger/goshimmer/packages/marshaling"
 )
 
 type Balance struct {
-	calculator      *Calculator
-	transferHistory *datastructure.DoublyLinkedList
-	mutex           sync.RWMutex
+	calculator     *Calculator
+	balanceHistory *datastructure.DoublyLinkedList
+	mutex          sync.RWMutex
 }
 
 func NewBalance(calculator *Calculator) *Balance {
 	return &Balance{
-		calculator:      calculator,
-		transferHistory: &datastructure.DoublyLinkedList{},
+		calculator:     calculator,
+		balanceHistory: &datastructure.DoublyLinkedList{},
 	}
 }
 
@@ -25,7 +29,7 @@ func (balance *Balance) GetValue(now ...uint64) (result uint64, err errors.Ident
 	balance.mutex.RLock()
 	defer balance.mutex.RUnlock()
 
-	if lastBalanceHistoryEntry, historyErr := balance.transferHistory.GetLast(); historyErr != nil {
+	if lastBalanceHistoryEntry, historyErr := balance.balanceHistory.GetLast(); historyErr != nil {
 		if !datastructure.ErrNoSuchElement.Equals(historyErr) {
 			err = historyErr
 		}
@@ -55,7 +59,7 @@ func (balance *Balance) GetLastErosion() uint64 {
 	balance.mutex.RLock()
 	defer balance.mutex.RUnlock()
 
-	if lastBalanceHistoryEntry, err := balance.transferHistory.GetLast(); datastructure.ErrNoSuchElement.Equals(err) {
+	if lastBalanceHistoryEntry, err := balance.balanceHistory.GetLast(); datastructure.ErrNoSuchElement.Equals(err) {
 		return 0
 	} else {
 		return lastBalanceHistoryEntry.(*BalanceHistoryEntry).transfer.spentTime
@@ -84,7 +88,7 @@ func (balance *Balance) CleanupTransferHistory(referenceTime uint64) (err errors
 	balance.mutex.Lock()
 	defer balance.mutex.Unlock()
 
-	if currentTransferHistoryEntry, historyErr := balance.transferHistory.GetFirstEntry(); historyErr != nil {
+	if currentTransferHistoryEntry, historyErr := balance.balanceHistory.GetFirstEntry(); historyErr != nil {
 		if !datastructure.ErrNoSuchElement.Equals(historyErr) {
 			err = historyErr
 		}
@@ -92,7 +96,7 @@ func (balance *Balance) CleanupTransferHistory(referenceTime uint64) (err errors
 		for currentTransferHistoryEntry.GetNext() != nil && currentTransferHistoryEntry.GetValue().(*BalanceHistoryEntry).transfer.spentTime < referenceTime {
 			nextTransferHistoryEntry := currentTransferHistoryEntry.GetNext()
 
-			if historyErr := balance.transferHistory.RemoveEntry(currentTransferHistoryEntry); historyErr != nil {
+			if historyErr := balance.balanceHistory.RemoveEntry(currentTransferHistoryEntry); historyErr != nil {
 				err = historyErr
 
 				break
@@ -103,6 +107,105 @@ func (balance *Balance) CleanupTransferHistory(referenceTime uint64) (err errors
 	}
 
 	return
+}
+
+func (balance *Balance) ToProto() proto.Message {
+	balance.mutex.RLock()
+	defer balance.mutex.RUnlock()
+
+	balance.mutex.RLock()
+	defer balance.mutex.RUnlock()
+
+	balanceHistorySize := balance.balanceHistory.GetSize()
+	protoBalance := &manaproto.Balance{
+		BalanceHistory: make([]*manaproto.BalanceHistoryEntry, balanceHistorySize),
+	}
+
+	if balanceHistorySize >= 1 {
+		if currentHistoryEntry, err := balance.balanceHistory.GetFirstEntry(); err != nil {
+			panic(err)
+		} else {
+			for i := 0; i < balanceHistorySize; i++ {
+				protoBalance.BalanceHistory[i] = currentHistoryEntry.GetValue().(*BalanceHistoryEntry).ToProto().(*manaproto.BalanceHistoryEntry)
+
+				currentHistoryEntry = currentHistoryEntry.GetNext()
+			}
+		}
+	}
+
+	return protoBalance
+}
+
+func (balance *Balance) FromProto(proto proto.Message) {
+	balance.mutex.Lock()
+	defer balance.mutex.Unlock()
+
+	balance.balanceHistory = &datastructure.DoublyLinkedList{}
+	for _, balanceHistoryEntryProto := range proto.(*manaproto.Balance).BalanceHistory {
+		var balanceHistoryEntry BalanceHistoryEntry
+		balanceHistoryEntry.FromProto(balanceHistoryEntryProto)
+
+		balance.balanceHistory.AddLast(&balanceHistoryEntry)
+	}
+}
+
+func (balance *Balance) MarshalBinary() ([]byte, errors.IdentifiableError) {
+	return marshaling.Marshal(balance)
+}
+
+func (balance *Balance) UnmarshalBinary(data []byte) (err errors.IdentifiableError) {
+	return marshaling.Unmarshal(balance, data, &manaproto.Balance{})
+}
+
+func (balance *Balance) Equals(other *Balance) bool {
+	if balance == other {
+		return true
+	}
+
+	if balance == nil || other == nil {
+		return false
+	}
+
+	balance.mutex.RLock()
+	other.mutex.RLock()
+	defer balance.mutex.RUnlock()
+	defer other.mutex.RUnlock()
+
+	if balance.balanceHistory == other.balanceHistory {
+		return true
+	}
+
+	if balance.balanceHistory == nil || other.balanceHistory == nil {
+		return false
+	}
+
+	if balance.balanceHistory.GetSize() != other.balanceHistory.GetSize() {
+		return false
+	}
+
+	if balance.balanceHistory.GetSize() != 0 {
+		ownTransferHistoryEntry, err := balance.balanceHistory.GetFirstEntry()
+		if err != nil {
+			// should never happen as we check the size before
+			panic(err)
+		}
+		otherTransferHistoryEntry, err := other.balanceHistory.GetFirstEntry()
+		if err != nil {
+			// should never happen as we check the size before
+			panic(err)
+		}
+
+		for ownTransferHistoryEntry != nil {
+			if !ownTransferHistoryEntry.GetValue().(*BalanceHistoryEntry).Equals(otherTransferHistoryEntry.GetValue().(*BalanceHistoryEntry)) {
+				return false
+			}
+
+			ownTransferHistoryEntry = ownTransferHistoryEntry.GetNext()
+			otherTransferHistoryEntry = otherTransferHistoryEntry.GetNext()
+		}
+	}
+
+	return true
 }
 
 // Rolls back transfers that have their spentTime after the given referenceTime and returns a slice containing the
@@ -119,7 +222,7 @@ func (balance *Balance) rollbackTransfers(referenceTime uint64) (result []*Trans
 	result = make([]*Transfer, 0)
 
 	for {
-		if lastListEntry, err := balance.transferHistory.GetLast(); err != nil {
+		if lastListEntry, err := balance.balanceHistory.GetLast(); err != nil {
 			if !datastructure.ErrNoSuchElement.Equals(err) {
 				panic(err)
 			}
@@ -130,7 +233,7 @@ func (balance *Balance) rollbackTransfers(referenceTime uint64) (result []*Trans
 		} else {
 			result = append(result, lastTransfer)
 
-			if _, err := balance.transferHistory.RemoveLast(); err != nil {
+			if _, err := balance.balanceHistory.RemoveLast(); err != nil {
 				panic(err)
 			}
 		}
@@ -141,7 +244,7 @@ func (balance *Balance) rollbackTransfers(referenceTime uint64) (result []*Trans
 func (balance *Balance) applyTransfer(transfer *Transfer) {
 	// retrieve current values
 	var currentBalance, lastErosion uint64
-	if lastListEntry, err := balance.transferHistory.GetLastEntry(); err != nil {
+	if lastListEntry, err := balance.balanceHistory.GetLastEntry(); err != nil {
 		if !datastructure.ErrNoSuchElement.Equals(err) {
 			panic(err)
 		}
@@ -169,9 +272,8 @@ func (balance *Balance) applyTransfer(transfer *Transfer) {
 	}
 
 	// store results
-	balance.transferHistory.AddLast(&BalanceHistoryEntry{
-		transfer:                 transfer,
-		balance:                  currentBalance + gainedMana - transfer.burnedMana,
-		accumulatedRoundingError: 0, // TODO: remove
+	balance.balanceHistory.AddLast(&BalanceHistoryEntry{
+		transfer: transfer,
+		balance:  currentBalance + gainedMana - transfer.burnedMana,
 	})
 }

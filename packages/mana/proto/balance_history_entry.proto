@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+import "transfer.proto";
+
+package proto;
+
+message BalanceHistoryEntry {
+    Transfer transfer = 1;
+    uint64 balance = 2;
+};

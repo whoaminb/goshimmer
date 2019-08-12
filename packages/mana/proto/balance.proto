@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+import "balance_history_entry.proto";
+
+package proto;
+
+message Balance {
+    repeated BalanceHistoryEntry balanceHistory = 1;
+};

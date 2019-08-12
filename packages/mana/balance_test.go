@@ -6,6 +6,94 @@ import (
 	"github.com/magiconair/properties/assert"
 )
 
+func TestBalance_MarshalUnmarshalBinary(t *testing.T) {
+	// initialize calculator
+	calculator := NewCalculator(500, 0.1)
+
+	// fill transfer history
+	balance1 := NewBalance(calculator)
+	balance1.BookTransfer(&Transfer{
+		inputs:     []*Input{NewInput(1000, 1000)},
+		spentTime:  1700,
+		burnedMana: 10,
+	})
+	balance1.BookTransfer(&Transfer{
+		inputs:     []*Input{NewInput(1000, 700)},
+		spentTime:  1000,
+		burnedMana: 0,
+	})
+	balance1.BookTransfer(&Transfer{
+		inputs:     []*Input{NewInput(1000, 0)},
+		spentTime:  700,
+		burnedMana: 0,
+	})
+
+	marshaledBalance, err := balance1.MarshalBinary()
+	if err != nil {
+		t.Error(err)
+
+		return
+	}
+
+	var balance2 Balance
+	if err := balance2.UnmarshalBinary(marshaledBalance); err != nil {
+		t.Error(err)
+
+		return
+	}
+
+	assert.Equal(t, balance1.Equals(&balance2), true)
+}
+
+func TestBalance_Equals(t *testing.T) {
+	// initialize calculator
+	calculator := NewCalculator(500, 0.1)
+
+	// fill transfer history
+	balance1 := NewBalance(calculator)
+	balance1.BookTransfer(&Transfer{
+		inputs:     []*Input{NewInput(1000, 1000)},
+		spentTime:  1700,
+		burnedMana: 10,
+	})
+	balance1.BookTransfer(&Transfer{
+		inputs:     []*Input{NewInput(1000, 700)},
+		spentTime:  1000,
+		burnedMana: 0,
+	})
+	balance1.BookTransfer(&Transfer{
+		inputs:     []*Input{NewInput(1000, 0)},
+		spentTime:  700,
+		burnedMana: 0,
+	})
+
+	// fill transfer history
+	balance2 := NewBalance(calculator)
+	balance2.BookTransfer(&Transfer{
+		inputs:     []*Input{NewInput(1000, 1000)},
+		spentTime:  1700,
+		burnedMana: 10,
+	})
+	balance2.BookTransfer(&Transfer{
+		inputs:     []*Input{NewInput(1000, 700)},
+		spentTime:  1000,
+		burnedMana: 0,
+	})
+	balance2.BookTransfer(&Transfer{
+		inputs:     []*Input{NewInput(1000, 0)},
+		spentTime:  700,
+		burnedMana: 0,
+	})
+
+	assert.Equal(t, balance1.Equals(balance2), true)
+
+	if err := balance2.CleanupTransferHistory(800); err != nil {
+		t.Error(err)
+	}
+
+	assert.Equal(t, balance1.Equals(balance2), false)
+}
+
 func TestBalance_CleanupTransferHistory(t *testing.T) {
 	// initialize calculator
 	calculator := NewCalculator(500, 0.1)
@@ -13,17 +101,17 @@ func TestBalance_CleanupTransferHistory(t *testing.T) {
 	// fill transfer history
 	balance1 := NewBalance(calculator)
 	balance1.BookTransfer(&Transfer{
-		inputs: []*Input{NewInput(1000, 1000)},
+		inputs:     []*Input{NewInput(1000, 1000)},
 		spentTime:  1700,
 		burnedMana: 10,
 	})
 	balance1.BookTransfer(&Transfer{
-		inputs: []*Input{NewInput(1000, 700)},
+		inputs:     []*Input{NewInput(1000, 700)},
 		spentTime:  1000,
 		burnedMana: 0,
 	})
 	balance1.BookTransfer(&Transfer{
-		inputs: []*Input{NewInput(1000, 0)},
+		inputs:     []*Input{NewInput(1000, 0)},
 		spentTime:  700,
 		burnedMana: 0,
 	})
@@ -43,7 +131,7 @@ func TestBalance_CleanupTransferHistory(t *testing.T) {
 	} else {
 		assert.Equal(t, val1, uint64(290))
 	}
-	assert.Equal(t, balance1.transferHistory.GetSize(), 1)
+	assert.Equal(t, balance1.balanceHistory.GetSize(), 1)
 }
 
 func TestBalance_AddTransfer(t *testing.T) {
@@ -53,17 +141,17 @@ func TestBalance_AddTransfer(t *testing.T) {
 	// spend coins multiple times
 	balance1 := NewBalance(calculator)
 	balance1.BookTransfer(&Transfer{
-		inputs: []*Input{NewInput(1000, 1000)},
+		inputs:     []*Input{NewInput(1000, 1000)},
 		spentTime:  1700,
 		burnedMana: 10,
 	})
 	balance1.BookTransfer(&Transfer{
-		inputs: []*Input{NewInput(1000, 700)},
+		inputs:     []*Input{NewInput(1000, 700)},
 		spentTime:  1000,
 		burnedMana: 0,
 	})
 	balance1.BookTransfer(&Transfer{
-		inputs: []*Input{NewInput(1000, 0)},
+		inputs:     []*Input{NewInput(1000, 0)},
 		spentTime:  700,
 		burnedMana: 0,
 	})
@@ -71,7 +159,7 @@ func TestBalance_AddTransfer(t *testing.T) {
 	// hold coins for the full time
 	balance2 := NewBalance(calculator)
 	balance2.BookTransfer(&Transfer{
-		inputs: []*Input{NewInput(1000, 0)},
+		inputs:     []*Input{NewInput(1000, 0)},
 		spentTime:  1700,
 		burnedMana: 10,
 	})

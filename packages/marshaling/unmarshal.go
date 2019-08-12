@@ -5,11 +5,12 @@ import (
 	"github.com/iotaledger/goshimmer/packages/errors"
 )
 
-func Unmarshal(serializable Serializable, protobuf proto.Message, data []byte) (err errors.IdentifiableError) {
-	if unmarshalError := proto.Unmarshal(data, protobuf); unmarshalError != nil {
+// Unmarshals the given data into the target using the given protobuf type.
+func Unmarshal(target ProtocolBufferTarget, data []byte, messageType proto.Message) (err errors.IdentifiableError) {
+	if unmarshalError := proto.Unmarshal(data, messageType); unmarshalError != nil {
 		err = ErrUnmarshalFailed.Derive(unmarshalError, "unmarshal failed")
 	} else {
-		serializable.FromProto(protobuf)
+		target.FromProto(messageType)
 	}
 
 	return

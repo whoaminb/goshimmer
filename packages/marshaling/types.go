@@ -2,7 +2,7 @@ package marshaling
 
 import "github.com/golang/protobuf/proto"
 
-type Serializable interface {
+type ProtocolBufferTarget interface {
 	ToProto() (result proto.Message)
 	FromProto(proto proto.Message)
 }
