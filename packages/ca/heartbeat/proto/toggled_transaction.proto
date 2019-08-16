@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+import "toggle_type.proto";
+
+package proto;
+
+message ToggledTransaction {
+    bytes transactionId = 1;
+    ToggleType toggleReason = 2;
+};

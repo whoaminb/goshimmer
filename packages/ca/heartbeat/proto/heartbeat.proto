@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+import "opinion_statement.proto";
+
+package proto;
+
+message HeartBeat {
+    bytes nodeId = 1;
+    OpinionStatement ownStatement = 2;
+    repeated OpinionStatement neighborStatements = 3;
+    bytes signature = 4;
+}
+

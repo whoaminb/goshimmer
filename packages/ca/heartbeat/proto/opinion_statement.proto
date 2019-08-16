@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+import "toggled_transaction.proto";
+
+package proto;
+
+message OpinionStatement {
+    bytes nodeId = 1;
+    uint64 time = 2;
+    repeated ToggledTransaction toggledTransactions = 3;
+    bytes signature = 4;
+};
