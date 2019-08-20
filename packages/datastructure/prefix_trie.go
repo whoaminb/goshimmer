@@ -2,7 +2,6 @@ package datastructure
 
 import (
 	"bytes"
-	"fmt"
 	"sync"
 )
 
@@ -38,7 +37,6 @@ func (prefixTrie *PrefixTrie) Get(byteSequenceOrPrefix []byte) (result [][]byte)
 		if existingNode, exists := currentNode.children[byteSequenceOrPrefix[currentLevel]]; exists {
 			currentNode = existingNode
 		} else {
-			// error tried to inflate non-existing entry
 			return
 		}
 	}
@@ -46,9 +44,20 @@ func (prefixTrie *PrefixTrie) Get(byteSequenceOrPrefix []byte) (result [][]byte)
 	if currentNode.value != nil {
 		result = append(result, currentNode.value)
 	} else {
-		// traverse child elements
-		if false {
-			fmt.Println("WAS")
+		elementStack := make([]*PrefixTrie, 1)
+		elementStack[0] = currentNode
+
+		for len(elementStack) != 0 {
+			currentNode = elementStack[0]
+			elementStack = elementStack[1:]
+
+			if currentNode.value != nil {
+				result = append(result, currentNode.value)
+			} else {
+				for _, child := range currentNode.children {
+					elementStack = append(elementStack, child)
+				}
+			}
 		}
 	}
 

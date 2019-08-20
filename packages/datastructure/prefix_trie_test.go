@@ -65,12 +65,6 @@ func TestPrefixTrie_Insert(t *testing.T) {
 		}
 	}
 	assert.True(t, txFound)
-
-	assert.Equal(t, true, trie.Delete(tx1Hash))
-	assert.Equal(t, false, trie.Delete(tx1Hash))
-	assert.Equal(t, true, trie.Delete(tx2Hash))
-
-	assert.Equal(t, 1, trie.GetSize())
 }
 
 func TestPrefixTrie_Get(t *testing.T) {
@@ -81,6 +75,8 @@ func TestPrefixTrie_Get(t *testing.T) {
 
 	trie.Insert(tx1Hash)
 	trie.Insert(tx2Hash)
+
+	assert.Equal(t, 2, len(trie.Get([]byte{})))
 
 	prefix := trie.GetPrefix(tx1Hash)
 
