@@ -16,7 +16,7 @@ import (
 
 	"github.com/iotaledger/goshimmer/plugins/tangle"
 	"github.com/iotaledger/iota.go/consts"
-	"github.com/magiconair/properties/assert"
+	"github.com/stretchr/testify/assert"
 )
 
 var seed = client.NewSeed("YFHQWAUPCXC9S9DSHP9NDF9RLNPMZVCMSJKUKQP9SWUSUCPRQXCMDVDVZ9SHHESHIQNCXWBJF9UJSWE9Z", consts.SecurityLevelMedium)

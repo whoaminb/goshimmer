@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/iotaledger/iota.go/trinary"
-	"github.com/magiconair/properties/assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestBundle_SettersGetters(t *testing.T) {

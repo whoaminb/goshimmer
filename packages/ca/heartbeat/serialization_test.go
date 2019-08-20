@@ -15,11 +15,11 @@ import (
 func TestMarshal(t *testing.T) {
 	ownNodeId := identity.GenerateRandomIdentity().Identifier
 
-	toggledTransactions := make([]*heartbeatproto.ToggledTransaction, 1000)
+	toggledTransactions := make([]*heartbeatproto.ToggledTransaction, 10000)
 
 	for i := 0; i < len(toggledTransactions); i++ {
 		toggledTransactions[i] = &heartbeatproto.ToggledTransaction{
-			TransactionId: make([]byte, 32),
+			TransactionId: make([]byte, 3),
 			ToggleReason:  0,
 		}
 	}

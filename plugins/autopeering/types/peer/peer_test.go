@@ -8,7 +8,7 @@ import (
 	"github.com/iotaledger/goshimmer/plugins/autopeering/types/salt"
 
 	"github.com/iotaledger/goshimmer/packages/identity"
-	"github.com/magiconair/properties/assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPeer_MarshalUnmarshal(t *testing.T) {
