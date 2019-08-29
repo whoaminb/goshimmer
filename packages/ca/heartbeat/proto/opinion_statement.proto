@@ -5,8 +5,9 @@ import "toggled_transaction.proto";
 package proto;
 
 message OpinionStatement {
-    bytes nodeId = 1;
-    uint64 time = 2;
-    repeated ToggledTransaction toggledTransactions = 3;
-    bytes signature = 4;
-};
+    bytes previousStatementHash = 1;
+    string nodeId = 2;
+    uint64 time = 3;
+    repeated ToggledTransaction toggledTransactions = 4;
+    bytes signature = 5;
+}

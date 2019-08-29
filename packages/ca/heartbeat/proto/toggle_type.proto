@@ -1,8 +1,0 @@
-syntax = "proto3";
-
-package proto;
-
-enum ToggleType {
-    Like = 0;
-    Dislike = 1;
-}

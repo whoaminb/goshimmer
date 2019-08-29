@@ -13,14 +13,13 @@ import (
 )
 
 func TestMarshal(t *testing.T) {
-	ownNodeId := identity.GenerateRandomIdentity().Identifier
+	ownNodeId := identity.GenerateRandomIdentity().StringIdentifier
 
 	toggledTransactions := make([]*heartbeatproto.ToggledTransaction, 10000)
 
 	for i := 0; i < len(toggledTransactions); i++ {
 		toggledTransactions[i] = &heartbeatproto.ToggledTransaction{
 			TransactionId: make([]byte, 3),
-			ToggleReason:  0,
 		}
 	}
 
@@ -43,7 +42,7 @@ func TestMarshal(t *testing.T) {
 
 	heartbeat := &heartbeatproto.HeartBeat{
 		NodeId:             ownNodeId,
-		OwnStatement:       ownStatement,
+		MainStatement:      ownStatement,
 		NeighborStatements: neighborStatements,
 		Signature:          make([]byte, 32),
 	}
