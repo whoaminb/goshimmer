@@ -1,9 +1,9 @@
 package heartbeat
 
 import (
-	"encoding/hex"
-	"strconv"
 	"sync"
+
+	"github.com/iotaledger/goshimmer/packages/stringify"
 
 	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/marshaling"
@@ -157,11 +157,11 @@ func (opinionStatement *OpinionStatement) UnmarshalBinary(data []byte) (err erro
 }
 
 func (opinionStatement *OpinionStatement) String() string {
-	return "OpinionStatement {\n" +
-		"    previousStatementHash: 0x" + hex.EncodeToString(opinionStatement.previousStatementHash) + "\n" +
-		"    nodeId:                " + opinionStatement.nodeId + "\n" +
-		"    time:                  " + strconv.Itoa(int(opinionStatement.time)) + "\n" +
-		"    toggledTransactions:   [" + "" + "]\n" +
-		"    signature:             0x" + hex.EncodeToString(opinionStatement.signature) + "\n" +
-		"}"
+	return stringify.Struct("OpinionStatement",
+		stringify.StructField("previousStatementHash", opinionStatement.previousStatementHash),
+		stringify.StructField("nodeId", opinionStatement.nodeId),
+		stringify.StructField("time", opinionStatement.time),
+		stringify.StructField("toggledTransactions", opinionStatement.toggledTransactions),
+		stringify.StructField("signature", opinionStatement.signature),
+	)
 }

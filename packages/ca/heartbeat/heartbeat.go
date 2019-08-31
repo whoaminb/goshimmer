@@ -3,6 +3,8 @@ package heartbeat
 import (
 	"sync"
 
+	"github.com/iotaledger/goshimmer/packages/stringify"
+
 	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/marshaling"
 
@@ -28,7 +30,7 @@ func NewHeartbeat() *Heartbeat {
 
 func (heartbeat *Heartbeat) GetNodeId() string {
 	heartbeat.nodeIdMutex.RLock()
-	defer heartbeat.nodeIdMutex.RLock()
+	defer heartbeat.nodeIdMutex.RUnlock()
 
 	return heartbeat.nodeId
 }
@@ -125,4 +127,13 @@ func (heartbeat *Heartbeat) MarshalBinary() ([]byte, errors.IdentifiableError) {
 
 func (heartbeat *Heartbeat) UnmarshalBinary(data []byte) (err errors.IdentifiableError) {
 	return marshaling.Unmarshal(heartbeat, data, &heartbeatProto.HeartBeat{})
+}
+
+func (heartbeat *Heartbeat) String() string {
+	return stringify.Struct("Heartbeat",
+		stringify.StructField("nodeId", heartbeat.nodeId),
+		stringify.StructField("mainStatement", heartbeat.mainStatement),
+		stringify.StructField("neighborStatements", heartbeat.neighborStatements),
+		stringify.StructField("signature", heartbeat.signature),
+	)
 }

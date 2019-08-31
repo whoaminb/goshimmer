@@ -12,12 +12,14 @@ require (
 	github.com/gorilla/websocket v1.4.0
 	github.com/iotaledger/iota.go v1.0.0-beta.7
 	github.com/kr/pretty v0.1.0 // indirect
+	github.com/kr/text v0.1.0
 	github.com/labstack/echo v3.3.10+incompatible
 	github.com/labstack/gommon v0.2.9 // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/rivo/tview v0.0.0-20190721135419-23dc8a0944e4
 	github.com/rivo/uniseg v0.1.0 // indirect
 	github.com/stretchr/testify v1.3.0
+	github.com/tonnerre/golang-text v0.0.0-20130925195846-048ed3d792f7 // indirect
 	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4
 	golang.org/x/net v0.0.0-20190724013045-ca1201d0de80
 	golang.org/x/sys v0.0.0-20190726091711-fc99dfbffb4e // indirect

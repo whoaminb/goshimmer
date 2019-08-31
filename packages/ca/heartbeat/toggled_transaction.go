@@ -3,6 +3,8 @@ package heartbeat
 import (
 	"sync"
 
+	"github.com/iotaledger/goshimmer/packages/stringify"
+
 	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/marshaling"
 
@@ -88,4 +90,12 @@ func (toggledTransaction *ToggledTransaction) MarshalBinary() ([]byte, errors.Id
 
 func (toggledTransaction *ToggledTransaction) UnmarshalBinary(data []byte) (err errors.IdentifiableError) {
 	return marshaling.Unmarshal(toggledTransaction, data, &heartbeatProto.ToggledTransaction{})
+}
+
+func (toggledTransaction *ToggledTransaction) String() string {
+	return stringify.Struct("ToggledTransaction",
+		stringify.StructField("transactionId", toggledTransaction.transactionId),
+		stringify.StructField("initialStatement", toggledTransaction.initialStatement),
+		stringify.StructField("finalStatement", toggledTransaction.finalStatement),
+	)
 }
