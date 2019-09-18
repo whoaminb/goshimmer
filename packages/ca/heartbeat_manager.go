@@ -16,7 +16,7 @@ type HeartbeatManager struct {
 	options          *HeartbeatManagerOptions
 	statementChain   *StatementChain
 	neighborManagers map[string]*NeighborManager
-	initialOpinions  map[string][]byte
+	initialOpinions  map[string]bool
 
 	neighborManagersMutex sync.RWMutex
 }
@@ -28,23 +28,29 @@ func NewHeartbeatManager(identity *identity.Identity, options ...HeartbeatManage
 
 		statementChain:   NewStatementChain(),
 		neighborManagers: make(map[string]*NeighborManager),
-		initialOpinions:  make(map[string][]byte),
+		initialOpinions:  make(map[string]bool),
 	}
 }
 
-func (heartbeatManager *HeartbeatManager) SetInitialOpinion(transactionId []byte) {
-	heartbeatManager.initialOpinions[string(transactionId)] = transactionId
+func (heartbeatManager *HeartbeatManager) InitialDislike(transactionId []byte) {
+	heartbeatManager.initialOpinions[string(transactionId)] = false
+}
+
+func (heartbeatManager *HeartbeatManager) InitialLike(transactionId []byte) {
+	heartbeatManager.initialOpinions[string(transactionId)] = true
 }
 
 func (heartbeatManager *HeartbeatManager) GenerateMainStatement() (result *heartbeat.OpinionStatement, err errors.IdentifiableError) {
 	toggledTransactions := make([]*heartbeat.ToggledTransaction, 0)
-	for _, transactionId := range heartbeatManager.initialOpinions {
-		newToggledTransaction := heartbeat.NewToggledTransaction()
-		newToggledTransaction.SetInitialStatement(true)
-		newToggledTransaction.SetFinalStatement(false)
-		newToggledTransaction.SetTransactionId(transactionId)
+	for transactionId, liked := range heartbeatManager.initialOpinions {
+		if !liked {
+			newToggledTransaction := heartbeat.NewToggledTransaction()
+			newToggledTransaction.SetInitialStatement(true)
+			newToggledTransaction.SetFinalStatement(false)
+			newToggledTransaction.SetTransactionId([]byte(transactionId))
 
-		toggledTransactions = append(toggledTransactions, newToggledTransaction)
+			toggledTransactions = append(toggledTransactions, newToggledTransaction)
+		}
 	}
 
 	mainStatement := heartbeat.NewOpinionStatement()
@@ -66,13 +72,22 @@ func (heartbeatManager *HeartbeatManager) GenerateMainStatement() (result *heart
 	signature, signingErr := heartbeatManager.identity.Sign(marshaledStatement)
 	if signingErr != nil {
 		err = ErrMalformedHeartbeat.Derive(signingErr.Error())
+
+		return
 	}
 
 	mainStatement.SetSignature(signature)
 
 	result = mainStatement
 
+	heartbeatManager.ResetInitialStatements()
+	heartbeatManager.statementChain.lastAppliedStatement = mainStatement
+
 	return
+}
+
+func (heartbeatManager *HeartbeatManager) ResetInitialStatements() {
+	heartbeatManager.initialOpinions = make(map[string]bool)
 }
 
 func (heartbeatManager *HeartbeatManager) GenerateHeartbeat() (result *heartbeat.Heartbeat, err errors.IdentifiableError) {
@@ -87,7 +102,20 @@ func (heartbeatManager *HeartbeatManager) GenerateHeartbeat() (result *heartbeat
 	generatedHeartbeat.SetNodeId(heartbeatManager.identity.StringIdentifier)
 	generatedHeartbeat.SetMainStatement(mainStatement)
 	generatedHeartbeat.SetNeighborStatements(nil)
-	generatedHeartbeat.SetSignature(nil)
+
+	marshaledHeartbeat, marshalErr := generatedHeartbeat.MarshalBinary()
+	if marshalErr != nil {
+		err = marshalErr
+
+		return
+	}
+	signature, signingErr := heartbeatManager.identity.Sign(marshaledHeartbeat)
+	if signingErr != nil {
+		err = ErrMalformedHeartbeat.Derive(signingErr.Error())
+
+		return
+	}
+	generatedHeartbeat.SetSignature(signature)
 
 	result = generatedHeartbeat
 

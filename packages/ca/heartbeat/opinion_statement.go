@@ -3,6 +3,8 @@ package heartbeat
 import (
 	"sync"
 
+	"golang.org/x/crypto/blake2b"
+
 	"github.com/iotaledger/goshimmer/packages/stringify"
 
 	"github.com/iotaledger/goshimmer/packages/errors"
@@ -105,6 +107,17 @@ func (opinionStatement *OpinionStatement) SetSignature(signature []byte) {
 func (opinionStatement *OpinionStatement) GetHash() []byte {
 	opinionStatement.hashMutex.RLock()
 	defer opinionStatement.hashMutex.RUnlock()
+
+	if opinionStatement.hash == nil {
+		marshaledStatement, marshalErr := opinionStatement.MarshalBinary()
+		if marshalErr != nil {
+			panic(marshalErr)
+		}
+
+		hash := blake2b.Sum256(marshaledStatement)
+
+		opinionStatement.hash = hash[:]
+	}
 
 	return opinionStatement.hash
 }

@@ -31,7 +31,7 @@ func sliceReflect(value reflect.Value) (result string) {
 		}
 	}
 
-	if !newLineVersion {
+	if !newLineVersion && len(result) >= 2 {
 		result = result[:len(result)-2]
 	}
 
