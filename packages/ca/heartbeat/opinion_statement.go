@@ -3,6 +3,8 @@ package heartbeat
 import (
 	"sync"
 
+	"github.com/iotaledger/goshimmer/packages/identity"
+
 	"golang.org/x/crypto/blake2b"
 
 	"github.com/iotaledger/goshimmer/packages/stringify"
@@ -102,6 +104,20 @@ func (opinionStatement *OpinionStatement) SetSignature(signature []byte) {
 	defer opinionStatement.signatureMutex.Unlock()
 
 	opinionStatement.signature = signature
+}
+
+func (opinionStatement *OpinionStatement) Sign(identity *identity.Identity) (err errors.IdentifiableError) {
+	if marshaledStatement, marshalErr := opinionStatement.MarshalBinary(); marshalErr == nil {
+		if signature, signingErr := identity.Sign(marshaledStatement); signingErr == nil {
+			opinionStatement.SetSignature(signature)
+		} else {
+			err = ErrSigningFailed.Derive(signingErr, "failed to sign opinion statement")
+		}
+	} else {
+		err = marshalErr
+	}
+
+	return
 }
 
 func (opinionStatement *OpinionStatement) GetHash() []byte {

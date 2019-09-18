@@ -40,7 +40,48 @@ func (heartbeatManager *HeartbeatManager) InitialLike(transactionId []byte) {
 	heartbeatManager.initialOpinions[string(transactionId)] = true
 }
 
+func (heartbeatManager *HeartbeatManager) GenerateHeartbeat() (result *heartbeat.Heartbeat, err errors.IdentifiableError) {
+	if mainStatement, mainStatementErr := heartbeatManager.GenerateMainStatement(); mainStatementErr == nil {
+		generatedHeartbeat := heartbeat.NewHeartbeat()
+		generatedHeartbeat.SetNodeId(heartbeatManager.identity.StringIdentifier)
+		generatedHeartbeat.SetMainStatement(mainStatement)
+		generatedHeartbeat.SetNeighborStatements(nil)
+
+		if signingErr := generatedHeartbeat.Sign(heartbeatManager.identity); signingErr == nil {
+			result = generatedHeartbeat
+		} else {
+			err = signingErr
+		}
+	} else {
+		err = mainStatementErr
+	}
+
+	return
+}
+
 func (heartbeatManager *HeartbeatManager) GenerateMainStatement() (result *heartbeat.OpinionStatement, err errors.IdentifiableError) {
+	mainStatement := heartbeat.NewOpinionStatement()
+	mainStatement.SetNodeId(heartbeatManager.identity.StringIdentifier)
+	mainStatement.SetTime(uint64(time.Now().Unix()))
+	mainStatement.SetToggledTransactions(heartbeatManager.GenerateToggledTransactions())
+
+	if lastAppliedStatement := heartbeatManager.statementChain.lastAppliedStatement; lastAppliedStatement != nil {
+		mainStatement.SetPreviousStatementHash(lastAppliedStatement.GetHash())
+	}
+
+	if signingErr := mainStatement.Sign(heartbeatManager.identity); signingErr == nil {
+		result = mainStatement
+
+		heartbeatManager.ResetInitialOpinions()
+		heartbeatManager.statementChain.lastAppliedStatement = mainStatement
+	} else {
+		err = signingErr
+	}
+
+	return
+}
+
+func (heartbeatManager *HeartbeatManager) GenerateToggledTransactions() []*heartbeat.ToggledTransaction {
 	toggledTransactions := make([]*heartbeat.ToggledTransaction, 0)
 	for transactionId, liked := range heartbeatManager.initialOpinions {
 		if !liked {
@@ -53,73 +94,11 @@ func (heartbeatManager *HeartbeatManager) GenerateMainStatement() (result *heart
 		}
 	}
 
-	mainStatement := heartbeat.NewOpinionStatement()
-	mainStatement.SetNodeId(heartbeatManager.identity.StringIdentifier)
-	mainStatement.SetTime(uint64(time.Now().Unix()))
-	mainStatement.SetToggledTransactions(toggledTransactions)
-
-	if lastAppliedStatement := heartbeatManager.statementChain.lastAppliedStatement; lastAppliedStatement != nil {
-		mainStatement.SetPreviousStatementHash(lastAppliedStatement.GetHash())
-	}
-
-	marshaledStatement, marshalErr := mainStatement.MarshalBinary()
-	if marshalErr != nil {
-		err = marshalErr
-
-		return
-	}
-
-	signature, signingErr := heartbeatManager.identity.Sign(marshaledStatement)
-	if signingErr != nil {
-		err = ErrMalformedHeartbeat.Derive(signingErr.Error())
-
-		return
-	}
-
-	mainStatement.SetSignature(signature)
-
-	result = mainStatement
-
-	heartbeatManager.ResetInitialStatements()
-	heartbeatManager.statementChain.lastAppliedStatement = mainStatement
-
-	return
+	return toggledTransactions
 }
 
-func (heartbeatManager *HeartbeatManager) ResetInitialStatements() {
+func (heartbeatManager *HeartbeatManager) ResetInitialOpinions() {
 	heartbeatManager.initialOpinions = make(map[string]bool)
-}
-
-func (heartbeatManager *HeartbeatManager) GenerateHeartbeat() (result *heartbeat.Heartbeat, err errors.IdentifiableError) {
-	mainStatement, mainStatementErr := heartbeatManager.GenerateMainStatement()
-	if mainStatementErr != nil {
-		err = mainStatementErr
-
-		return
-	}
-
-	generatedHeartbeat := heartbeat.NewHeartbeat()
-	generatedHeartbeat.SetNodeId(heartbeatManager.identity.StringIdentifier)
-	generatedHeartbeat.SetMainStatement(mainStatement)
-	generatedHeartbeat.SetNeighborStatements(nil)
-
-	marshaledHeartbeat, marshalErr := generatedHeartbeat.MarshalBinary()
-	if marshalErr != nil {
-		err = marshalErr
-
-		return
-	}
-	signature, signingErr := heartbeatManager.identity.Sign(marshaledHeartbeat)
-	if signingErr != nil {
-		err = ErrMalformedHeartbeat.Derive(signingErr.Error())
-
-		return
-	}
-	generatedHeartbeat.SetSignature(signature)
-
-	result = generatedHeartbeat
-
-	return
 }
 
 func (heartbeatManager *HeartbeatManager) ApplyHeartbeat(heartbeat *heartbeat.Heartbeat) (err errors.IdentifiableError) {

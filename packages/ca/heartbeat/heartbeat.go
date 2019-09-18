@@ -3,6 +3,8 @@ package heartbeat
 import (
 	"sync"
 
+	"github.com/iotaledger/goshimmer/packages/identity"
+
 	"github.com/iotaledger/goshimmer/packages/stringify"
 
 	"github.com/iotaledger/goshimmer/packages/errors"
@@ -75,6 +77,20 @@ func (heartbeat *Heartbeat) GetSignature() []byte {
 	defer heartbeat.signatureMutex.RUnlock()
 
 	return heartbeat.signature
+}
+
+func (heartbeat *Heartbeat) Sign(identity *identity.Identity) (err errors.IdentifiableError) {
+	if marshaledHeartbeat, marshalErr := heartbeat.MarshalBinary(); marshalErr == nil {
+		if signature, signingErr := identity.Sign(marshaledHeartbeat); signingErr == nil {
+			heartbeat.SetSignature(signature)
+		} else {
+			err = ErrSigningFailed.Derive(signingErr, "failed to sign heartbeat")
+		}
+	} else {
+		err = marshalErr
+	}
+
+	return
 }
 
 func (heartbeat *Heartbeat) SetSignature(signature []byte) {
