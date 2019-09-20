@@ -63,13 +63,17 @@ func (neighborManager *NeighborManager) ApplyHeartbeat(heartbeat *heartbeat.Hear
 	}
 
 	// check if referenced neighbor statements are missing
-	for neighborId, neighborStatement := range neighborStatements {
+	for neighborId, statementsOfNeighbor := range neighborStatements {
 		neighborChain, exists := neighborManager.neighborChains[neighborId]
 		if exists {
-			lastAppliedNeighborStatement := neighborChain.GetLastAppliedStatement()
-			if lastAppliedNeighborStatement != nil && !bytes.Equal(lastAppliedNeighborStatement.GetHash(), neighborStatement.GetPreviousStatementHash()) {
-				return ErrMalformedHeartbeat.Derive("missing neighbor statement")
+			for _, neighborStatement := range statementsOfNeighbor {
+				lastAppliedNeighborStatement := neighborChain.GetLastAppliedStatement()
+				if lastAppliedNeighborStatement != nil && !bytes.Equal(lastAppliedNeighborStatement.GetHash(), neighborStatement.GetPreviousStatementHash()) {
+					return ErrMalformedHeartbeat.Derive("missing neighbor statement")
+				}
 			}
+		} else {
+			// 1. check if new slot is available (not full || statement of neighbor with last connection)
 		}
 	}
 

@@ -5,5 +5,6 @@ import (
 )
 
 var (
-	ErrSigningFailed = errors.Wrap(errors.New("failed to sign"), "failed to sign")
+	ErrSigningFailed    = errors.Wrap(errors.New("failed to sign"), "failed to sign")
+	ErrSignatureCorrupt = errors.Wrap(errors.New("failed to sign"), "failed to sign")
 )

@@ -17,7 +17,7 @@ import (
 type Heartbeat struct {
 	nodeId             string
 	mainStatement      *OpinionStatement
-	neighborStatements map[string]*OpinionStatement
+	neighborStatements map[string][]*OpinionStatement
 	signature          []byte
 
 	nodeIdMutex             sync.RWMutex
@@ -58,14 +58,14 @@ func (heartbeat *Heartbeat) SetMainStatement(mainStatement *OpinionStatement) {
 	heartbeat.mainStatement = mainStatement
 }
 
-func (heartbeat *Heartbeat) GetNeighborStatements() map[string]*OpinionStatement {
+func (heartbeat *Heartbeat) GetNeighborStatements() map[string][]*OpinionStatement {
 	heartbeat.neighborStatementsMutex.RLock()
 	defer heartbeat.neighborStatementsMutex.RUnlock()
 
 	return heartbeat.neighborStatements
 }
 
-func (heartbeat *Heartbeat) SetNeighborStatements(neighborStatements map[string]*OpinionStatement) {
+func (heartbeat *Heartbeat) SetNeighborStatements(neighborStatements map[string][]*OpinionStatement) {
 	heartbeat.neighborStatementsMutex.Lock()
 	defer heartbeat.neighborStatementsMutex.Unlock()
 
@@ -77,6 +77,13 @@ func (heartbeat *Heartbeat) GetSignature() []byte {
 	defer heartbeat.signatureMutex.RUnlock()
 
 	return heartbeat.signature
+}
+
+func (heartbeat *Heartbeat) SetSignature(signature []byte) {
+	heartbeat.signatureMutex.Lock()
+	defer heartbeat.signatureMutex.Unlock()
+
+	heartbeat.signature = signature
 }
 
 func (heartbeat *Heartbeat) Sign(identity *identity.Identity) (err errors.IdentifiableError) {
@@ -93,11 +100,25 @@ func (heartbeat *Heartbeat) Sign(identity *identity.Identity) (err errors.Identi
 	return
 }
 
-func (heartbeat *Heartbeat) SetSignature(signature []byte) {
-	heartbeat.signatureMutex.Lock()
-	defer heartbeat.signatureMutex.Unlock()
+func (heartbeat *Heartbeat) VerifySignature() (result bool, err errors.IdentifiableError) {
+	signature := heartbeat.GetSignature()
+	heartbeat.SetSignature(nil)
 
-	heartbeat.signature = signature
+	if marshaledHeartbeat, marshalErr := heartbeat.MarshalBinary(); marshalErr != nil {
+		heartbeat.SetSignature(signature)
+
+		err = marshalErr
+	} else {
+		heartbeat.SetSignature(signature)
+
+		if identity, identityErr := identity.FromSignedData(marshaledHeartbeat, signature); identityErr != nil {
+			err = ErrSignatureCorrupt.Derive(identityErr, "failed to retrieve identity from signature of heartbeat")
+		} else {
+			result = identity.StringIdentifier == heartbeat.GetNodeId()
+		}
+	}
+
+	return
 }
 
 func (heartbeat *Heartbeat) FromProto(proto proto.Message) {
@@ -106,12 +127,16 @@ func (heartbeat *Heartbeat) FromProto(proto proto.Message) {
 	var mainStatement OpinionStatement
 	mainStatement.FromProto(protoHeartbeat.MainStatement)
 
-	neighborStatements := make(map[string]*OpinionStatement, len(protoHeartbeat.NeighborStatements))
+	neighborStatements := make(map[string][]*OpinionStatement, len(protoHeartbeat.NeighborStatements))
 	for _, neighborStatement := range protoHeartbeat.NeighborStatements {
 		var newNeighborStatement OpinionStatement
 		newNeighborStatement.FromProto(neighborStatement)
 
-		neighborStatements[neighborStatement.NodeId] = &newNeighborStatement
+		if _, exists := neighborStatements[neighborStatement.NodeId]; !exists {
+			neighborStatements[neighborStatement.NodeId] = make([]*OpinionStatement, 0)
+		}
+
+		neighborStatements[neighborStatement.NodeId] = append(neighborStatements[neighborStatement.NodeId], &newNeighborStatement)
 	}
 
 	heartbeat.nodeId = protoHeartbeat.NodeId
@@ -123,10 +148,12 @@ func (heartbeat *Heartbeat) FromProto(proto proto.Message) {
 func (heartbeat *Heartbeat) ToProto() proto.Message {
 	neighborStatements := make([]*heartbeatProto.OpinionStatement, len(heartbeat.neighborStatements))
 	i := 0
-	for _, neighborStatement := range heartbeat.neighborStatements {
-		neighborStatements[i] = neighborStatement.ToProto().(*heartbeatProto.OpinionStatement)
+	for _, statementsOfNeighbor := range heartbeat.neighborStatements {
+		for _, neighborStatement := range statementsOfNeighbor {
+			neighborStatements[i] = neighborStatement.ToProto().(*heartbeatProto.OpinionStatement)
 
-		i++
+			i++
+		}
 	}
 
 	return &heartbeatProto.HeartBeat{

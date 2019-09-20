@@ -16,30 +16,41 @@ func generateRandomTransactionId() (result []byte) {
 }
 
 func TestHeartbeatManager_GenerateHeartbeat(t *testing.T) {
-	transactionId1 := generateRandomTransactionId()
-	transactionId2 := generateRandomTransactionId()
+	ownIdentity := identity.GenerateRandomIdentity()
+	neighborIdentity := identity.GenerateRandomIdentity()
 
-	heartbeatManager := NewHeartbeatManager(identity.GenerateRandomIdentity())
-	heartbeatManager.InitialDislike(transactionId1)
-	heartbeatManager.InitialDislike(transactionId2)
+	// generate first heartbeat ////////////////////////////////////////////////////////////////////////////////////////
 
-	heartbeatManager.InitialLike(generateRandomTransactionId())
+	heartbeatManager1 := NewHeartbeatManager(ownIdentity)
+	heartbeatManager1.AddNeighbor(neighborIdentity)
+	heartbeatManager1.InitialDislike(generateRandomTransactionId())
+	heartbeatManager1.InitialDislike(generateRandomTransactionId())
+	heartbeatManager1.InitialLike(generateRandomTransactionId())
 
-	result, err := heartbeatManager.GenerateHeartbeat()
+	heartbeat1, err := heartbeatManager1.GenerateHeartbeat()
 	if err != nil {
 		t.Error(err)
 
 		return
 	}
 
-	fmt.Println(result)
+	fmt.Println(heartbeat1)
 
-	result, err = heartbeatManager.GenerateHeartbeat()
+	heartbeatManager2 := NewHeartbeatManager(neighborIdentity)
+	heartbeatManager2.AddNeighbor(ownIdentity)
+	err = heartbeatManager2.ApplyHeartbeat(heartbeat1)
 	if err != nil {
 		t.Error(err)
 
 		return
 	}
 
-	fmt.Println(result)
+	heartbeat2, err := heartbeatManager2.GenerateHeartbeat()
+	if err != nil {
+		t.Error(err)
+
+		return
+	}
+
+	fmt.Println(heartbeat2)
 }

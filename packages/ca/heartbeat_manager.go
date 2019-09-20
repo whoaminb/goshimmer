@@ -32,6 +32,12 @@ func NewHeartbeatManager(identity *identity.Identity, options ...HeartbeatManage
 	}
 }
 
+func (heartbeatManager *HeartbeatManager) AddNeighbor(neighborIdentity *identity.Identity) {
+	if _, exists := heartbeatManager.neighborManagers[neighborIdentity.StringIdentifier]; !exists {
+		heartbeatManager.neighborManagers[neighborIdentity.StringIdentifier] = NewNeighborManager()
+	}
+}
+
 func (heartbeatManager *HeartbeatManager) InitialDislike(transactionId []byte) {
 	heartbeatManager.initialOpinions[string(transactionId)] = false
 }
@@ -41,16 +47,20 @@ func (heartbeatManager *HeartbeatManager) InitialLike(transactionId []byte) {
 }
 
 func (heartbeatManager *HeartbeatManager) GenerateHeartbeat() (result *heartbeat.Heartbeat, err errors.IdentifiableError) {
-	if mainStatement, mainStatementErr := heartbeatManager.GenerateMainStatement(); mainStatementErr == nil {
-		generatedHeartbeat := heartbeat.NewHeartbeat()
-		generatedHeartbeat.SetNodeId(heartbeatManager.identity.StringIdentifier)
-		generatedHeartbeat.SetMainStatement(mainStatement)
-		generatedHeartbeat.SetNeighborStatements(nil)
+	if mainStatement, mainStatementErr := heartbeatManager.generateMainStatement(); mainStatementErr == nil {
+		if neighborStatements, neighborStatementErr := heartbeatManager.generateNeighborStatements(); neighborStatementErr == nil {
+			generatedHeartbeat := heartbeat.NewHeartbeat()
+			generatedHeartbeat.SetNodeId(heartbeatManager.identity.StringIdentifier)
+			generatedHeartbeat.SetMainStatement(mainStatement)
+			generatedHeartbeat.SetNeighborStatements(neighborStatements)
 
-		if signingErr := generatedHeartbeat.Sign(heartbeatManager.identity); signingErr == nil {
-			result = generatedHeartbeat
+			if signingErr := generatedHeartbeat.Sign(heartbeatManager.identity); signingErr == nil {
+				result = generatedHeartbeat
+			} else {
+				err = signingErr
+			}
 		} else {
-			err = signingErr
+			err = neighborStatementErr
 		}
 	} else {
 		err = mainStatementErr
@@ -59,11 +69,35 @@ func (heartbeatManager *HeartbeatManager) GenerateHeartbeat() (result *heartbeat
 	return
 }
 
-func (heartbeatManager *HeartbeatManager) GenerateMainStatement() (result *heartbeat.OpinionStatement, err errors.IdentifiableError) {
+func (heartbeatManager *HeartbeatManager) ApplyHeartbeat(heartbeat *heartbeat.Heartbeat) (err errors.IdentifiableError) {
+	heartbeatManager.neighborManagersMutex.RLock()
+	defer heartbeatManager.neighborManagersMutex.RUnlock()
+
+	if signatureValid, signatureErr := heartbeat.VerifySignature(); signatureErr == nil {
+		if signatureValid {
+			issuerId := heartbeat.GetNodeId()
+
+			neighborManager, neighborExists := heartbeatManager.neighborManagers[issuerId]
+			if !neighborExists {
+				err = ErrUnknownNeighbor.Derive("unknown neighbor: " + issuerId)
+			} else {
+				err = neighborManager.ApplyHeartbeat(heartbeat)
+			}
+		} else {
+			err = ErrMalformedHeartbeat.Derive("the heartbeat has an invalid signature")
+		}
+	} else {
+		err = signatureErr
+	}
+
+	return
+}
+
+func (heartbeatManager *HeartbeatManager) generateMainStatement() (result *heartbeat.OpinionStatement, err errors.IdentifiableError) {
 	mainStatement := heartbeat.NewOpinionStatement()
 	mainStatement.SetNodeId(heartbeatManager.identity.StringIdentifier)
 	mainStatement.SetTime(uint64(time.Now().Unix()))
-	mainStatement.SetToggledTransactions(heartbeatManager.GenerateToggledTransactions())
+	mainStatement.SetToggledTransactions(heartbeatManager.generateToggledTransactions())
 
 	if lastAppliedStatement := heartbeatManager.statementChain.lastAppliedStatement; lastAppliedStatement != nil {
 		mainStatement.SetPreviousStatementHash(lastAppliedStatement.GetHash())
@@ -72,7 +106,7 @@ func (heartbeatManager *HeartbeatManager) GenerateMainStatement() (result *heart
 	if signingErr := mainStatement.Sign(heartbeatManager.identity); signingErr == nil {
 		result = mainStatement
 
-		heartbeatManager.ResetInitialOpinions()
+		heartbeatManager.resetInitialOpinions()
 		heartbeatManager.statementChain.lastAppliedStatement = mainStatement
 	} else {
 		err = signingErr
@@ -81,7 +115,11 @@ func (heartbeatManager *HeartbeatManager) GenerateMainStatement() (result *heart
 	return
 }
 
-func (heartbeatManager *HeartbeatManager) GenerateToggledTransactions() []*heartbeat.ToggledTransaction {
+func (heartbeatManager *HeartbeatManager) generateNeighborStatements() (result map[string][]*heartbeat.OpinionStatement, err errors.IdentifiableError) {
+	return
+}
+
+func (heartbeatManager *HeartbeatManager) generateToggledTransactions() []*heartbeat.ToggledTransaction {
 	toggledTransactions := make([]*heartbeat.ToggledTransaction, 0)
 	for transactionId, liked := range heartbeatManager.initialOpinions {
 		if !liked {
@@ -97,22 +135,6 @@ func (heartbeatManager *HeartbeatManager) GenerateToggledTransactions() []*heart
 	return toggledTransactions
 }
 
-func (heartbeatManager *HeartbeatManager) ResetInitialOpinions() {
+func (heartbeatManager *HeartbeatManager) resetInitialOpinions() {
 	heartbeatManager.initialOpinions = make(map[string]bool)
-}
-
-func (heartbeatManager *HeartbeatManager) ApplyHeartbeat(heartbeat *heartbeat.Heartbeat) (err errors.IdentifiableError) {
-	heartbeatManager.neighborManagersMutex.RLock()
-	defer heartbeatManager.neighborManagersMutex.RUnlock()
-
-	issuerId := heartbeat.GetNodeId()
-
-	neighborManager, neighborExists := heartbeatManager.neighborManagers[issuerId]
-	if !neighborExists {
-		err = ErrUnknownNeighbor.Derive("unknown neighbor: " + issuerId)
-	} else {
-		err = neighborManager.ApplyHeartbeat(heartbeat)
-	}
-
-	return
 }
