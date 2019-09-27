@@ -1,4 +1,4 @@
-package social_consensus
+package otv
 
 type Solidifier struct {
 	node *Node

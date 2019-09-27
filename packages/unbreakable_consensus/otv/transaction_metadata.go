@@ -1,4 +1,4 @@
-package social_consensus
+package otv
 
 type TransactionMetadata struct {
 	solid                   bool

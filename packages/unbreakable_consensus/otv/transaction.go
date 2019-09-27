@@ -1,4 +1,4 @@
-package social_consensus
+package otv
 
 import (
 	"github.com/iotaledger/goshimmer/packages/stringify"
