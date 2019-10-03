@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/iotaledger/goshimmer/packages/events"
+
 	"github.com/iotaledger/goshimmer/packages/identity"
 )
 
@@ -37,6 +39,16 @@ func TestHeartbeatManager_GenerateHeartbeat(t *testing.T) {
 	fmt.Println(heartbeat1)
 
 	heartbeatManager2 := NewHeartbeatManager(neighborIdentity)
+
+	heartbeatManager2.Events.AddNeighbor.Attach(events.NewClosure(func(neighborIdentity *identity.Identity, neighborManager *NeighborManager) {
+		neighborManager.Events.ChainReset.Attach(events.NewClosure(func() {
+			fmt.Println("RESET")
+		}))
+	}))
+	heartbeatManager2.Events.RemoveNeighbor.Attach(events.NewClosure(func(neighborIdentity *identity.Identity, neighborManager *NeighborManager) {
+		fmt.Println("Rest")
+	}))
+
 	heartbeatManager2.AddNeighbor(ownIdentity)
 	err = heartbeatManager2.ApplyHeartbeat(heartbeat1)
 	if err != nil {
@@ -52,5 +64,20 @@ func TestHeartbeatManager_GenerateHeartbeat(t *testing.T) {
 		return
 	}
 
+	if err = heartbeatManager1.ApplyHeartbeat(heartbeat2); err != nil {
+		t.Error(err)
+
+		return
+	}
+
 	fmt.Println(heartbeat2)
+
+	heartbeat3, err := heartbeatManager1.GenerateHeartbeat()
+	if err != nil {
+		t.Error(err)
+
+		return
+	}
+
+	fmt.Println(heartbeat3)
 }

@@ -8,6 +8,7 @@ message HeartBeat {
     string nodeId = 1;
     OpinionStatement mainStatement = 2;
     repeated OpinionStatement neighborStatements = 3;
-    bytes signature = 4;
+    repeated string removedNeighbors = 4;
+    bytes signature = 5;
 }
 

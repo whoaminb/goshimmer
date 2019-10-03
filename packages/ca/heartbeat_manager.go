@@ -4,6 +4,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/iotaledger/goshimmer/packages/events"
+
 	"github.com/iotaledger/goshimmer/packages/identity"
 
 	"github.com/iotaledger/goshimmer/packages/ca/heartbeat"
@@ -12,6 +14,8 @@ import (
 )
 
 type HeartbeatManager struct {
+	Events *HeartbeatManagerEvents
+
 	identity         *identity.Identity
 	options          *HeartbeatManagerOptions
 	statementChain   *StatementChain
@@ -23,6 +27,11 @@ type HeartbeatManager struct {
 
 func NewHeartbeatManager(identity *identity.Identity, options ...HeartbeatManagerOption) *HeartbeatManager {
 	return &HeartbeatManager{
+		Events: &HeartbeatManagerEvents{
+			AddNeighbor:    events.NewEvent(IdentityNeighborManagerCaller),
+			RemoveNeighbor: events.NewEvent(IdentityNeighborManagerCaller),
+		},
+
 		identity: identity,
 		options:  DEFAULT_OPTIONS.Override(options...),
 
@@ -34,7 +43,11 @@ func NewHeartbeatManager(identity *identity.Identity, options ...HeartbeatManage
 
 func (heartbeatManager *HeartbeatManager) AddNeighbor(neighborIdentity *identity.Identity) {
 	if _, exists := heartbeatManager.neighborManagers[neighborIdentity.StringIdentifier]; !exists {
-		heartbeatManager.neighborManagers[neighborIdentity.StringIdentifier] = NewNeighborManager()
+		newNeighborManager := NewNeighborManager()
+
+		heartbeatManager.neighborManagers[neighborIdentity.StringIdentifier] = newNeighborManager
+
+		heartbeatManager.Events.AddNeighbor.Trigger(neighborIdentity, newNeighborManager)
 	}
 }
 
@@ -116,6 +129,14 @@ func (heartbeatManager *HeartbeatManager) generateMainStatement() (result *heart
 }
 
 func (heartbeatManager *HeartbeatManager) generateNeighborStatements() (result map[string][]*heartbeat.OpinionStatement, err errors.IdentifiableError) {
+	result = make(map[string][]*heartbeat.OpinionStatement)
+
+	for neighborId, neighborManager := range heartbeatManager.neighborManagers {
+		if lastAppliedStatements := neighborManager.GenerateHeartbeatStatements(); len(lastAppliedStatements) >= 1 {
+			result[neighborId] = lastAppliedStatements
+		}
+	}
+
 	return
 }
 

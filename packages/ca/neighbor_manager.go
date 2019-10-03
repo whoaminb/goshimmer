@@ -2,7 +2,10 @@ package ca
 
 import (
 	"bytes"
+	"sort"
 	"strconv"
+
+	"github.com/iotaledger/goshimmer/packages/events"
 
 	"github.com/iotaledger/goshimmer/packages/ca/heartbeat"
 
@@ -10,14 +13,24 @@ import (
 )
 
 type NeighborManager struct {
-	options        *NeighborManagerOptions
-	mainChain      *StatementChain
-	neighborChains map[string]*StatementChain
+	Events                          NeighborManagerEvents
+	options                         *NeighborManagerOptions
+	lastAppliedHeartbeat            *heartbeat.Heartbeat
+	missingHeartbeats               map[string]bool
+	pendingHeartbeats               map[string]*heartbeat.Heartbeat
+	heartbeats                      map[string]*heartbeat.Heartbeat
+	mainChain                       *StatementChain
+	neighborChains                  map[string]*StatementChain
+	previouslyReportedHeartbeatHash []byte
 }
 
 func NewNeighborManager(options ...NeighborManagerOption) *NeighborManager {
 	return &NeighborManager{
-		options:        (&NeighborManagerOptions{}).Override(options...),
+		Events: NeighborManagerEvents{
+			ChainReset:       events.NewEvent(events.CallbackCaller),
+			StatementMissing: events.NewEvent(HashCaller),
+		},
+		options:        DEFAULT_NEIGHBOR_MANAGER_OPTIONS.Override(options...),
 		mainChain:      NewStatementChain(),
 		neighborChains: make(map[string]*StatementChain),
 	}
@@ -43,46 +56,116 @@ func (neighborManager *NeighborManager) ApplyHeartbeat(heartbeat *heartbeat.Hear
 
 	// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	// region check if heartbeat is semantically correct ///////////////////////////////////////////////////////////////
+	// region check if heartbeat is solid //////////////////////////////////////////////////////////////////////////////
 
-	// check if referenced main statement is missing
-	if previousStatementHash := mainStatement.GetPreviousStatementHash(); len(previousStatementHash) != 0 {
-		lastAppliedMainStatement := neighborManager.mainChain.GetLastAppliedStatement()
-		if lastAppliedMainStatement != nil && !bytes.Equal(lastAppliedMainStatement.GetHash(), previousStatementHash) {
-			if (mainStatement.GetTime() - lastAppliedMainStatement.GetTime()) < MAX_STATEMENT_TIMEOUT {
-				// request missing heartbeat
-				neighborManager.mainChain.AddStatement(mainStatement)
+	previousHeartbeatHash := mainStatement.GetPreviousStatementHash()
+	if len(previousHeartbeatHash) == 0 {
+		neighborManager.Reset()
+	} else if neighborManager.lastAppliedHeartbeat != nil && !bytes.Equal(neighborManager.lastAppliedHeartbeat.GetMainStatement().GetHash(), previousHeartbeatHash) {
 
-				return
-			} else {
-				neighborManager.Reset()
-			}
-		}
-	} else {
-		neighborManager.mainChain.AddStatement(mainStatement)
 	}
 
-	// check if referenced neighbor statements are missing
+	// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	// region mark idle neighbors //////////////////////////////////////////////////////////////////////////////////////
+
+	existingNeighbors := make(map[string]*StatementChain)
+	for neighborId, neighborChain := range neighborManager.neighborChains {
+		existingNeighbors[neighborId] = neighborChain
+	}
+
+	for neighborId := range neighborStatements {
+		if neighborStatementChain, neighborExists := existingNeighbors[neighborId]; neighborExists {
+			neighborStatementChain.ResetIdleCounter()
+
+			delete(existingNeighbors, neighborId)
+		}
+	}
+
+	for _, neighborStatementChain := range existingNeighbors {
+		neighborStatementChain.IncreaseIdleCounter()
+	}
+
+	// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	// region add received statements //////////////////////////////////////////////////////////////////////////////////
+
+	applyStatements := neighborManager.mainChain.AddStatement(mainStatement)
+
+	// add neighbor statements to chain
 	for neighborId, statementsOfNeighbor := range neighborStatements {
 		neighborChain, exists := neighborManager.neighborChains[neighborId]
-		if exists {
+		if !exists {
+			neighborChain = neighborManager.addNeighborChain(neighborId)
+		}
+
+		if neighborChain != nil {
 			for _, neighborStatement := range statementsOfNeighbor {
-				lastAppliedNeighborStatement := neighborChain.GetLastAppliedStatement()
-				if lastAppliedNeighborStatement != nil && !bytes.Equal(lastAppliedNeighborStatement.GetHash(), neighborStatement.GetPreviousStatementHash()) {
-					return ErrMalformedHeartbeat.Derive("missing neighbor statement")
-				}
+				neighborChain.AddStatement(neighborStatement)
 			}
-		} else {
-			// 1. check if new slot is available (not full || statement of neighbor with last connection)
 		}
 	}
 
-	// check if neighbor statements are a valid justification for main statement
-	// sthsth
+	// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	// region apply pending statements /////////////////////////////////////////////////////////////////////////////////
+
+	if applyStatements {
+		neighborManager.mainChain.lastAppliedStatement = mainStatement
+	}
 
 	// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	return
+}
+
+func (neighborManager *NeighborManager) GenerateHeartbeatStatements() (result []*heartbeat.OpinionStatement) {
+	result = make([]*heartbeat.OpinionStatement, 0)
+
+	if lastAppliedStatement := neighborManager.mainChain.GetLastAppliedStatement(); lastAppliedStatement != nil {
+		currentStatement := lastAppliedStatement
+		for currentStatement != nil && !bytes.Equal(currentStatement.GetHash(), neighborManager.previouslyReportedHeartbeatHash) {
+			result = append([]*heartbeat.OpinionStatement{currentStatement}, result...)
+
+			currentStatement = neighborManager.mainChain.GetStatement(currentStatement.GetPreviousStatementHash())
+		}
+
+		neighborManager.previouslyReportedHeartbeatHash = lastAppliedStatement.GetHash()
+	}
+
+	return
+}
+
+func (neighborManager *NeighborManager) addNeighborChain(neighborId string) *StatementChain {
+	if len(neighborManager.neighborChains) < MAX_NEIGHBOR_COUNT {
+		newNeighborChain := NewStatementChain()
+		neighborManager.neighborChains[neighborId] = newNeighborChain
+
+		return newNeighborChain
+	}
+
+	neighbors := make([]string, 0, len(neighborManager.neighborChains))
+	for neighborId := range neighborManager.neighborChains {
+		neighbors = append(neighbors, neighborId)
+	}
+
+	sort.Slice(neighbors, func(i, j int) bool {
+		neighborChainI := neighborManager.neighborChains[neighbors[i]]
+		neighborChainJ := neighborManager.neighborChains[neighbors[i]]
+
+		switch true {
+		case neighborChainI.GetIdleCounter() < neighborChainJ.GetIdleCounter():
+			return true
+		default:
+			return false
+
+		}
+	})
+	newNeighborChain := NewStatementChain()
+
+	neighborManager.neighborChains[neighborId] = newNeighborChain
+
+	return newNeighborChain
 }
 
 type NeighborManagerOptions struct {
