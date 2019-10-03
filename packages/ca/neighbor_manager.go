@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/iotaledger/goshimmer/packages/typeutils"
+
 	"github.com/iotaledger/goshimmer/packages/events"
 
 	"github.com/iotaledger/goshimmer/packages/ca/heartbeat"
@@ -15,7 +17,7 @@ import (
 type NeighborManager struct {
 	Events                          NeighborManagerEvents
 	options                         *NeighborManagerOptions
-	lastAppliedHeartbeat            *heartbeat.Heartbeat
+	lastReceivedHeartbeat           *heartbeat.Heartbeat
 	missingHeartbeats               map[string]bool
 	pendingHeartbeats               map[string]*heartbeat.Heartbeat
 	heartbeats                      map[string]*heartbeat.Heartbeat
@@ -41,7 +43,7 @@ func (neighborManager *NeighborManager) Reset() {
 	neighborManager.neighborChains = make(map[string]*StatementChain)
 }
 
-func (neighborManager *NeighborManager) ApplyHeartbeat(heartbeat *heartbeat.Heartbeat) (err errors.IdentifiableError) {
+func (neighborManager *NeighborManager) storeHeartbeat(heartbeat *heartbeat.Heartbeat) (err errors.IdentifiableError) {
 	// region check if heartbeat is "syntactically correct" ////////////////////////////////////////////////////////////
 
 	mainStatement := heartbeat.GetMainStatement()
@@ -61,11 +63,47 @@ func (neighborManager *NeighborManager) ApplyHeartbeat(heartbeat *heartbeat.Hear
 	previousHeartbeatHash := mainStatement.GetPreviousStatementHash()
 	if len(previousHeartbeatHash) == 0 {
 		neighborManager.Reset()
-	} else if neighborManager.lastAppliedHeartbeat != nil && !bytes.Equal(neighborManager.lastAppliedHeartbeat.GetMainStatement().GetHash(), previousHeartbeatHash) {
-
+	} else if neighborManager.lastReceivedHeartbeat != nil {
+		lastMainStatement := neighborManager.lastReceivedHeartbeat.GetMainStatement()
+		previousHeartbeatHashString := typeutils.BytesToString(previousHeartbeatHash)
+		if lastMainStatement != nil && !bytes.Equal(lastMainStatement.GetHash(), previousHeartbeatHash) {
+			if len(neighborManager.pendingHeartbeats) >= MAX_PENDING_HEARTBEATS || len(neighborManager.missingHeartbeats) >= MAX_MISSING_HEARTBEATS {
+				neighborManager.Reset()
+			} else if _, exists := neighborManager.heartbeats[previousHeartbeatHashString]; !exists {
+				neighborManager.missingHeartbeats[previousHeartbeatHashString] = true
+			}
+		}
 	}
 
+	heartbeatHash := typeutils.BytesToString(mainStatement.GetHash())
+
+	if neighborManager.lastReceivedHeartbeat == nil || mainStatement.GetTime() > neighborManager.lastReceivedHeartbeat.GetMainStatement().GetTime() {
+		neighborManager.lastReceivedHeartbeat = heartbeat
+	}
+
+	neighborManager.heartbeats[heartbeatHash] = heartbeat
+	neighborManager.pendingHeartbeats[heartbeatHash] = heartbeat
+	delete(neighborManager.missingHeartbeats, heartbeatHash)
+
 	// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	return
+}
+
+func (neighborManager *NeighborManager) applyPendingHeartbeats() (err errors.IdentifiableError) {
+	if len(neighborManager.missingHeartbeats) == 0 && len(neighborManager.pendingHeartbeats) >= 1 {
+		// cycle through heartbeats and apply them one by one
+	}
+
+	return
+}
+
+func (neighborManager *NeighborManager) ApplyHeartbeat(heartbeat *heartbeat.Heartbeat) (err errors.IdentifiableError) {
+	if storeErr := neighborManager.storeHeartbeat(heartbeat); storeErr != nil {
+		err = storeErr
+
+		return
+	}
 
 	// region mark idle neighbors //////////////////////////////////////////////////////////////////////////////////////
 
