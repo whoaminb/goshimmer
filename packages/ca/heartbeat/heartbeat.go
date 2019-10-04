@@ -17,11 +17,13 @@ import (
 type Heartbeat struct {
 	nodeId             string
 	mainStatement      *OpinionStatement
+	droppedNeighbors   [][]byte
 	neighborStatements map[string][]*OpinionStatement
 	signature          []byte
 
 	nodeIdMutex             sync.RWMutex
 	mainStatementMutex      sync.RWMutex
+	droppedNeighborsMutex   sync.RWMutex
 	neighborStatementsMutex sync.RWMutex
 	signatureMutex          sync.RWMutex
 }
@@ -56,6 +58,20 @@ func (heartbeat *Heartbeat) SetMainStatement(mainStatement *OpinionStatement) {
 	defer heartbeat.mainStatementMutex.Unlock()
 
 	heartbeat.mainStatement = mainStatement
+}
+
+func (heartbeat *Heartbeat) GetDroppedNeighbors() [][]byte {
+	heartbeat.droppedNeighborsMutex.RLock()
+	defer heartbeat.droppedNeighborsMutex.RUnlock()
+
+	return heartbeat.droppedNeighbors
+}
+
+func (heartbeat *Heartbeat) SetDroppedNeighbors(droppedNeighbors [][]byte) {
+	heartbeat.droppedNeighborsMutex.Lock()
+	defer heartbeat.droppedNeighborsMutex.Unlock()
+
+	heartbeat.droppedNeighbors = droppedNeighbors
 }
 
 func (heartbeat *Heartbeat) GetNeighborStatements() map[string][]*OpinionStatement {
@@ -141,6 +157,7 @@ func (heartbeat *Heartbeat) FromProto(proto proto.Message) {
 
 	heartbeat.nodeId = protoHeartbeat.NodeId
 	heartbeat.mainStatement = &mainStatement
+	heartbeat.droppedNeighbors = protoHeartbeat.DroppedNeighbors
 	heartbeat.neighborStatements = neighborStatements
 	heartbeat.signature = protoHeartbeat.Signature
 }
@@ -158,6 +175,7 @@ func (heartbeat *Heartbeat) ToProto() proto.Message {
 
 	return &heartbeatProto.HeartBeat{
 		NodeId:             heartbeat.nodeId,
+		DroppedNeighbors:   heartbeat.droppedNeighbors,
 		MainStatement:      heartbeat.mainStatement.ToProto().(*heartbeatProto.OpinionStatement),
 		NeighborStatements: neighborStatements,
 		Signature:          heartbeat.signature,
@@ -176,6 +194,7 @@ func (heartbeat *Heartbeat) String() string {
 	return stringify.Struct("Heartbeat",
 		stringify.StructField("nodeId", heartbeat.nodeId),
 		stringify.StructField("mainStatement", heartbeat.mainStatement),
+		stringify.StructField("droppedNeighbors", heartbeat.droppedNeighbors),
 		stringify.StructField("neighborStatements", heartbeat.neighborStatements),
 		stringify.StructField("signature", heartbeat.signature),
 	)

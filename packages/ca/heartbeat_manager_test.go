@@ -20,11 +20,14 @@ func generateRandomTransactionId() (result []byte) {
 func TestHeartbeatManager_GenerateHeartbeat(t *testing.T) {
 	ownIdentity := identity.GenerateRandomIdentity()
 	neighborIdentity := identity.GenerateRandomIdentity()
+	droppedNeighborIdentity := identity.GenerateRandomIdentity()
 
 	// generate first heartbeat ////////////////////////////////////////////////////////////////////////////////////////
 
 	heartbeatManager1 := NewHeartbeatManager(ownIdentity)
 	heartbeatManager1.AddNeighbor(neighborIdentity)
+	heartbeatManager1.AddNeighbor(droppedNeighborIdentity)
+	heartbeatManager1.RemoveNeighbor(droppedNeighborIdentity)
 	heartbeatManager1.InitialDislike(generateRandomTransactionId())
 	heartbeatManager1.InitialDislike(generateRandomTransactionId())
 	heartbeatManager1.InitialLike(generateRandomTransactionId())

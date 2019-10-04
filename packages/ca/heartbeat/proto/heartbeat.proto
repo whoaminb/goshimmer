@@ -7,8 +7,8 @@ package proto;
 message HeartBeat {
     string nodeId = 1;
     OpinionStatement mainStatement = 2;
-    repeated OpinionStatement neighborStatements = 3;
-    repeated string removedNeighbors = 4;
+    repeated bytes droppedNeighbors = 3;
+    repeated OpinionStatement neighborStatements = 4;
     bytes signature = 5;
 }
 

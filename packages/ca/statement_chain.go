@@ -3,77 +3,83 @@ package ca
 import (
 	"bytes"
 
+	"github.com/iotaledger/goshimmer/packages/errors"
+
 	"github.com/iotaledger/goshimmer/packages/typeutils"
 
 	"github.com/iotaledger/goshimmer/packages/events"
 
 	"github.com/iotaledger/goshimmer/packages/ca/heartbeat"
-	"github.com/iotaledger/goshimmer/packages/errors"
 )
 
 type StatementChain struct {
 	Events StatementChainEvents
 
-	statements            map[string]*heartbeat.OpinionStatement
-	missingStatements     map[string]bool
-	idleCounter           int
-	lastAppliedStatement  *heartbeat.OpinionStatement
-	lastReceivedStatement *heartbeat.OpinionStatement
+	pendingTransactionStatuses map[string]bool
+	transactionStatuses        map[string]bool
+	statements                 map[string]*heartbeat.OpinionStatement
+	tail                       *heartbeat.OpinionStatement
 }
 
 func NewStatementChain() *StatementChain {
 	return &StatementChain{
 		Events: StatementChainEvents{
-			Reset:            events.NewEvent(events.CallbackCaller),
-			StatementMissing: events.NewEvent(HashCaller),
+			Reset: events.NewEvent(events.CallbackCaller),
 		},
-		statements:        make(map[string]*heartbeat.OpinionStatement),
-		missingStatements: make(map[string]bool),
+		pendingTransactionStatuses: make(map[string]bool),
+		transactionStatuses:        make(map[string]bool),
+		statements:                 make(map[string]*heartbeat.OpinionStatement),
 	}
 }
 
-func (statementChain *StatementChain) IncreaseIdleCounter() {
-	statementChain.idleCounter++
+func (statementChain *StatementChain) getTransactionStatus(transactionId string) (result bool, exists bool) {
+	if result, exists = statementChain.pendingTransactionStatuses[transactionId]; exists {
+		return
+	}
+
+	result, exists = statementChain.transactionStatuses[transactionId]
+
+	return
 }
 
-func (statementChain *StatementChain) ResetIdleCounter() {
-	statementChain.idleCounter = 0
-}
-
-func (statementChain *StatementChain) GetIdleCounter() int {
-	return statementChain.idleCounter
-}
-
-func (statementChain *StatementChain) AddStatement(statement *heartbeat.OpinionStatement) bool {
+func (statementChain *StatementChain) AddStatement(statement *heartbeat.OpinionStatement) errors.IdentifiableError {
 	previousStatementHash := statement.GetPreviousStatementHash()
-	lastAppliedMainStatement := statementChain.lastAppliedStatement
+	lastAppliedStatement := statementChain.tail
 
-	if len(previousStatementHash) == 0 {
+	if len(previousStatementHash) == 0 || lastAppliedStatement != nil && !bytes.Equal(lastAppliedStatement.GetHash(), previousStatementHash) {
 		statementChain.Reset()
-	} else if lastAppliedMainStatement != nil && !bytes.Equal(lastAppliedMainStatement.GetHash(), previousStatementHash) {
-		if (statement.GetTime() - lastAppliedMainStatement.GetTime()) >= MAX_STATEMENT_TIMEOUT {
-			statementChain.Reset()
-		} else if !statementChain.StatementExists(previousStatementHash) {
-			statementChain.addMissingStatement(previousStatementHash)
-			statementChain.addStatement(statement)
+	}
 
-			return false
+	for _, toggledTransaction := range statement.GetToggledTransactions() {
+		transactionId := typeutils.BytesToString(toggledTransaction.GetTransactionId())
+
+		if toggledTransaction.IsInitialStatement() {
+			if _, exists := statementChain.getTransactionStatus(transactionId); exists {
+				return ErrMalformedHeartbeat.Derive("two initial statements for the same transaction")
+			}
+
+			statementChain.pendingTransactionStatuses[transactionId] = false
+		} else if toggledTransaction.IsFinalStatement() {
+			// finalize -> clean up
+		} else {
+			if currentValue, exists := statementChain.getTransactionStatus(transactionId); exists {
+				statementChain.pendingTransactionStatuses[transactionId] = !currentValue
+			}
 		}
 	}
 
-	statementChain.addStatement(statement)
-
-	return true
-}
-
-func (statementChain *StatementChain) addStatement(statement *heartbeat.OpinionStatement) {
 	statementChain.statements[typeutils.BytesToString(statement.GetHash())] = statement
+	statementChain.tail = statement
+
+	return nil
 }
 
-func (statementChain *StatementChain) addMissingStatement(statementHash []byte) {
-	statementChain.missingStatements[typeutils.BytesToString(statementHash)] = true
+func (statementChain *StatementChain) ApplyPendingTransactionStatusChanges() {
+	for transactionId, value := range statementChain.pendingTransactionStatuses {
+		statementChain.transactionStatuses[transactionId] = value
+	}
 
-	statementChain.Events.StatementMissing.Trigger(statementHash)
+	statementChain.pendingTransactionStatuses = make(map[string]bool)
 }
 
 func (statementChain *StatementChain) GetStatement(statementHash []byte) *heartbeat.OpinionStatement {
@@ -81,21 +87,12 @@ func (statementChain *StatementChain) GetStatement(statementHash []byte) *heartb
 }
 
 func (statementChain *StatementChain) Reset() {
+	statementChain.statements = make(map[string]*heartbeat.OpinionStatement)
+	statementChain.tail = nil
+
 	statementChain.Events.Reset.Trigger()
 }
 
-func (statementChain *StatementChain) Apply(statement *heartbeat.OpinionStatement) (err errors.IdentifiableError) {
-	return
-}
-
-func (statementChain *StatementChain) SetLastReceivedStatement(statement *heartbeat.OpinionStatement) {
-	statementChain.lastReceivedStatement = statement
-}
-
-func (statementChain *StatementChain) GetLastAppliedStatement() *heartbeat.OpinionStatement {
-	return statementChain.lastAppliedStatement
-}
-
-func (statementChain *StatementChain) StatementExists(statementHash []byte) bool {
-	return true
+func (statementChain *StatementChain) GetTail() *heartbeat.OpinionStatement {
+	return statementChain.tail
 }

@@ -19,10 +19,13 @@ type HeartbeatManager struct {
 	identity         *identity.Identity
 	options          *HeartbeatManagerOptions
 	statementChain   *StatementChain
+	droppedNeighbors [][]byte
 	neighborManagers map[string]*NeighborManager
 	initialOpinions  map[string]bool
 
+	droppedNeighborsMutex sync.RWMutex
 	neighborManagersMutex sync.RWMutex
+	initialOpinionsMutex  sync.RWMutex
 }
 
 func NewHeartbeatManager(identity *identity.Identity, options ...HeartbeatManagerOption) *HeartbeatManager {
@@ -36,48 +39,95 @@ func NewHeartbeatManager(identity *identity.Identity, options ...HeartbeatManage
 		options:  DEFAULT_OPTIONS.Override(options...),
 
 		statementChain:   NewStatementChain(),
+		droppedNeighbors: make([][]byte, 0),
 		neighborManagers: make(map[string]*NeighborManager),
 		initialOpinions:  make(map[string]bool),
 	}
 }
 
 func (heartbeatManager *HeartbeatManager) AddNeighbor(neighborIdentity *identity.Identity) {
+	heartbeatManager.neighborManagersMutex.RLock()
 	if _, exists := heartbeatManager.neighborManagers[neighborIdentity.StringIdentifier]; !exists {
-		newNeighborManager := NewNeighborManager()
+		heartbeatManager.neighborManagersMutex.RUnlock()
 
-		heartbeatManager.neighborManagers[neighborIdentity.StringIdentifier] = newNeighborManager
+		heartbeatManager.neighborManagersMutex.Lock()
+		if _, exists := heartbeatManager.neighborManagers[neighborIdentity.StringIdentifier]; !exists {
+			newNeighborManager := NewNeighborManager()
 
-		heartbeatManager.Events.AddNeighbor.Trigger(neighborIdentity, newNeighborManager)
+			heartbeatManager.neighborManagers[neighborIdentity.StringIdentifier] = newNeighborManager
+			heartbeatManager.neighborManagersMutex.Unlock()
+
+			heartbeatManager.Events.AddNeighbor.Trigger(neighborIdentity, newNeighborManager)
+		} else {
+			heartbeatManager.neighborManagersMutex.Unlock()
+		}
+	} else {
+		heartbeatManager.neighborManagersMutex.RUnlock()
+	}
+}
+
+func (heartbeatManager *HeartbeatManager) RemoveNeighbor(neighborIdentity *identity.Identity) {
+	heartbeatManager.neighborManagersMutex.RLock()
+	if _, exists := heartbeatManager.neighborManagers[neighborIdentity.StringIdentifier]; exists {
+		heartbeatManager.neighborManagersMutex.RUnlock()
+
+		heartbeatManager.neighborManagersMutex.Lock()
+		if neighborManager, exists := heartbeatManager.neighborManagers[neighborIdentity.StringIdentifier]; exists {
+			delete(heartbeatManager.neighborManagers, neighborIdentity.StringIdentifier)
+			heartbeatManager.neighborManagersMutex.Unlock()
+
+			heartbeatManager.droppedNeighborsMutex.Lock()
+			heartbeatManager.droppedNeighbors = append(heartbeatManager.droppedNeighbors, neighborIdentity.Identifier)
+			heartbeatManager.droppedNeighborsMutex.Unlock()
+
+			heartbeatManager.Events.RemoveNeighbor.Trigger(neighborIdentity, neighborManager)
+		} else {
+			heartbeatManager.neighborManagersMutex.Unlock()
+		}
+	} else {
+		heartbeatManager.neighborManagersMutex.RUnlock()
 	}
 }
 
 func (heartbeatManager *HeartbeatManager) InitialDislike(transactionId []byte) {
+	heartbeatManager.initialOpinionsMutex.Lock()
 	heartbeatManager.initialOpinions[string(transactionId)] = false
+	heartbeatManager.initialOpinionsMutex.Unlock()
 }
 
 func (heartbeatManager *HeartbeatManager) InitialLike(transactionId []byte) {
+	heartbeatManager.initialOpinionsMutex.Lock()
 	heartbeatManager.initialOpinions[string(transactionId)] = true
+	heartbeatManager.initialOpinionsMutex.Unlock()
 }
 
 func (heartbeatManager *HeartbeatManager) GenerateHeartbeat() (result *heartbeat.Heartbeat, err errors.IdentifiableError) {
-	if mainStatement, mainStatementErr := heartbeatManager.generateMainStatement(); mainStatementErr == nil {
-		if neighborStatements, neighborStatementErr := heartbeatManager.generateNeighborStatements(); neighborStatementErr == nil {
-			generatedHeartbeat := heartbeat.NewHeartbeat()
-			generatedHeartbeat.SetNodeId(heartbeatManager.identity.StringIdentifier)
-			generatedHeartbeat.SetMainStatement(mainStatement)
-			generatedHeartbeat.SetNeighborStatements(neighborStatements)
-
-			if signingErr := generatedHeartbeat.Sign(heartbeatManager.identity); signingErr == nil {
-				result = generatedHeartbeat
-			} else {
-				err = signingErr
-			}
-		} else {
-			err = neighborStatementErr
-		}
-	} else {
+	mainStatement, mainStatementErr := heartbeatManager.generateMainStatement()
+	if mainStatementErr != nil {
 		err = mainStatementErr
+
+		return
 	}
+
+	neighborStatements, neighborStatementErr := heartbeatManager.generateNeighborStatements()
+	if neighborStatementErr != nil {
+		err = neighborStatementErr
+
+		return
+	}
+
+	generatedHeartbeat := heartbeat.NewHeartbeat()
+	generatedHeartbeat.SetNodeId(heartbeatManager.identity.StringIdentifier)
+	generatedHeartbeat.SetMainStatement(mainStatement)
+	generatedHeartbeat.SetDroppedNeighbors(heartbeatManager.generateDroppedNeighbors())
+	generatedHeartbeat.SetNeighborStatements(neighborStatements)
+
+	signingErr := generatedHeartbeat.Sign(heartbeatManager.identity)
+	if signingErr != nil {
+		err = signingErr
+	}
+
+	result = generatedHeartbeat
 
 	return
 }
@@ -112,7 +162,7 @@ func (heartbeatManager *HeartbeatManager) generateMainStatement() (result *heart
 	mainStatement.SetTime(uint64(time.Now().Unix()))
 	mainStatement.SetToggledTransactions(heartbeatManager.generateToggledTransactions())
 
-	if lastAppliedStatement := heartbeatManager.statementChain.lastAppliedStatement; lastAppliedStatement != nil {
+	if lastAppliedStatement := heartbeatManager.statementChain.GetTail(); lastAppliedStatement != nil {
 		mainStatement.SetPreviousStatementHash(lastAppliedStatement.GetHash())
 	}
 
@@ -120,10 +170,23 @@ func (heartbeatManager *HeartbeatManager) generateMainStatement() (result *heart
 		result = mainStatement
 
 		heartbeatManager.resetInitialOpinions()
-		heartbeatManager.statementChain.lastAppliedStatement = mainStatement
+		heartbeatManager.statementChain.tail = mainStatement
 	} else {
 		err = signingErr
 	}
+
+	return
+}
+
+func (heartbeatManager *HeartbeatManager) generateDroppedNeighbors() (result [][]byte) {
+	heartbeatManager.droppedNeighborsMutex.RLock()
+	result = make([][]byte, len(heartbeatManager.droppedNeighbors))
+	copy(result, heartbeatManager.droppedNeighbors)
+	heartbeatManager.droppedNeighborsMutex.RUnlock()
+
+	heartbeatManager.droppedNeighborsMutex.Lock()
+	heartbeatManager.droppedNeighbors = make([][]byte, 0)
+	heartbeatManager.droppedNeighborsMutex.Unlock()
 
 	return
 }

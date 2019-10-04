@@ -2,7 +2,7 @@ package ca
 
 import (
 	"bytes"
-	"sort"
+	"fmt"
 	"strconv"
 
 	"github.com/iotaledger/goshimmer/packages/typeutils"
@@ -29,12 +29,21 @@ type NeighborManager struct {
 func NewNeighborManager(options ...NeighborManagerOption) *NeighborManager {
 	return &NeighborManager{
 		Events: NeighborManagerEvents{
+			AddNeighbor: events.NewEvent(func(handler interface{}, params ...interface{}) {
+
+			}),
+			RemoveNeighbor: events.NewEvent(func(handler interface{}, params ...interface{}) {
+
+			}),
 			ChainReset:       events.NewEvent(events.CallbackCaller),
 			StatementMissing: events.NewEvent(HashCaller),
 		},
-		options:        DEFAULT_NEIGHBOR_MANAGER_OPTIONS.Override(options...),
-		mainChain:      NewStatementChain(),
-		neighborChains: make(map[string]*StatementChain),
+		options:           DEFAULT_NEIGHBOR_MANAGER_OPTIONS.Override(options...),
+		mainChain:         NewStatementChain(),
+		missingHeartbeats: make(map[string]bool),
+		pendingHeartbeats: make(map[string]*heartbeat.Heartbeat),
+		heartbeats:        make(map[string]*heartbeat.Heartbeat),
+		neighborChains:    make(map[string]*StatementChain),
 	}
 }
 
@@ -75,6 +84,10 @@ func (neighborManager *NeighborManager) storeHeartbeat(heartbeat *heartbeat.Hear
 		}
 	}
 
+	// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	// region store heartbeat and update lists /////////////////////////////////////////////////////////////////////////
+
 	heartbeatHash := typeutils.BytesToString(mainStatement.GetHash())
 
 	if neighborManager.lastReceivedHeartbeat == nil || mainStatement.GetTime() > neighborManager.lastReceivedHeartbeat.GetMainStatement().GetTime() {
@@ -92,7 +105,124 @@ func (neighborManager *NeighborManager) storeHeartbeat(heartbeat *heartbeat.Hear
 
 func (neighborManager *NeighborManager) applyPendingHeartbeats() (err errors.IdentifiableError) {
 	if len(neighborManager.missingHeartbeats) == 0 && len(neighborManager.pendingHeartbeats) >= 1 {
-		// cycle through heartbeats and apply them one by one
+		sortedPendingHeartbeats, sortingErr := neighborManager.getPendingHeartbeatsSorted()
+		if sortingErr != nil {
+			err = sortingErr
+
+			return
+		}
+
+		for _, sortedHeartbeat := range sortedPendingHeartbeats {
+			if applicationErr := neighborManager.applyHeartbeat(sortedHeartbeat); applicationErr != nil {
+				err = applicationErr
+
+				return
+			}
+		}
+	}
+
+	return
+}
+
+func (neighborManager *NeighborManager) getPendingHeartbeatsSorted() (result []*heartbeat.Heartbeat, err errors.IdentifiableError) {
+	pendingHeartbeatCount := len(neighborManager.pendingHeartbeats)
+	result = make([]*heartbeat.Heartbeat, pendingHeartbeatCount)
+
+	processedHeartbeats := 0
+	currentHeartbeat := neighborManager.lastReceivedHeartbeat
+	for currentHeartbeat != nil && len(neighborManager.pendingHeartbeats) >= 1 {
+		mainStatement := currentHeartbeat.GetMainStatement()
+		if mainStatement == nil {
+			result = nil
+			err = ErrInternalError.Derive("missing main statement in heartbeat")
+
+			return
+		}
+
+		currentHeartbeatHash := typeutils.BytesToString(mainStatement.GetHash())
+		previousHeartbeatHash := typeutils.BytesToString(mainStatement.GetPreviousStatementHash())
+
+		if _, exists := neighborManager.pendingHeartbeats[currentHeartbeatHash]; !exists {
+			result = nil
+			err = ErrInternalError.Derive("pending heartbeats list is out of sync")
+
+			return
+		}
+		delete(neighborManager.pendingHeartbeats, currentHeartbeatHash)
+
+		result[pendingHeartbeatCount-processedHeartbeats-1] = currentHeartbeat
+
+		currentHeartbeat = neighborManager.heartbeats[previousHeartbeatHash]
+		processedHeartbeats++
+	}
+
+	return
+}
+
+// this method removes dropped neighbors from the neighborChains
+func (neighborManager *NeighborManager) removeDroppedNeighbors(droppedNeighbors [][]byte) {
+	for _, droppedNeighbor := range droppedNeighbors {
+		neighborIdString := typeutils.BytesToString(droppedNeighbor)
+
+		if _, exists := neighborManager.neighborChains[neighborIdString]; exists {
+			delete(neighborManager.neighborChains, neighborIdString)
+
+			neighborManager.Events.RemoveNeighbor.Trigger(droppedNeighbor)
+		}
+	}
+}
+
+func (neighborManager *NeighborManager) markIdleNeighbors(neighborStatements map[string][]*heartbeat.OpinionStatement) {
+	idleNeighbors := make(map[string]*StatementChain)
+	for neighborId, neighborChain := range neighborManager.neighborChains {
+		idleNeighbors[neighborId] = neighborChain
+	}
+
+	for neighborId := range neighborStatements {
+		if _, neighborExists := idleNeighbors[neighborId]; neighborExists {
+			// TRIGGER ACTIVE
+
+			delete(idleNeighbors, neighborId)
+		}
+	}
+
+	for _, x := range idleNeighbors {
+		// TRIGGER IDLE
+		if false {
+			fmt.Println(x)
+		}
+	}
+}
+
+func (neighborManager *NeighborManager) updateStatementChains(mainStatement *heartbeat.OpinionStatement, neighborStatements map[string][]*heartbeat.OpinionStatement) (err errors.IdentifiableError) {
+	neighborManager.mainChain.AddStatement(mainStatement)
+
+	for neighborId, statementsOfNeighbor := range neighborStatements {
+		neighborChain, neighborChainErr := neighborManager.addNeighborChain(neighborId)
+		if neighborChainErr != nil {
+			err = neighborChainErr
+
+			return
+		}
+
+		for _, neighborStatement := range statementsOfNeighbor {
+			neighborChain.AddStatement(neighborStatement)
+		}
+	}
+
+	return
+}
+
+func (neighborManager *NeighborManager) applyHeartbeat(heartbeat *heartbeat.Heartbeat) (err errors.IdentifiableError) {
+	mainStatement := heartbeat.GetMainStatement()
+	neighborStatements := heartbeat.GetNeighborStatements()
+
+	neighborManager.removeDroppedNeighbors(heartbeat.GetDroppedNeighbors())
+
+	neighborManager.markIdleNeighbors(neighborStatements)
+
+	if err = neighborManager.updateStatementChains(mainStatement, neighborStatements); err != nil {
+		return
 	}
 
 	return
@@ -105,54 +235,11 @@ func (neighborManager *NeighborManager) ApplyHeartbeat(heartbeat *heartbeat.Hear
 		return
 	}
 
-	// region mark idle neighbors //////////////////////////////////////////////////////////////////////////////////////
+	if applicationErr := neighborManager.applyPendingHeartbeats(); applicationErr != nil {
+		err = applicationErr
 
-	existingNeighbors := make(map[string]*StatementChain)
-	for neighborId, neighborChain := range neighborManager.neighborChains {
-		existingNeighbors[neighborId] = neighborChain
+		return
 	}
-
-	for neighborId := range neighborStatements {
-		if neighborStatementChain, neighborExists := existingNeighbors[neighborId]; neighborExists {
-			neighborStatementChain.ResetIdleCounter()
-
-			delete(existingNeighbors, neighborId)
-		}
-	}
-
-	for _, neighborStatementChain := range existingNeighbors {
-		neighborStatementChain.IncreaseIdleCounter()
-	}
-
-	// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	// region add received statements //////////////////////////////////////////////////////////////////////////////////
-
-	applyStatements := neighborManager.mainChain.AddStatement(mainStatement)
-
-	// add neighbor statements to chain
-	for neighborId, statementsOfNeighbor := range neighborStatements {
-		neighborChain, exists := neighborManager.neighborChains[neighborId]
-		if !exists {
-			neighborChain = neighborManager.addNeighborChain(neighborId)
-		}
-
-		if neighborChain != nil {
-			for _, neighborStatement := range statementsOfNeighbor {
-				neighborChain.AddStatement(neighborStatement)
-			}
-		}
-	}
-
-	// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	// region apply pending statements /////////////////////////////////////////////////////////////////////////////////
-
-	if applyStatements {
-		neighborManager.mainChain.lastAppliedStatement = mainStatement
-	}
-
-	// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	return
 }
@@ -160,7 +247,7 @@ func (neighborManager *NeighborManager) ApplyHeartbeat(heartbeat *heartbeat.Hear
 func (neighborManager *NeighborManager) GenerateHeartbeatStatements() (result []*heartbeat.OpinionStatement) {
 	result = make([]*heartbeat.OpinionStatement, 0)
 
-	if lastAppliedStatement := neighborManager.mainChain.GetLastAppliedStatement(); lastAppliedStatement != nil {
+	if lastAppliedStatement := neighborManager.mainChain.GetTail(); lastAppliedStatement != nil {
 		currentStatement := lastAppliedStatement
 		for currentStatement != nil && !bytes.Equal(currentStatement.GetHash(), neighborManager.previouslyReportedHeartbeatHash) {
 			result = append([]*heartbeat.OpinionStatement{currentStatement}, result...)
@@ -174,49 +261,23 @@ func (neighborManager *NeighborManager) GenerateHeartbeatStatements() (result []
 	return
 }
 
-func (neighborManager *NeighborManager) addNeighborChain(neighborId string) *StatementChain {
-	if len(neighborManager.neighborChains) < MAX_NEIGHBOR_COUNT {
-		newNeighborChain := NewStatementChain()
-		neighborManager.neighborChains[neighborId] = newNeighborChain
+func (neighborManager *NeighborManager) addNeighborChain(neighborId string) (result *StatementChain, err errors.IdentifiableError) {
+	if existingNeighborChain, exists := neighborManager.neighborChains[neighborId]; exists {
+		result = existingNeighborChain
 
-		return newNeighborChain
+		return
 	}
 
-	neighbors := make([]string, 0, len(neighborManager.neighborChains))
-	for neighborId := range neighborManager.neighborChains {
-		neighbors = append(neighbors, neighborId)
+	if len(neighborManager.neighborChains) >= MAX_NEIGHBOR_COUNT {
+		err = ErrTooManyNeighbors.Derive("failed to add new neighbor: too many neighbors")
+
+		return
 	}
 
-	sort.Slice(neighbors, func(i, j int) bool {
-		neighborChainI := neighborManager.neighborChains[neighbors[i]]
-		neighborChainJ := neighborManager.neighborChains[neighbors[i]]
+	result = NewStatementChain()
+	neighborManager.neighborChains[neighborId] = result
 
-		switch true {
-		case neighborChainI.GetIdleCounter() < neighborChainJ.GetIdleCounter():
-			return true
-		default:
-			return false
+	neighborManager.Events.AddNeighbor.Trigger(neighborId, result)
 
-		}
-	})
-	newNeighborChain := NewStatementChain()
-
-	neighborManager.neighborChains[neighborId] = newNeighborChain
-
-	return newNeighborChain
+	return
 }
-
-type NeighborManagerOptions struct {
-	maxNeighborChains int
-}
-
-func (options NeighborManagerOptions) Override(optionalOptions ...NeighborManagerOption) *NeighborManagerOptions {
-	result := &options
-	for _, option := range optionalOptions {
-		option(result)
-	}
-
-	return result
-}
-
-type NeighborManagerOption func(*NeighborManagerOptions)
