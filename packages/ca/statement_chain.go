@@ -15,10 +15,9 @@ import (
 type StatementChain struct {
 	Events StatementChainEvents
 
-	pendingTransactionStatuses map[string]bool
-	transactionStatuses        map[string]bool
-	statements                 map[string]*heartbeat.OpinionStatement
-	tail                       *heartbeat.OpinionStatement
+	opinions   *OpinionRegister
+	statements map[string]*heartbeat.OpinionStatement
+	tail       *heartbeat.OpinionStatement
 }
 
 func NewStatementChain() *StatementChain {
@@ -26,20 +25,9 @@ func NewStatementChain() *StatementChain {
 		Events: StatementChainEvents{
 			Reset: events.NewEvent(events.CallbackCaller),
 		},
-		pendingTransactionStatuses: make(map[string]bool),
-		transactionStatuses:        make(map[string]bool),
-		statements:                 make(map[string]*heartbeat.OpinionStatement),
+		opinions:   NewOpinionRegister(),
+		statements: make(map[string]*heartbeat.OpinionStatement),
 	}
-}
-
-func (statementChain *StatementChain) getTransactionStatus(transactionId string) (result bool, exists bool) {
-	if result, exists = statementChain.pendingTransactionStatuses[transactionId]; exists {
-		return
-	}
-
-	result, exists = statementChain.transactionStatuses[transactionId]
-
-	return
 }
 
 func (statementChain *StatementChain) AddStatement(statement *heartbeat.OpinionStatement) errors.IdentifiableError {
@@ -54,16 +42,25 @@ func (statementChain *StatementChain) AddStatement(statement *heartbeat.OpinionS
 		transactionId := typeutils.BytesToString(toggledTransaction.GetTransactionId())
 
 		if toggledTransaction.IsInitialStatement() {
-			if _, exists := statementChain.getTransactionStatus(transactionId); exists {
+			opinion := statementChain.opinions.GetOpinion(transactionId)
+			if opinion.Exists() {
 				return ErrMalformedHeartbeat.Derive("two initial statements for the same transaction")
 			}
 
-			statementChain.pendingTransactionStatuses[transactionId] = false
+			statementChain.opinions.CreateOpinion(transactionId).SetLiked(false)
 		} else if toggledTransaction.IsFinalStatement() {
 			// finalize -> clean up
 		} else {
-			if currentValue, exists := statementChain.getTransactionStatus(transactionId); exists {
-				statementChain.pendingTransactionStatuses[transactionId] = !currentValue
+			opinion := statementChain.opinions.GetOpinion(transactionId)
+			if opinion.Exists() {
+				if opinion.IsPending() {
+					return ErrMalformedHeartbeat.Derive("two changed statements for the same transaction")
+				}
+
+				opinion.SetInitial(false)
+				opinion.SetPending(true)
+
+				statementChain.opinions.pendingOpinions[transactionId] = opinion
 			}
 		}
 	}
@@ -75,11 +72,7 @@ func (statementChain *StatementChain) AddStatement(statement *heartbeat.OpinionS
 }
 
 func (statementChain *StatementChain) ApplyPendingTransactionStatusChanges() {
-	for transactionId, value := range statementChain.pendingTransactionStatuses {
-		statementChain.transactionStatuses[transactionId] = value
-	}
-
-	statementChain.pendingTransactionStatuses = make(map[string]bool)
+	statementChain.opinions.ApplyPendingOpinions()
 }
 
 func (statementChain *StatementChain) GetStatement(statementHash []byte) *heartbeat.OpinionStatement {
@@ -87,6 +80,7 @@ func (statementChain *StatementChain) GetStatement(statementHash []byte) *heartb
 }
 
 func (statementChain *StatementChain) Reset() {
+	statementChain.opinions = NewOpinionRegister()
 	statementChain.statements = make(map[string]*heartbeat.OpinionStatement)
 	statementChain.tail = nil
 
@@ -95,4 +89,8 @@ func (statementChain *StatementChain) Reset() {
 
 func (statementChain *StatementChain) GetTail() *heartbeat.OpinionStatement {
 	return statementChain.tail
+}
+
+func (statementChain *StatementChain) GetOpinions() *OpinionRegister {
+	return statementChain.opinions
 }

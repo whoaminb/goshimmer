@@ -2,7 +2,6 @@ package ca
 
 import (
 	"bytes"
-	"fmt"
 	"strconv"
 
 	"github.com/iotaledger/goshimmer/packages/typeutils"
@@ -23,6 +22,7 @@ type NeighborManager struct {
 	heartbeats                      map[string]*heartbeat.Heartbeat
 	mainChain                       *StatementChain
 	neighborChains                  map[string]*StatementChain
+	opinions                        map[string]bool
 	previouslyReportedHeartbeatHash []byte
 }
 
@@ -35,14 +35,22 @@ func NewNeighborManager(options ...NeighborManagerOption) *NeighborManager {
 			RemoveNeighbor: events.NewEvent(func(handler interface{}, params ...interface{}) {
 
 			}),
+			NeighborActive: events.NewEvent(func(handler interface{}, params ...interface{}) {
+
+			}),
+			NeighborIdle: events.NewEvent(func(handler interface{}, params ...interface{}) {
+
+			}),
 			ChainReset:       events.NewEvent(events.CallbackCaller),
 			StatementMissing: events.NewEvent(HashCaller),
+			UpdateOpinion:    events.NewEvent(StringBoolCaller),
 		},
 		options:           DEFAULT_NEIGHBOR_MANAGER_OPTIONS.Override(options...),
 		mainChain:         NewStatementChain(),
 		missingHeartbeats: make(map[string]bool),
 		pendingHeartbeats: make(map[string]*heartbeat.Heartbeat),
 		heartbeats:        make(map[string]*heartbeat.Heartbeat),
+		opinions:          make(map[string]bool),
 		neighborChains:    make(map[string]*StatementChain),
 	}
 }
@@ -50,6 +58,7 @@ func NewNeighborManager(options ...NeighborManagerOption) *NeighborManager {
 func (neighborManager *NeighborManager) Reset() {
 	neighborManager.mainChain.Reset()
 	neighborManager.neighborChains = make(map[string]*StatementChain)
+	neighborManager.opinions = make(map[string]bool)
 }
 
 func (neighborManager *NeighborManager) storeHeartbeat(heartbeat *heartbeat.Heartbeat) (err errors.IdentifiableError) {
@@ -113,7 +122,7 @@ func (neighborManager *NeighborManager) applyPendingHeartbeats() (err errors.Ide
 		}
 
 		for _, sortedHeartbeat := range sortedPendingHeartbeats {
-			if applicationErr := neighborManager.applyHeartbeat(sortedHeartbeat); applicationErr != nil {
+			if applicationErr := neighborManager.applySolidHeartbeat(sortedHeartbeat); applicationErr != nil {
 				err = applicationErr
 
 				return
@@ -180,22 +189,21 @@ func (neighborManager *NeighborManager) markIdleNeighbors(neighborStatements map
 
 	for neighborId := range neighborStatements {
 		if _, neighborExists := idleNeighbors[neighborId]; neighborExists {
-			// TRIGGER ACTIVE
+			neighborManager.Events.NeighborActive.Trigger(neighborId)
 
 			delete(idleNeighbors, neighborId)
 		}
 	}
 
-	for _, x := range idleNeighbors {
-		// TRIGGER IDLE
-		if false {
-			fmt.Println(x)
-		}
+	for neighborId := range idleNeighbors {
+		neighborManager.Events.NeighborIdle.Trigger(neighborId)
 	}
 }
 
 func (neighborManager *NeighborManager) updateStatementChains(mainStatement *heartbeat.OpinionStatement, neighborStatements map[string][]*heartbeat.OpinionStatement) (err errors.IdentifiableError) {
-	neighborManager.mainChain.AddStatement(mainStatement)
+	if err = neighborManager.mainChain.AddStatement(mainStatement); err != nil {
+		return
+	}
 
 	for neighborId, statementsOfNeighbor := range neighborStatements {
 		neighborChain, neighborChainErr := neighborManager.addNeighborChain(neighborId)
@@ -206,23 +214,127 @@ func (neighborManager *NeighborManager) updateStatementChains(mainStatement *hea
 		}
 
 		for _, neighborStatement := range statementsOfNeighbor {
-			neighborChain.AddStatement(neighborStatement)
+			if statementErr := neighborChain.AddStatement(neighborStatement); statementErr != nil {
+				err = statementErr
+
+				return
+			}
 		}
 	}
 
 	return
 }
 
-func (neighborManager *NeighborManager) applyHeartbeat(heartbeat *heartbeat.Heartbeat) (err errors.IdentifiableError) {
+func (neighborManager *NeighborManager) applySolidHeartbeat(heartbeat *heartbeat.Heartbeat) (err errors.IdentifiableError) {
 	mainStatement := heartbeat.GetMainStatement()
 	neighborStatements := heartbeat.GetNeighborStatements()
 
 	neighborManager.removeDroppedNeighbors(heartbeat.GetDroppedNeighbors())
-
 	neighborManager.markIdleNeighbors(neighborStatements)
-
 	if err = neighborManager.updateStatementChains(mainStatement, neighborStatements); err != nil {
 		return
+	}
+	if err = neighborManager.updateNeighborManager(); err != nil {
+		return
+	}
+
+	return
+}
+
+func (neighborManager *NeighborManager) updateNeighborManager() (err errors.IdentifiableError) {
+	updatedOpinions, verificationErr := neighborManager.retrieveAndVerifyUpdates()
+	if verificationErr != nil {
+		err = verificationErr
+
+		return
+	}
+
+	for transactionId, liked := range updatedOpinions {
+		if currentlyLiked, opinionExists := neighborManager.opinions[transactionId]; !opinionExists || currentlyLiked != liked {
+			neighborManager.opinions[transactionId] = liked
+
+			neighborManager.Events.UpdateOpinion.Trigger(transactionId, liked)
+		}
+	}
+
+	return
+}
+
+func (neighborManager *NeighborManager) retrieveAndVerifyUpdates() (updates map[string]bool, err errors.IdentifiableError) {
+	updates = make(map[string]bool)
+
+	// retrieve required parameters
+	totalWeight := len(neighborManager.neighborChains)
+	threshold := float64(totalWeight) / 2
+	opinionsOfNeighbors := neighborManager.getAccumulatedPendingOpinionsOfNeighbors()
+
+	mainChainInitialOpinions := make(map[string]*Opinion)
+	mainChainOpinionChanges := make(map[string]*Opinion)
+	for transactionId, opinion := range neighborManager.mainChain.GetOpinions().GetPendingOpinions() {
+		if opinion.IsInitial() {
+			mainChainInitialOpinions[transactionId] = opinion
+		} else {
+			mainChainOpinionChanges[transactionId] = opinion
+		}
+	}
+	// always consider initial opinions
+	for transactionId, opinion := range mainChainInitialOpinions {
+		updates[transactionId] = opinion.IsLiked()
+	}
+
+	// consider opinions that have seen enough neighbors
+	for transactionId, opinion := range opinionsOfNeighbors {
+		if opinion[0] > opinion[1] && opinion[0] > int(threshold) {
+			// main statement "should" like it
+			if changedOpinion := mainChainOpinionChanges[transactionId]; !changedOpinion.Exists() || !changedOpinion.IsLiked() {
+				if initialOpinion := mainChainInitialOpinions[transactionId]; !initialOpinion.Exists() || !initialOpinion.IsLiked() {
+					err = ErrMalformedHeartbeat.Derive("main statement should like transaction")
+
+					return
+				} else {
+					updates[transactionId] = true
+				}
+			} else {
+				updates[transactionId] = true
+			}
+		} else if opinion[1] > opinion[0] && opinion[1] >= int(threshold) {
+			// main statement "should" dislike it
+			if changedOpinion := mainChainOpinionChanges[transactionId]; !changedOpinion.Exists() || changedOpinion.IsLiked() {
+				if initialOpinion := mainChainInitialOpinions[transactionId]; !initialOpinion.Exists() || initialOpinion.IsLiked() {
+					err = ErrMalformedHeartbeat.Derive("main statement should dislike transaction")
+
+					return
+				} else {
+					updates[transactionId] = false
+				}
+			} else {
+				updates[transactionId] = false
+			}
+		}
+	}
+
+	return
+}
+
+func (neighborManager *NeighborManager) getAccumulatedPendingOpinionsOfNeighbors() (result map[string][]int) {
+	result = make(map[string][]int)
+
+	for _, neighborChain := range neighborManager.neighborChains {
+		for transactionId, pendingOpinion := range neighborChain.GetOpinions().GetPendingOpinions() {
+			opinion, exists := result[transactionId]
+			if !exists {
+				opinion = make([]int, 2)
+
+				result[transactionId] = opinion
+			}
+
+			weightOfNeighbor := 1
+			if pendingOpinion.IsLiked() {
+				opinion[0] += weightOfNeighbor
+			} else {
+				opinion[1] += weightOfNeighbor
+			}
+		}
 	}
 
 	return

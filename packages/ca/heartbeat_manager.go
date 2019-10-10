@@ -4,6 +4,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/iotaledger/goshimmer/packages/typeutils"
+
 	"github.com/iotaledger/goshimmer/packages/events"
 
 	"github.com/iotaledger/goshimmer/packages/identity"
@@ -21,11 +23,10 @@ type HeartbeatManager struct {
 	statementChain   *StatementChain
 	droppedNeighbors [][]byte
 	neighborManagers map[string]*NeighborManager
-	initialOpinions  map[string]bool
+	opinions         *OpinionRegister
 
 	droppedNeighborsMutex sync.RWMutex
 	neighborManagersMutex sync.RWMutex
-	initialOpinionsMutex  sync.RWMutex
 }
 
 func NewHeartbeatManager(identity *identity.Identity, options ...HeartbeatManagerOption) *HeartbeatManager {
@@ -41,7 +42,7 @@ func NewHeartbeatManager(identity *identity.Identity, options ...HeartbeatManage
 		statementChain:   NewStatementChain(),
 		droppedNeighbors: make([][]byte, 0),
 		neighborManagers: make(map[string]*NeighborManager),
-		initialOpinions:  make(map[string]bool),
+		opinions:         NewOpinionRegister(),
 	}
 }
 
@@ -53,6 +54,10 @@ func (heartbeatManager *HeartbeatManager) AddNeighbor(neighborIdentity *identity
 		heartbeatManager.neighborManagersMutex.Lock()
 		if _, exists := heartbeatManager.neighborManagers[neighborIdentity.StringIdentifier]; !exists {
 			newNeighborManager := NewNeighborManager()
+
+			newNeighborManager.Events.UpdateOpinion.Attach(events.NewClosure(func(transactionId string, liked bool) {
+				heartbeatManager.processNeighborOpinionUpdate(neighborIdentity, transactionId, liked)
+			}))
 
 			heartbeatManager.neighborManagers[neighborIdentity.StringIdentifier] = newNeighborManager
 			heartbeatManager.neighborManagersMutex.Unlock()
@@ -90,15 +95,45 @@ func (heartbeatManager *HeartbeatManager) RemoveNeighbor(neighborIdentity *ident
 }
 
 func (heartbeatManager *HeartbeatManager) InitialDislike(transactionId []byte) {
-	heartbeatManager.initialOpinionsMutex.Lock()
-	heartbeatManager.initialOpinions[string(transactionId)] = false
-	heartbeatManager.initialOpinionsMutex.Unlock()
+	heartbeatManager.opinions.CreateOpinion(typeutils.BytesToString(transactionId)).SetLiked(false)
 }
 
 func (heartbeatManager *HeartbeatManager) InitialLike(transactionId []byte) {
-	heartbeatManager.initialOpinionsMutex.Lock()
-	heartbeatManager.initialOpinions[string(transactionId)] = true
-	heartbeatManager.initialOpinionsMutex.Unlock()
+	heartbeatManager.opinions.CreateOpinion(typeutils.BytesToString(transactionId)).SetLiked(true)
+}
+
+func (heartbeatManager *HeartbeatManager) processNeighborOpinionUpdate(neighbor *identity.Identity, transactionId string, liked bool) {
+	opinion := heartbeatManager.opinions.GetOpinion(transactionId)
+	if !opinion.Exists() || opinion.IsLiked() != liked {
+		totalWeight := len(heartbeatManager.neighborManagers)
+		threshold := float64(totalWeight) / 2
+
+		likedWeight := 0
+		dislikedWeight := 0
+		for _, neighborManager := range heartbeatManager.neighborManagers {
+			weightOfNeighbor := 1
+
+			if neighborOpinionLiked, exists := neighborManager.opinions[transactionId]; exists {
+				if neighborOpinionLiked {
+					likedWeight += weightOfNeighbor
+				} else {
+					dislikedWeight += weightOfNeighbor
+				}
+			}
+		}
+
+		if likedWeight > dislikedWeight && likedWeight > int(threshold) {
+			if !opinion.Exists() || !opinion.IsLiked() {
+				opinion = heartbeatManager.opinions.CreateOpinion(transactionId)
+				opinion.SetLiked(true)
+			}
+		} else if dislikedWeight >= likedWeight && dislikedWeight >= int(threshold) {
+			if !opinion.Exists() || opinion.IsLiked() {
+				opinion = heartbeatManager.opinions.CreateOpinion(transactionId)
+				opinion.SetLiked(false)
+			}
+		}
+	}
 }
 
 func (heartbeatManager *HeartbeatManager) GenerateHeartbeat() (result *heartbeat.Heartbeat, err errors.IdentifiableError) {
@@ -169,7 +204,7 @@ func (heartbeatManager *HeartbeatManager) generateMainStatement() (result *heart
 	if signingErr := mainStatement.Sign(heartbeatManager.identity); signingErr == nil {
 		result = mainStatement
 
-		heartbeatManager.resetInitialOpinions()
+		heartbeatManager.opinions.ApplyPendingOpinions()
 		heartbeatManager.statementChain.tail = mainStatement
 	} else {
 		err = signingErr
@@ -205,11 +240,11 @@ func (heartbeatManager *HeartbeatManager) generateNeighborStatements() (result m
 
 func (heartbeatManager *HeartbeatManager) generateToggledTransactions() []*heartbeat.ToggledTransaction {
 	toggledTransactions := make([]*heartbeat.ToggledTransaction, 0)
-	for transactionId, liked := range heartbeatManager.initialOpinions {
-		if !liked {
+	for transactionId, opinion := range heartbeatManager.opinions.GetPendingOpinions() {
+		if !opinion.IsLiked() {
 			newToggledTransaction := heartbeat.NewToggledTransaction()
-			newToggledTransaction.SetInitialStatement(true)
-			newToggledTransaction.SetFinalStatement(false)
+			newToggledTransaction.SetInitialStatement(opinion.IsInitial())
+			newToggledTransaction.SetFinalStatement(opinion.IsFinalized())
 			newToggledTransaction.SetTransactionId([]byte(transactionId))
 
 			toggledTransactions = append(toggledTransactions, newToggledTransaction)
@@ -217,8 +252,4 @@ func (heartbeatManager *HeartbeatManager) generateToggledTransactions() []*heart
 	}
 
 	return toggledTransactions
-}
-
-func (heartbeatManager *HeartbeatManager) resetInitialOpinions() {
-	heartbeatManager.initialOpinions = make(map[string]bool)
 }

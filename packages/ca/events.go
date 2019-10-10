@@ -17,6 +17,7 @@ type NeighborManagerEvents struct {
 	NeighborIdle     *events.Event
 	ChainReset       *events.Event
 	StatementMissing *events.Event
+	UpdateOpinion    *events.Event
 }
 
 type StatementChainEvents struct {
@@ -29,4 +30,8 @@ func HashCaller(handler interface{}, params ...interface{}) {
 
 func IdentityNeighborManagerCaller(handler interface{}, params ...interface{}) {
 	handler.(func(*identity.Identity, *NeighborManager))(params[0].(*identity.Identity), params[1].(*NeighborManager))
+}
+
+func StringBoolCaller(handler interface{}, params ...interface{}) {
+	handler.(func(string, bool))(params[0].(string), params[1].(bool))
 }
