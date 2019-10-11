@@ -8,7 +8,11 @@ import (
 func TestLedgerState_GetUnspentTransferOutputs(t *testing.T) {
 	ledgerState := NewLedgerState()
 
-	NewAddress("ABC")
+	ledgerState.AddAddress(
+		NewAddress("ABC").AddTransferOutput(
+			NewTransferOutput("12").SetColoredBalance("I", 144).SetColoredBalance("A", 77),
+		),
+	)
 
 	fmt.Println(ledgerState.GetUnspentTransferOutputs("ABC"))
 }

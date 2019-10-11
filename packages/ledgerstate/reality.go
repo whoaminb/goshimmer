@@ -10,6 +10,12 @@ func NewReality() *Reality {
 	}
 }
 
+func (reality *Reality) SetAddress(address *Address) *Reality {
+	reality.addresses[address.GetHash()] = address
+
+	return reality
+}
+
 func (reality *Reality) GetAddress(address AddressHash) *Address {
 	return reality.addresses[address]
 }

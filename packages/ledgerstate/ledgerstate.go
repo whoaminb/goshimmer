@@ -12,8 +12,14 @@ func NewLedgerState() *LedgerState {
 	}
 }
 
-func (ledgerState *LedgerState) GetUnspentTransferOutputs(address AddressHash, includedSubRealities ...TransferHash) (result map[TransferHash]*ColoredBalance) {
-	result = make(map[TransferHash]*ColoredBalance)
+func (ledgerState *LedgerState) AddAddress(address *Address) *LedgerState {
+	ledgerState.mainReality.SetAddress(address)
+
+	return ledgerState
+}
+
+func (ledgerState *LedgerState) GetUnspentTransferOutputs(address AddressHash, includedSubRealities ...TransferHash) (result TransferOutputs) {
+	result = make(TransferOutputs)
 
 	for _, reality := range ledgerState.getRealities(includedSubRealities...) {
 		if address := reality.GetAddress(address); address.Exists() {
