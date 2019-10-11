@@ -1,3 +1,6 @@
 package ledgerstate
 
-type LedgerState struct{}
+type LedgerState struct {
+	mainReality  *Reality
+	subRealities map[string]*Reality
+}
