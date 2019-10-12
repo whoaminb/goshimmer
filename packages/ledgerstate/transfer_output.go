@@ -22,6 +22,10 @@ func (transferOutput *TransferOutput) GetHash() TransferHash {
 	return transferOutput.hash
 }
 
+func (transferOutput *TransferOutput) Exists() bool {
+	return transferOutput != nil
+}
+
 func (transferOutput *TransferOutput) String() (result string) {
 	result = "TransferOutput(" + transferOutput.hash + ") {"
 

@@ -16,8 +16,14 @@ func (address *Address) GetHash() AddressHash {
 	return address.hash
 }
 
-func (address *Address) AddTransferOutput(transferOutput *TransferOutput) *Address {
-	address.unspentTransferOutputs[transferOutput.GetHash()] = transferOutput
+func (address *Address) AddTransferOutput(transferHash TransferHash, coloredBalance *ColoredBalance) *Address {
+	unspentTransferOutput, exists := address.unspentTransferOutputs[transferHash]
+	if !exists {
+		unspentTransferOutput = NewTransferOutput(transferHash)
+		address.unspentTransferOutputs[transferHash] = unspentTransferOutput
+	}
+
+	unspentTransferOutput.SetColoredBalance(coloredBalance.color, coloredBalance.balance)
 
 	return address
 }
