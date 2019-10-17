@@ -1,27 +1,30 @@
-package ledgerstate
+package transfer
 
-type TransferHash string
+import (
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/v1/hash"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/v1/interfaces"
+)
 
 type Transfer struct {
-	hash    TransferHash
-	inputs  []*TransferOutputReference
-	outputs map[AddressHash]map[Color]*ColoredBalance
+	hash    hash.Transfer
+	inputs  []interfaces.TransferOutputReference
+	outputs map[hash.Address]map[hash.Color]interfaces.ColoredBalance
 }
 
-func NewTransfer(transferHash TransferHash) *Transfer {
+func New(transferHash hash.Transfer) interfaces.Transfer {
 	return &Transfer{
 		hash:    transferHash,
-		inputs:  make([]*TransferOutputReference, 0),
-		outputs: make(map[AddressHash]map[Color]*ColoredBalance),
+		inputs:  make([]interfaces.TransferOutputReference, 0),
+		outputs: make(map[hash.Address]map[hash.Color]interfaces.ColoredBalance),
 	}
 }
 
-func (transfer *Transfer) GetHash() TransferHash {
+func (transfer *Transfer) GetHash() hash.Transfer {
 	return transfer.hash
 }
 
-func (transfer *Transfer) IsValid(ledgerState *LedgerState) bool {
-	totalColoredBalances := make(map[Color]uint64)
+func (transfer *Transfer) IsValid(ledgerState interfaces.LedgerState) bool {
+	totalColoredBalances := make(map[hash.Color]uint64)
 
 	// process inputs
 	for _, transferOutputReference := range transfer.inputs {
@@ -49,20 +52,20 @@ func (transfer *Transfer) IsValid(ledgerState *LedgerState) bool {
 	return len(totalColoredBalances) == 0
 }
 
-func (transfer *Transfer) AddInput(input *TransferOutputReference) *Transfer {
+func (transfer *Transfer) AddInput(input interfaces.TransferOutputReference) interfaces.Transfer {
 	transfer.inputs = append(transfer.inputs, input)
 
 	return transfer
 }
 
-func (transfer *Transfer) GetInputs() []*TransferOutputReference {
+func (transfer *Transfer) GetInputs() []interfaces.TransferOutputReference {
 	return transfer.inputs
 }
 
-func (transfer *Transfer) AddOutput(address AddressHash, balance *ColoredBalance) *Transfer {
+func (transfer *Transfer) AddOutput(address hash.Address, balance interfaces.ColoredBalance) interfaces.Transfer {
 	addressEntry, addressExists := transfer.outputs[address]
 	if !addressExists {
-		addressEntry = make(map[Color]*ColoredBalance)
+		addressEntry = make(map[hash.Color]interfaces.ColoredBalance)
 
 		transfer.outputs[address] = addressEntry
 	}
@@ -72,6 +75,6 @@ func (transfer *Transfer) AddOutput(address AddressHash, balance *ColoredBalance
 	return transfer
 }
 
-func (transfer *Transfer) GetOutputs() map[AddressHash]map[Color]*ColoredBalance {
+func (transfer *Transfer) GetOutputs() map[hash.Address]map[hash.Color]interfaces.ColoredBalance {
 	return transfer.outputs
 }

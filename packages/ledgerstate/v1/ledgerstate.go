@@ -1,17 +1,21 @@
-package ledgerstate
+package v1
 
 import (
 	"github.com/iotaledger/goshimmer/packages/errors"
+
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/v1/hash"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/v1/interfaces"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/v1/reality"
 )
 
 type LedgerState struct {
 	storageId       []byte
-	transferOutputs TransferOutputStorage
-	realities       RealityStorage
+	transferOutputs interfaces.TransferOutputStorage
+	realities       interfaces.RealityStorage
 	options         *LedgerStateOptions
 }
 
-func NewLedgerState(storageId []byte, options ...LedgerStateOption) (result *LedgerState) {
+func NewLedgerState(storageId []byte, options ...LedgerStateOption) (result interfaces.LedgerState) {
 	ledgerStateOptions := DEFAULT_LEDGER_STATE_OPTIONS.Override(options...)
 
 	realityStorage := ledgerStateOptions.RealityStorageFactory(storageId)
@@ -23,7 +27,7 @@ func NewLedgerState(storageId []byte, options ...LedgerStateOption) (result *Led
 		realities:       realityStorage,
 	}
 
-	newReality := newReality(result, MAIN_REALITY_ID)
+	newReality := reality.New(result, MAIN_REALITY_ID)
 	if storeErr := realityStorage.StoreReality(newReality); storeErr != nil {
 		panic(storeErr)
 	}
@@ -31,7 +35,7 @@ func NewLedgerState(storageId []byte, options ...LedgerStateOption) (result *Led
 	return
 }
 
-func (ledgerState *LedgerState) AddTransferOutput(transferOutput *TransferOutput) *LedgerState {
+func (ledgerState *LedgerState) AddTransferOutput(transferOutput interfaces.TransferOutput) interfaces.LedgerState {
 	if err := ledgerState.transferOutputs.StoreTransferOutput(transferOutput); err != nil {
 		panic(err)
 	}
@@ -39,7 +43,7 @@ func (ledgerState *LedgerState) AddTransferOutput(transferOutput *TransferOutput
 	return ledgerState
 }
 
-func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *TransferOutputReference) *TransferOutput {
+func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference interfaces.TransferOutputReference) interfaces.TransferOutput {
 	if transferOutput, err := ledgerState.transferOutputs.LoadTransferOutput(transferOutputReference); err != nil {
 		panic(err)
 	} else {
@@ -47,16 +51,16 @@ func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *Trans
 	}
 }
 
-func (ledgerState *LedgerState) ForEachTransferOutput(callback func(transferOutput *TransferOutput), filter ...TransferOutputStorageFilter) {
+func (ledgerState *LedgerState) ForEachTransferOutput(callback func(transferOutput interfaces.TransferOutput), filter ...interfaces.TransferOutputStorageFilter) {
 	ledgerState.transferOutputs.ForEach(callback, filter...)
 }
 
-func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) errors.IdentifiableError {
+func (ledgerState *LedgerState) BookTransfer(transfer interfaces.Transfer) errors.IdentifiableError {
 	if !transfer.IsValid(ledgerState) {
 		return ErrInvalidTransfer.Derive("balance of transfer is invalid")
 	}
 
-	realities := make([]RealityId, 0)
+	realities := make([]hash.Reality, 0)
 	for _, input := range transfer.GetInputs() {
 		transferOutput := ledgerState.GetTransferOutput(input)
 		if transferOutput == nil {
@@ -80,13 +84,13 @@ func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) errors.Identifi
 	return nil
 }
 
-func (ledgerState *LedgerState) CreateReality(realityId RealityId) *Reality {
+func (ledgerState *LedgerState) CreateReality(realityId hash.Reality) interfaces.Reality {
 	if loadedReality, err := ledgerState.realities.LoadReality(realityId); err != nil {
 		panic(err)
 	} else if loadedReality != nil {
 		return loadedReality
 	} else {
-		newReality := newReality(ledgerState, realityId, MAIN_REALITY_ID)
+		newReality := reality.New(ledgerState, realityId, MAIN_REALITY_ID)
 
 		if storeErr := ledgerState.realities.StoreReality(newReality); storeErr != nil {
 			panic(storeErr)
@@ -96,7 +100,7 @@ func (ledgerState *LedgerState) CreateReality(realityId RealityId) *Reality {
 	}
 }
 
-func (ledgerState *LedgerState) GetReality(realityId RealityId) *Reality {
+func (ledgerState *LedgerState) GetReality(realityId hash.Reality) interfaces.Reality {
 	if loadedReality, loadedRealityErr := ledgerState.realities.LoadReality(realityId); loadedRealityErr != nil {
 		panic(loadedRealityErr)
 	} else {
@@ -104,7 +108,7 @@ func (ledgerState *LedgerState) GetReality(realityId RealityId) *Reality {
 	}
 }
 
-func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *Reality {
+func (ledgerState *LedgerState) MergeRealities(realityIds ...hash.Reality) interfaces.Reality {
 	switch len(realityIds) {
 	case 0:
 		if loadedReality, loadedRealityErr := ledgerState.realities.LoadReality(MAIN_REALITY_ID); loadedRealityErr != nil {
@@ -119,14 +123,14 @@ func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *Reality
 			return loadedReality
 		}
 	default:
-		aggregatedRealities := make(map[RealityId]*Reality)
+		aggregatedRealities := make(map[hash.Reality]interfaces.Reality)
 
 		for _, realityId := range realityIds {
 			if _, exists := aggregatedRealities[realityId]; exists {
 				continue
 			}
 
-			switchedRealities := make(map[RealityId]*Reality)
+			switchedRealities := make(map[hash.Reality]interfaces.Reality)
 			realityIncluded := false
 			for independentRealityId, independentReality := range aggregatedRealities {
 				if independentReality.DescendsFromReality(realityId) {
@@ -167,14 +171,14 @@ func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *Reality
 				return independentReality
 			}
 		} else {
-			sortedRealityIds := make([]RealityId, len(aggregatedRealities))
+			sortedRealityIds := make([]hash.Reality, len(aggregatedRealities))
 			counter := 0
 			for realityId := range aggregatedRealities {
 				sortedRealityIds[counter] = realityId
 
 				counter++
 			}
-			newReality := newReality(ledgerState, "AGGREGATED", sortedRealityIds...)
+			newReality := reality.New(ledgerState, "AGGREGATED", sortedRealityIds...)
 
 			if storeErr := ledgerState.realities.StoreReality(newReality); storeErr != nil {
 				panic(storeErr)
@@ -187,5 +191,5 @@ func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *Reality
 	}
 }
 
-func (ledgerState *LedgerState) ForEachReality(callback func(reality *Reality), filter ...*TransferOutputStorageFilter) {
+func (ledgerState *LedgerState) ForEachReality(callback func(reality interfaces.Reality), filter ...interfaces.TransferOutputStorageFilter) {
 }

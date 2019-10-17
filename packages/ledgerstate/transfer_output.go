@@ -1,25 +1,55 @@
 package ledgerstate
 
+// region TransferOutput ///////////////////////////////////////////////////////////////////////////////////////////////
+
 type TransferOutput struct {
-	hash            TransferHash
-	coloredBalances map[ColorHash]*ColoredBalance
+	ledgerState     *LedgerState
+	realityHash     RealityId
+	addressHash     AddressHash
+	transferHash    TransferHash
+	coloredBalances map[Color]*ColoredBalance
+	consumers       []TransferHash
 }
 
-func NewTransferOutput(hash TransferHash) *TransferOutput {
-	return &TransferOutput{
-		hash:            hash,
-		coloredBalances: make(map[ColorHash]*ColoredBalance),
+func NewTransferOutput(ledgerState *LedgerState, realityHash RealityId, addressHash AddressHash, transferHash TransferHash, coloredBalances ...*ColoredBalance) (result *TransferOutput) {
+	result = &TransferOutput{
+		ledgerState:     ledgerState,
+		addressHash:     addressHash,
+		transferHash:    transferHash,
+		realityHash:     realityHash,
+		coloredBalances: make(map[Color]*ColoredBalance),
+		consumers:       make([]TransferHash, 0),
 	}
+
+	for _, balance := range coloredBalances {
+		result.coloredBalances[balance.GetColor()] = balance
+	}
+
+	return
 }
 
-func (transferOutput *TransferOutput) SetColoredBalance(color ColorHash, balance uint64) *TransferOutput {
-	transferOutput.coloredBalances[color] = NewColoredBalance(color, balance)
-
-	return transferOutput
+func (transferOutput *TransferOutput) GetRealityId() RealityId {
+	return transferOutput.realityHash
 }
 
-func (transferOutput *TransferOutput) GetHash() TransferHash {
-	return transferOutput.hash
+func (transferOutput *TransferOutput) GetReality(realityId RealityId) *Reality {
+	return transferOutput.ledgerState.GetReality(realityId)
+}
+
+func (transferOutput *TransferOutput) GetAddressHash() AddressHash {
+	return transferOutput.addressHash
+}
+
+func (transferOutput *TransferOutput) GetTransferHash() TransferHash {
+	return transferOutput.transferHash
+}
+
+func (transferOutput *TransferOutput) GetColoredBalances() map[Color]*ColoredBalance {
+	return transferOutput.coloredBalances
+}
+
+func (transferOutput *TransferOutput) GetConsumers() []TransferHash {
+	return transferOutput.consumers
 }
 
 func (transferOutput *TransferOutput) Exists() bool {
@@ -27,17 +57,48 @@ func (transferOutput *TransferOutput) Exists() bool {
 }
 
 func (transferOutput *TransferOutput) String() (result string) {
-	result = "TransferOutput(" + transferOutput.hash + ") {"
+	result = "TransferOutput {\n"
+	result += "    RealityHash:  \"" + string(transferOutput.realityHash) + "\",\n"
+	result += "    AddressHash:  \"" + string(transferOutput.addressHash) + "\",\n"
+	result += "    TransferHash: \"" + string(transferOutput.transferHash) + "\",\n"
 
-	if len(transferOutput.coloredBalances) >= 1 {
-		for _, coloredBalance := range transferOutput.coloredBalances {
-			result += "\n    " + coloredBalance.String()
-		}
-
-		result += "\n"
+	for _, coloredBalance := range transferOutput.coloredBalances {
+		result += "    " + coloredBalance.String() + ",\n"
 	}
 
 	result += "}"
 
 	return
 }
+
+// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// region TransferOutputReference //////////////////////////////////////////////////////////////////////////////////////
+
+type TransferOutputReference struct {
+	realityId    RealityId
+	addressHash  AddressHash
+	transferHash TransferHash
+}
+
+func NewTransferOutputReference(realityId RealityId, addressHash AddressHash, transferHash TransferHash) *TransferOutputReference {
+	return &TransferOutputReference{
+		realityId:    realityId,
+		addressHash:  addressHash,
+		transferHash: transferHash,
+	}
+}
+
+func (reference *TransferOutputReference) GetRealityId() RealityId {
+	return reference.realityId
+}
+
+func (reference *TransferOutputReference) GetAddressHash() AddressHash {
+	return reference.addressHash
+}
+
+func (reference *TransferOutputReference) GetTransferHash() TransferHash {
+	return reference.transferHash
+}
+
+// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////

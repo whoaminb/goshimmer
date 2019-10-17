@@ -5,40 +5,65 @@ import (
 	"testing"
 )
 
-func TestLedgerState_GetUnspentTransferOutputs(t *testing.T) {
-	ledgerState := NewLedgerState()
+func Benchmark(b *testing.B) {
+	ledgerState := NewLedgerState([]byte("TESTLEDGER"))
 
-	ledgerState.GetReality().SetAddress(
-		NewAddress("ABC").AddTransferOutput(
-			"12", NewColoredBalance("I", 144),
-		).AddTransferOutput(
-			"12", NewColoredBalance("A", 77),
-		).AddTransferOutput(
-			"13", NewColoredBalance("I", 1000),
-		),
+	ledgerState.AddTransferOutput(
+		NewTransferOutput(ledgerState, MAIN_REALITY_ID, "ADDRESS1", "TRANSFER1", NewColoredBalance("RED", 1337), NewColoredBalance("IOTA", 1338)),
 	)
 
-	/*
-		ledgerState.AddAddress(
-			NewAddress("ABC").AddTransferOutput(
-				NewTransferOutput("12").SetColoredBalance("I", 144).SetColoredBalance("A", 77),
-			).AddTransferOutput(
-				NewTransferOutput("13").SetColoredBalance("I", 1000),
-			),
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		transfer := NewTransfer("TESTINGTON").AddInput(
+			NewTransferOutputReference(MAIN_REALITY_ID, "ADDRESS1", "TRANSFER1"),
+		).AddOutput(
+			"ADDRESS4", NewColoredBalance("IOTA", 338),
+		).AddOutput(
+			"ADDRESS4", NewColoredBalance("RED", 337),
+		).AddOutput(
+			"ADDRESS5", NewColoredBalance("IOTA", 1000),
+		).AddOutput(
+			"ADDRESS5", NewColoredBalance("RED", 1000),
 		)
-	*/
 
-	transfer := NewTransfer("TEST").AddInputs("ABC", "12", "13").AddOutput(
-		"CDE", NewColoredBalance("I", 144),
-	).AddOutput(
-		"GQL", NewColoredBalance("I", 1000),
-	).AddOutput(
-		"FGH", NewColoredBalance("A", 77),
+		if err := ledgerState.BookTransfer(transfer); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func Test(t *testing.T) {
+	ledgerState := NewLedgerState([]byte("TESTLEDGER"))
+
+	ledgerState.CreateReality("PENDING")
+
+	ledgerState.AddTransferOutput(
+		NewTransferOutput(ledgerState, MAIN_REALITY_ID, "ADDRESS1", "TRANSFER1", NewColoredBalance("RED", 1337), NewColoredBalance("IOTA", 1338)),
+	).AddTransferOutput(
+		NewTransferOutput(ledgerState, "PENDING", "ADDRESS1", "TRANSFER1", NewColoredBalance("RED", 7331), NewColoredBalance("IOTA", 8331)),
+	).AddTransferOutput(
+		NewTransferOutput(ledgerState, "PENDING", "ADDRESS2", "TRANSFER2", NewColoredBalance("RED", 7331), NewColoredBalance("IOTA", 8331)),
 	)
 
-	fmt.Println(ledgerState.GetUnspentTransferOutputs("ABC"))
+	fmt.Println(ledgerState.GetReality("PENDING").GetAddress("ADDRESS1").GetUnspentTransferOutputs())
 
-	fmt.Println(ledgerState.BookTransfer(transfer))
+	transfer := NewTransfer("TESTINGTON").AddInput(
+		NewTransferOutputReference(MAIN_REALITY_ID, "ADDRESS1", "TRANSFER1"),
+	).AddOutput(
+		"ADDRESS4", NewColoredBalance("IOTA", 338),
+	).AddOutput(
+		"ADDRESS4", NewColoredBalance("RED", 337),
+	).AddOutput(
+		"ADDRESS5", NewColoredBalance("IOTA", 1000),
+	).AddOutput(
+		"ADDRESS5", NewColoredBalance("RED", 1000),
+	)
 
-	fmt.Println(ledgerState.GetUnspentTransferOutputs("ABC"))
+	if err := ledgerState.BookTransfer(transfer); err != nil {
+		t.Error(err)
+	}
+
+	fmt.Println(ledgerState.GetReality(MAIN_REALITY_ID).GetAddress("ADDRESS4").GetBalances())
+	fmt.Println(ledgerState.GetReality(MAIN_REALITY_ID).GetAddress("ADDRESS5").GetBalances())
 }

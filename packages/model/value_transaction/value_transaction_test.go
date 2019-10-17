@@ -18,7 +18,7 @@ func TestValueTransaction_SettersGetters(t *testing.T) {
 	fmt.Println(transactionCopy.GetAddress())
 
 	assert.Equal(t, transaction.GetAddress(), address)
-	//assert.Equal(t, transaction.GetHash(), FromBytes(transaction.GetBytes()).GetHash())
+	//assert.Equal(t, transaction.GetId(), FromBytes(transaction.GetBytes()).GetId())
 
 	fmt.Println(transaction.GetHash())
 	fmt.Println(transaction.GetAddress())

@@ -4,18 +4,28 @@ import (
 	"strconv"
 )
 
+type Color string
+
 type ColoredBalance struct {
-	color   ColorHash
+	color   Color
 	balance uint64
 }
 
-func NewColoredBalance(color ColorHash, balance uint64) *ColoredBalance {
+func NewColoredBalance(color Color, balance uint64) *ColoredBalance {
 	return &ColoredBalance{
 		color:   color,
 		balance: balance,
 	}
 }
 
+func (balance *ColoredBalance) GetColor() Color {
+	return balance.color
+}
+
+func (balance *ColoredBalance) GetValue() uint64 {
+	return balance.balance
+}
+
 func (coloredBalance *ColoredBalance) String() string {
-	return "ColoredBalance(\"" + coloredBalance.color + "\", " + strconv.FormatUint(coloredBalance.balance, 10) + ")"
+	return "ColoredBalance(\"" + string(coloredBalance.color) + "\", " + strconv.FormatUint(coloredBalance.balance, 10) + ")"
 }
