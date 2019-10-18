@@ -4,6 +4,8 @@ import (
 	"github.com/iotaledger/goshimmer/packages/errors"
 )
 
+// region LedgerState //////////////////////////////////////////////////////////////////////////////////////////////////
+
 type LedgerState struct {
 	storageId       []byte
 	transferOutputs TransferOutputStorage
@@ -189,3 +191,42 @@ func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *Reality
 
 func (ledgerState *LedgerState) ForEachReality(callback func(reality *Reality), filter ...*TransferOutputStorageFilter) {
 }
+
+// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// region LedgerStateOptions ///////////////////////////////////////////////////////////////////////////////////////////
+
+var DEFAULT_LEDGER_STATE_OPTIONS = &LedgerStateOptions{
+	TransferOutputStorageFactory: newTransferOutputStorageMemory,
+	RealityStorageFactory:        newRealityStorageMemory,
+}
+
+func OptionTransferOutputStorageFactory(factory TransferOutputStorageFactory) LedgerStateOption {
+	return func(args *LedgerStateOptions) {
+		args.TransferOutputStorageFactory = factory
+	}
+}
+
+func OptionStorageFactory(factory RealityStorageFactory) LedgerStateOption {
+	return func(args *LedgerStateOptions) {
+		args.RealityStorageFactory = factory
+	}
+}
+
+type LedgerStateOptions struct {
+	TransferOutputStorageFactory TransferOutputStorageFactory
+	RealityStorageFactory        RealityStorageFactory
+}
+
+func (options LedgerStateOptions) Override(optionalOptions ...LedgerStateOption) *LedgerStateOptions {
+	result := &options
+	for _, option := range optionalOptions {
+		option(result)
+	}
+
+	return result
+}
+
+type LedgerStateOption func(*LedgerStateOptions)
+
+// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
