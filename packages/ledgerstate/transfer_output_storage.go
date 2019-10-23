@@ -78,23 +78,25 @@ func FilterAddresses(addresses ...AddressHash) TransferOutputStorageFilter {
 
 type TransferOutputStorageMemory struct {
 	id                     []byte
-	unspentTransferOutputs map[RealityId]map[AddressHash]map[TransferHash]*TransferOutput
-	spentTransferOutputs   map[RealityId]map[AddressHash]map[TransferHash]*TransferOutput
+	unspentTransferOutputs map[RealityId]map[AddressHash]map[TransferHash]bool
+	spentTransferOutputs   map[RealityId]map[AddressHash]map[TransferHash]bool
+	transferOutputs        map[AddressHash]map[TransferHash]*TransferOutput
 	mutex                  sync.RWMutex
 }
 
 func newTransferOutputStorageMemory(id []byte) TransferOutputStorage {
 	return &TransferOutputStorageMemory{
 		id:                     id,
-		unspentTransferOutputs: make(map[RealityId]map[AddressHash]map[TransferHash]*TransferOutput),
-		spentTransferOutputs:   make(map[RealityId]map[AddressHash]map[TransferHash]*TransferOutput),
+		unspentTransferOutputs: make(map[RealityId]map[AddressHash]map[TransferHash]bool),
+		spentTransferOutputs:   make(map[RealityId]map[AddressHash]map[TransferHash]bool),
+		transferOutputs:        make(map[AddressHash]map[TransferHash]*TransferOutput),
 	}
 }
 
 func (transferOutputStorage *TransferOutputStorageMemory) StoreTransferOutput(transferOutput *TransferOutput) (err errors.IdentifiableError) {
 	transferOutputStorage.mutex.Lock()
 
-	var targetList map[RealityId]map[AddressHash]map[TransferHash]*TransferOutput
+	var targetList map[RealityId]map[AddressHash]map[TransferHash]bool
 	if len(transferOutput.GetConsumers()) >= 1 {
 		targetList = transferOutputStorage.spentTransferOutputs
 	} else {
@@ -103,19 +105,19 @@ func (transferOutputStorage *TransferOutputStorageMemory) StoreTransferOutput(tr
 
 	reality, realityExists := targetList[transferOutput.GetRealityId()]
 	if !realityExists {
-		reality = make(map[AddressHash]map[TransferHash]*TransferOutput)
+		reality = make(map[AddressHash]map[TransferHash]bool)
 
 		targetList[transferOutput.GetRealityId()] = reality
 	}
 
 	address, addressExists := reality[transferOutput.GetAddressHash()]
 	if !addressExists {
-		address = make(map[TransferHash]*TransferOutput)
+		address = make(map[TransferHash]bool)
 
 		reality[transferOutput.GetAddressHash()] = address
 	}
 
-	address[transferOutput.GetTransferHash()] = transferOutput
+	address[transferOutput.GetTransferHash()] = true
 
 	transferOutputStorage.mutex.Unlock()
 
