@@ -66,7 +66,7 @@ func (objectStorage *ObjectStorage) ForEach(consumer func(key []byte, cachedObje
 
 			if cachedObject, err := objectStorage.accessCache(key, nil, func(cachedObject *CachedObject) {
 				_ = item.Value(func(val []byte) error {
-					cachedObject.publishResult(objectStorage.unserializeObject(key, val))
+					cachedObject.publishResult(objectStorage.unmarshalObject(key, val))
 
 					return nil
 				})
@@ -155,13 +155,17 @@ func (objectStorage *ObjectStorage) loadObjectFromBadger(key []byte) (StorableOb
 			})
 		}
 	}); err != nil {
-		return nil, err
+		if err == badger.ErrKeyNotFound {
+			return nil, nil
+		} else {
+			return nil, err
+		}
 	} else {
-		return objectStorage.unserializeObject(key, serializedObject)
+		return objectStorage.unmarshalObject(key, serializedObject)
 	}
 }
 
-func (objectStorage *ObjectStorage) unserializeObject(key []byte, serializedObject []byte) (StorableObject, error) {
+func (objectStorage *ObjectStorage) unmarshalObject(key []byte, serializedObject []byte) (StorableObject, error) {
 	if object, err := objectStorage.objectType.Unmarshal(key, serializedObject); err != nil {
 		return nil, err
 	} else {

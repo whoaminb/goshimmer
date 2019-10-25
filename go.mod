@@ -14,6 +14,7 @@ require (
 	github.com/gorilla/websocket v1.4.1
 	github.com/iotaledger/iota.go v1.0.0-beta.7
 	github.com/kr/pretty v0.1.0 // indirect
+	github.com/kr/text v0.1.0
 	github.com/labstack/echo v3.3.10+incompatible
 	github.com/labstack/gommon v0.3.0 // indirect
 	github.com/magiconair/properties v1.8.1

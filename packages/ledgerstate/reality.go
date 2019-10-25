@@ -1,94 +1,78 @@
 package ledgerstate
 
 import (
-	"github.com/iotaledger/goshimmer/packages/errors"
+	"encoding/binary"
+	"fmt"
+
+	"github.com/iotaledger/goshimmer/packages/stringify"
+
+	"github.com/iotaledger/goshimmer/packages/objectstorage"
 )
 
-type RealityId string
-
 type Reality struct {
-	ledgerState      *LedgerState
-	id               RealityId
-	parentRealityIds []RealityId
-	parentRealities  map[RealityId]*Reality
+	id              RealityId
+	parentRealities []RealityId
+
+	ledgerState *LedgerState
 }
 
-func newReality(ledgerState *LedgerState, id RealityId, parentRealityIds ...RealityId) *Reality {
+func newReality(id RealityId, parentRealities ...RealityId) *Reality {
 	return &Reality{
-		ledgerState:      ledgerState,
-		id:               id,
-		parentRealityIds: parentRealityIds,
+		id:              id,
+		parentRealities: parentRealities,
 	}
 }
 
-func (reality *Reality) SetLedgerState(ledgerState *LedgerState) {
-	reality.ledgerState = ledgerState
+func (reality *Reality) BookTransfer(transfer *Transfer) {
+	fmt.Println("BOOK")
 }
 
-func (reality *Reality) GetId() RealityId {
-	return reality.id
+func (reality *Reality) String() string {
+	return stringify.Struct("Reality",
+		stringify.StructField("id", reality.id.String()),
+		stringify.StructField("parentRealities", reality.parentRealities),
+	)
 }
 
-func (reality *Reality) GetParentRealityIds() []RealityId {
-	return reality.parentRealityIds
+// region support object storage ///////////////////////////////////////////////////////////////////////////////////////
+
+func (reality *Reality) GetId() []byte {
+	return reality.id[:]
 }
 
-func (reality *Reality) GetAddress(addressHash AddressHash) *Address {
-	return NewAddress(reality.ledgerState, reality.id, addressHash)
-}
-
-func (reality *Reality) GetParentRealities() map[RealityId]*Reality {
-	if reality.parentRealities == nil {
-		parentRealities := make(map[RealityId]*Reality)
-		for _, parentRealityId := range reality.parentRealityIds {
-			if loadedParentReality := reality.ledgerState.GetReality(parentRealityId); loadedParentReality == nil {
-				panic("could not load parent reality " + parentRealityId)
-			} else {
-				parentRealities[loadedParentReality.GetId()] = loadedParentReality
-			}
-		}
-		reality.parentRealities = parentRealities
-	}
-
-	return reality.parentRealities
-}
-
-func (reality *Reality) GetAncestorRealities() (result map[RealityId]*Reality) {
-	result = make(map[RealityId]*Reality, 1)
-
-	for _, parentReality := range reality.GetParentRealities() {
-		result[parentReality.GetId()] = reality
-
-		for _, ancestor := range parentReality.GetAncestorRealities() {
-			result[ancestor.GetId()] = ancestor
-		}
-	}
-
-	return
-}
-
-func (reality *Reality) DescendsFromReality(realityId RealityId) bool {
-	if reality.id == realityId {
-		return true
+func (reality *Reality) Update(other objectstorage.StorableObject) {
+	if otherReality, ok := other.(*Reality); !ok {
+		panic("Update method expects a *TransferOutputBooking")
 	} else {
-		_, exists := reality.GetAncestorRealities()[realityId]
-
-		return exists
+		reality.parentRealities = otherReality.parentRealities
 	}
 }
 
-func (reality *Reality) BookTransfer(transfer *Transfer) errors.IdentifiableError {
-	// process outputs
-	for addressHash, transferOutput := range transfer.GetOutputs() {
-		for _, coloredBalance := range transferOutput {
-			createdTransferOutput := NewTransferOutput(reality.ledgerState, reality.id, addressHash, transfer.GetHash(), coloredBalance)
-			reality.ledgerState.AddTransferOutput(createdTransferOutput)
-		}
+func (reality *Reality) Marshal() ([]byte, error) {
+	parentRealityCount := len(reality.parentRealities)
+
+	marshaledReality := make([]byte, 4+parentRealityCount*realityIdLength)
+
+	binary.LittleEndian.PutUint32(marshaledReality, uint32(parentRealityCount))
+	for i := 0; i < parentRealityCount; i++ {
+		copy(marshaledReality[4+i*realityIdLength:], reality.parentRealities[i][:])
 	}
 
-	return nil
+	return marshaledReality, nil
 }
 
-func (reality *Reality) Exists() bool {
-	return reality != nil
+func (reality *Reality) Unmarshal(key []byte, serializedObject []byte) (objectstorage.StorableObject, error) {
+	result := &Reality{}
+
+	copy(result.id[:], key[:realityIdLength])
+
+	parentRealityCount := int(binary.LittleEndian.Uint32(serializedObject))
+	parentRealities := make([]RealityId, parentRealityCount)
+	for i := 0; i < parentRealityCount; i++ {
+		copy(parentRealities[i][:], serializedObject[4+i*realityIdLength:])
+	}
+
+	return result, nil
 }
+
+// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////

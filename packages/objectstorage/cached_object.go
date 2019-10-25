@@ -53,7 +53,7 @@ func (cachedObject *CachedObject) Release() {
 func (cachedObject *CachedObject) Consume(consumer func(object StorableObject)) {
 	if cachedObject.isDeleted() {
 		consumer(nil)
-	} else {
+	} else if cachedObject.Exists() {
 		consumer(cachedObject.Get())
 	}
 
@@ -91,13 +91,15 @@ func (cachedObject *CachedObject) release() {
 			if err := cachedObject.objectStorage.deleteObjectFromBadger(cachedObject.value.GetId()); err != nil {
 				panic(err)
 			}
-		} else {
+		} else if cachedObject.value != nil {
 			if err := cachedObject.objectStorage.persistObjectToBadger(cachedObject.value.GetId(), cachedObject.value); err != nil {
 				panic(err)
 			}
 		}
 
-		delete(cachedObject.objectStorage.cachedObjects, typeutils.BytesToString(cachedObject.value.GetId()))
+		if cachedObject.value != nil {
+			delete(cachedObject.objectStorage.cachedObjects, typeutils.BytesToString(cachedObject.value.GetId()))
+		}
 	} else if consumers < 0 {
 		panic("too many unregistered consumers of cached object")
 	}

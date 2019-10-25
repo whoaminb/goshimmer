@@ -1,6 +1,6 @@
 package ledgerstate
 
-type AddressHash string
+type AddressHash [addressHashLength]byte
 
 type Address struct {
 	ledgerState *LedgerState

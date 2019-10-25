@@ -1,69 +1,44 @@
 package ledgerstate
 
 import (
-	"fmt"
 	"testing"
+
+	"github.com/iotaledger/goshimmer/packages/objectstorage"
 )
 
-func Benchmark(b *testing.B) {
-	ledgerState := NewLedgerState([]byte("TESTLEDGER"))
-
-	ledgerState.AddTransferOutput(
-		NewTransferOutput(ledgerState, MAIN_REALITY_ID, "ADDRESS1", "TRANSFER1", NewColoredBalance("RED", 1337), NewColoredBalance("IOTA", 1338)),
-	)
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		transfer := NewTransfer("TESTINGTON").AddInput(
-			NewTransferOutputReference(MAIN_REALITY_ID, "ADDRESS1", "TRANSFER1"),
-		).AddOutput(
-			"ADDRESS4", NewColoredBalance("IOTA", 338),
-		).AddOutput(
-			"ADDRESS4", NewColoredBalance("RED", 337),
-		).AddOutput(
-			"ADDRESS5", NewColoredBalance("IOTA", 1000),
-		).AddOutput(
-			"ADDRESS5", NewColoredBalance("RED", 1000),
-		)
-
-		if err := ledgerState.BookTransfer(transfer); err != nil {
-			panic(err)
-		}
-	}
-}
+var (
+	iota           = NewColor("IOTA")
+	eth            = NewColor("ETH")
+	transferHash1  = NewTransferHash("TRANSFER1")
+	transferHash2  = NewTransferHash("TRANSFER2")
+	addressHash1   = NewAddressHash("ADDRESS1")
+	addressHash3   = NewAddressHash("ADDRESS3")
+	addressHash4   = NewAddressHash("ADDRESS4")
+	pendingReality = NewRealityId("PENDING")
+)
 
 func Test(t *testing.T) {
-	ledgerState := NewLedgerState([]byte("TESTLEDGER"))
-
-	ledgerState.CreateReality("PENDING")
-
-	ledgerState.AddTransferOutput(
-		NewTransferOutput(ledgerState, MAIN_REALITY_ID, "ADDRESS1", "TRANSFER1", NewColoredBalance("RED", 1337), NewColoredBalance("IOTA", 1338)),
-	).AddTransferOutput(
-		NewTransferOutput(ledgerState, "PENDING", "ADDRESS1", "TRANSFER1", NewColoredBalance("RED", 7331), NewColoredBalance("IOTA", 8331)),
-	).AddTransferOutput(
-		NewTransferOutput(ledgerState, "PENDING", "ADDRESS2", "TRANSFER2", NewColoredBalance("RED", 7331), NewColoredBalance("IOTA", 8331)),
+	ledgerState := NewLedgerState("testLedger").Prune().AddTransferOutput(
+		transferHash1, addressHash1, NewColoredBalance(eth, 1337), NewColoredBalance(iota, 1338),
 	)
 
-	fmt.Println(ledgerState.GetReality("PENDING").GetAddress("ADDRESS1").GetUnspentTransferOutputs())
+	ledgerState.CreateReality(pendingReality)
 
-	transfer := NewTransfer("TESTINGTON").AddInput(
-		NewTransferOutputReference(MAIN_REALITY_ID, "ADDRESS1", "TRANSFER1"),
-	).AddOutput(
-		"ADDRESS4", NewColoredBalance("IOTA", 338),
-	).AddOutput(
-		"ADDRESS4", NewColoredBalance("RED", 337),
-	).AddOutput(
-		"ADDRESS5", NewColoredBalance("IOTA", 1000),
-	).AddOutput(
-		"ADDRESS5", NewColoredBalance("RED", 1000),
-	)
+	ledgerState.GetReality(pendingReality).Consume(func(object objectstorage.StorableObject) {
+		reality := object.(*Reality)
 
-	if err := ledgerState.BookTransfer(transfer); err != nil {
-		t.Error(err)
-	}
+		transfer := NewTransfer(transferHash2).AddInput(
+			NewTransferOutputReference(transferHash1, addressHash1),
+		).AddOutput(
+			addressHash3, NewColoredBalance(iota, 338),
+		).AddOutput(
+			addressHash3, NewColoredBalance(eth, 337),
+		).AddOutput(
+			addressHash4, NewColoredBalance(iota, 1000),
+		).AddOutput(
+			addressHash4, NewColoredBalance(eth, 1000),
+		)
 
-	fmt.Println(ledgerState.GetReality(MAIN_REALITY_ID).GetAddress("ADDRESS4").GetBalances())
-	fmt.Println(ledgerState.GetReality(MAIN_REALITY_ID).GetAddress("ADDRESS5").GetBalances())
+		reality.BookTransfer(transfer)
+	})
 }

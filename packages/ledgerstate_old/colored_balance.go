@@ -1,6 +1,10 @@
 package ledgerstate
 
-import "strconv"
+import (
+	"strconv"
+)
+
+type Color string
 
 type ColoredBalance struct {
 	color   Color
@@ -23,5 +27,5 @@ func (balance *ColoredBalance) GetValue() uint64 {
 }
 
 func (coloredBalance *ColoredBalance) String() string {
-	return "ColoredBalance(\"" + coloredBalance.color.String() + "\", " + strconv.FormatUint(coloredBalance.balance, 10) + ")"
+	return "ColoredBalance(\"" + string(coloredBalance.color) + "\", " + strconv.FormatUint(coloredBalance.balance, 10) + ")"
 }

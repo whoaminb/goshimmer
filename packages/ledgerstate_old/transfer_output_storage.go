@@ -3,13 +3,15 @@ package ledgerstate
 import (
 	"sync"
 
+	"github.com/iotaledger/goshimmer/packages/objectstorage"
+
 	"github.com/iotaledger/goshimmer/packages/errors"
 )
 
 // region TransferOutputStorage ////////////////////////////////////////////////////////////////////////////////////////
 
 type TransferOutputStorage interface {
-	LoadTransferOutput(transferOutputReference *TransferOutputReference) (result *TransferOutput, err errors.IdentifiableError)
+	LoadTransferOutput(transferOutputReference *TransferOutputReferenceOld) (result *TransferOutput, err errors.IdentifiableError)
 	StoreTransferOutput(transferOutput *TransferOutput) (err errors.IdentifiableError)
 	ForEach(callback func(transferOutput *TransferOutput), filters ...TransferOutputStorageFilter)
 }
@@ -77,30 +79,38 @@ func FilterAddresses(addresses ...AddressHash) TransferOutputStorageFilter {
 // region TransportOutputStorageMemory /////////////////////////////////////////////////////////////////////////////////
 
 type TransferOutputStorageMemory struct {
-	id                     []byte
-	unspentTransferOutputs map[RealityId]map[AddressHash]map[TransferHash]bool
-	spentTransferOutputs   map[RealityId]map[AddressHash]map[TransferHash]bool
-	transferOutputs        map[AddressHash]map[TransferHash]*TransferOutput
-	mutex                  sync.RWMutex
+	id []byte
+	// the actual transfer outputs (prefixed by reality, address, spent/unspent, transfer hash)
+	transferOutputs        *objectstorage.ObjectStorage
+	transferOutputBookings *objectstorage.ObjectStorage
+
+	unspentTransferOutputsOld map[RealityId]map[AddressHash]map[TransferHash]bool
+	spentTransferOutputsOld   map[RealityId]map[AddressHash]map[TransferHash]bool
+	transferOutputsOld        map[AddressHash]map[TransferHash]*TransferOutput
+	mutex                     sync.RWMutex
 }
 
 func newTransferOutputStorageMemory(id []byte) TransferOutputStorage {
 	return &TransferOutputStorageMemory{
 		id:                     id,
-		unspentTransferOutputs: make(map[RealityId]map[AddressHash]map[TransferHash]bool),
-		spentTransferOutputs:   make(map[RealityId]map[AddressHash]map[TransferHash]bool),
-		transferOutputs:        make(map[AddressHash]map[TransferHash]*TransferOutput),
+		transferOutputs:        objectstorage.New(string(id)+"TRANSFER_OUTPUTS", &TransferOutput{}),
+		transferOutputBookings: objectstorage.New(string(id)+"TRANSFER_OUTPUT_REFERENCES", &TransferOutputBooking{}),
+
+		unspentTransferOutputsOld: make(map[RealityId]map[AddressHash]map[TransferHash]bool),
+		spentTransferOutputsOld:   make(map[RealityId]map[AddressHash]map[TransferHash]bool),
+		transferOutputsOld:        make(map[AddressHash]map[TransferHash]*TransferOutput),
 	}
 }
 
 func (transferOutputStorage *TransferOutputStorageMemory) StoreTransferOutput(transferOutput *TransferOutput) (err errors.IdentifiableError) {
+	transferOutputStorage.transferOutputs.Store(transferOutput).Release()
 	transferOutputStorage.mutex.Lock()
 
 	var targetList map[RealityId]map[AddressHash]map[TransferHash]bool
 	if len(transferOutput.GetConsumers()) >= 1 {
-		targetList = transferOutputStorage.spentTransferOutputs
+		targetList = transferOutputStorage.spentTransferOutputsOld
 	} else {
-		targetList = transferOutputStorage.unspentTransferOutputs
+		targetList = transferOutputStorage.unspentTransferOutputsOld
 	}
 
 	reality, realityExists := targetList[transferOutput.GetRealityId()]
@@ -124,26 +134,14 @@ func (transferOutputStorage *TransferOutputStorageMemory) StoreTransferOutput(tr
 	return
 }
 
-func (transferOutputStorage *TransferOutputStorageMemory) LoadTransferOutput(transferOutputReference *TransferOutputReference) (result *TransferOutput, err errors.IdentifiableError) {
-	transferOutputStorage.mutex.RLock()
+func (transferOutputStorage *TransferOutputStorageMemory) LoadTransferOutput(transferOutputReference *TransferOutputReferenceOld) (result *TransferOutput, err errors.IdentifiableError) {
+	if cachedTransferOutput, loadErr := transferOutputStorage.transferOutputs.Load([]byte{1, 2}[:]); loadErr != nil {
+		err = ErrInvalidTransfer.Derive(loadErr.Error())
+	} else if cachedTransferOutput.Exists() {
+		result = cachedTransferOutput.Get().(*TransferOutput)
 
-	if reality, realityExists := transferOutputStorage.spentTransferOutputs[transferOutputReference.GetRealityId()]; realityExists {
-		if address, addressExists := reality[transferOutputReference.GetAddressHash()]; addressExists {
-			if transferOutput, transferOutputExists := address[transferOutputReference.GetTransferHash()]; transferOutputExists {
-				result = transferOutput
-			}
-		}
+		cachedTransferOutput.Release()
 	}
-
-	if reality, realityExists := transferOutputStorage.unspentTransferOutputs[transferOutputReference.GetRealityId()]; realityExists {
-		if address, addressExists := reality[transferOutputReference.GetAddressHash()]; addressExists {
-			if transferOutput, transferOutputExists := address[transferOutputReference.GetTransferHash()]; transferOutputExists {
-				result = transferOutput
-			}
-		}
-	}
-
-	transferOutputStorage.mutex.RUnlock()
 
 	return
 }
@@ -183,14 +181,15 @@ func (transferOutputStorage *TransferOutputStorageMemory) IterateTransferOutputs
 }
 
 func (transferOutputStorage *TransferOutputStorageMemory) ForEach(callback func(transferOutput *TransferOutput), filters ...TransferOutputStorageFilter) {
-	filter := newTransportOutputStorageFilters(filters...)
+	//filter := newTransportOutputStorageFilters(filters...)
 
-	if filter.FilterUnspent || !filter.FilterUnspent && !filter.FilterSpent {
-		transferOutputStorage.IterateRealities(transferOutputStorage.unspentTransferOutputs, filter, callback)
-	}
-	if filter.FilterUnspent || !filter.FilterUnspent && !filter.FilterSpent {
-		transferOutputStorage.IterateRealities(transferOutputStorage.spentTransferOutputs, filter, callback)
-	}
+	/*
+		if filter.FilterUnspent || !filter.FilterUnspent && !filter.FilterSpent {
+			transferOutputStorage.IterateRealities(transferOutputStorage.unspentTransferOutputsOld, filter, callback)
+		}
+		if filter.FilterUnspent || !filter.FilterUnspent && !filter.FilterSpent {
+			transferOutputStorage.IterateRealities(transferOutputStorage.spentTransferOutputsOld, filter, callback)
+		}*/
 }
 
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
