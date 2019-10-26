@@ -14,6 +14,12 @@ func NewTransferHash(transferHash string) (result TransferHash) {
 	return
 }
 
+func (transferHash *TransferHash) UnmarshalBinary(data []byte) error {
+	copy(transferHash[:], data[:transferHashLength])
+
+	return nil
+}
+
 func (transferHash TransferHash) String() string {
 	if utf8.Valid(transferHash[:]) {
 		return string(transferHash[:])

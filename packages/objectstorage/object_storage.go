@@ -10,24 +10,24 @@ import (
 type ObjectStorage struct {
 	badgerInstance *badger.DB
 	storageId      []byte
-	objectType     StorableObject
+	objectFactory  StorableObjectFactory
 	cachedObjects  map[string]*CachedObject
 	cacheMutex     sync.RWMutex
 	options        *ObjectStorageOptions
 }
 
-func New(storageId string, objectType StorableObject, optionalOptions ...ObjectStorageOption) *ObjectStorage {
+func New(storageId string, objectFactory StorableObjectFactory, optionalOptions ...ObjectStorageOption) *ObjectStorage {
 	return &ObjectStorage{
 		badgerInstance: GetBadgerInstance(),
 		storageId:      []byte(storageId),
-		objectType:     objectType,
+		objectFactory:  objectFactory,
 		cachedObjects:  map[string]*CachedObject{},
 		options:        newTransportOutputStorageFilters(optionalOptions),
 	}
 }
 
 func (objectStorage *ObjectStorage) Store(object StorableObject) *CachedObject {
-	return objectStorage.accessCache(object.GetId(), func(cachedObject *CachedObject) {
+	return objectStorage.accessCache(object.GetStorageKey(), func(cachedObject *CachedObject) {
 		if !cachedObject.publishResult(object, nil) {
 			if currentValue := cachedObject.Get(); currentValue != nil {
 				currentValue.Update(object)
@@ -49,8 +49,11 @@ func (objectStorage *ObjectStorage) Load(key []byte) (*CachedObject, error) {
 func (objectStorage *ObjectStorage) Delete(key []byte) {
 	objectStorage.accessCache(key, func(cachedObject *CachedObject) {
 		cachedObject.Delete()
+		cachedObject.Release()
 	}, func(cachedObject *CachedObject) {
 		cachedObject.Delete()
+		cachedObject.publishResult(nil, nil)
+		cachedObject.Release()
 	})
 }
 
@@ -66,11 +69,16 @@ func (objectStorage *ObjectStorage) ForEach(consumer func(key []byte, cachedObje
 
 			if cachedObject, err := objectStorage.accessCache(key, nil, func(cachedObject *CachedObject) {
 				_ = item.Value(func(val []byte) error {
-					cachedObject.publishResult(objectStorage.unmarshalObject(key, val))
+					marshaledData := make([]byte, len(val))
+					copy(marshaledData, val)
+
+					cachedObject.publishResult(objectStorage.unmarshalObject(key, marshaledData))
 
 					return nil
 				})
 			}).waitForResult(); err != nil {
+				it.Close()
+
 				return err
 			} else {
 				if !consumer(key, cachedObject) {
@@ -82,6 +90,17 @@ func (objectStorage *ObjectStorage) ForEach(consumer func(key []byte, cachedObje
 
 		return nil
 	})
+}
+
+func (objectStorage *ObjectStorage) Prune() error {
+	objectStorage.cacheMutex.Lock()
+	if err := objectStorage.badgerInstance.DropPrefix(objectStorage.storageId); err != nil {
+		return err
+	}
+	objectStorage.cachedObjects = map[string]*CachedObject{}
+	objectStorage.cacheMutex.Unlock()
+
+	return nil
 }
 
 func (objectStorage *ObjectStorage) accessCache(key []byte, onCacheHit func(*CachedObject), onCacheMiss func(*CachedObject)) *CachedObject {
@@ -127,7 +146,7 @@ func (objectStorage *ObjectStorage) accessCache(key []byte, onCacheHit func(*Cac
 func (objectStorage *ObjectStorage) persistObjectToBadger(key []byte, value StorableObject) error {
 	if value != nil {
 		return objectStorage.badgerInstance.Update(func(txn *badger.Txn) error {
-			marshaledObject, _ := value.Marshal()
+			marshaledObject, _ := value.MarshalBinary()
 
 			return txn.Set(objectStorage.generatePrefix([][]byte{key}), marshaledObject)
 		})
@@ -143,13 +162,14 @@ func (objectStorage *ObjectStorage) deleteObjectFromBadger(key []byte) error {
 }
 
 func (objectStorage *ObjectStorage) loadObjectFromBadger(key []byte) (StorableObject, error) {
-	var serializedObject []byte
+	var marshaledData []byte
 	if err := objectStorage.badgerInstance.View(func(txn *badger.Txn) error {
 		if item, err := txn.Get(append(objectStorage.storageId, key...)); err != nil {
 			return err
 		} else {
 			return item.Value(func(val []byte) error {
-				serializedObject = append([]byte{}, val...)
+				marshaledData = make([]byte, len(val))
+				copy(marshaledData, val)
 
 				return nil
 			})
@@ -161,12 +181,13 @@ func (objectStorage *ObjectStorage) loadObjectFromBadger(key []byte) (StorableOb
 			return nil, err
 		}
 	} else {
-		return objectStorage.unmarshalObject(key, serializedObject)
+		return objectStorage.unmarshalObject(key, marshaledData)
 	}
 }
 
-func (objectStorage *ObjectStorage) unmarshalObject(key []byte, serializedObject []byte) (StorableObject, error) {
-	if object, err := objectStorage.objectType.Unmarshal(key, serializedObject); err != nil {
+func (objectStorage *ObjectStorage) unmarshalObject(key []byte, data []byte) (StorableObject, error) {
+	object := objectStorage.objectFactory(key)
+	if err := object.UnmarshalBinary(data); err != nil {
 		return nil, err
 	} else {
 		return object, nil

@@ -12,21 +12,30 @@ type Reality struct {
 	id              RealityId
 	parentRealities []RealityId
 
+	storageKey  []byte
 	ledgerState *LedgerState
 }
 
 func newReality(id RealityId, parentRealities ...RealityId) *Reality {
-	return &Reality{
+	result := &Reality{
 		id:              id,
 		parentRealities: parentRealities,
+
+		storageKey: make([]byte, len(id)),
 	}
+	copy(result.storageKey, id[:])
+
+	return result
 }
 
 func (reality *Reality) BookTransfer(transfer *Transfer) {
 	// process outputs
 	for addressHash, coloredBalances := range transfer.GetOutputs() {
 		createdTransferOutput := NewTransferOutput(reality.ledgerState, reality.id, transfer.GetHash(), addressHash, coloredBalances...)
+		createdBooking := newTransferOutputBooking(reality.id, addressHash, false, transfer.GetHash())
+
 		reality.ledgerState.storeTransferOutput(createdTransferOutput).Release()
+		reality.ledgerState.storeTransferOutputBooking(createdBooking).Release()
 	}
 }
 
@@ -39,8 +48,8 @@ func (reality *Reality) String() string {
 
 // region support object storage ///////////////////////////////////////////////////////////////////////////////////////
 
-func (reality *Reality) GetId() []byte {
-	return reality.id[:]
+func (reality *Reality) GetStorageKey() []byte {
+	return reality.storageKey
 }
 
 func (reality *Reality) Update(other objectstorage.StorableObject) {
@@ -51,7 +60,7 @@ func (reality *Reality) Update(other objectstorage.StorableObject) {
 	}
 }
 
-func (reality *Reality) Marshal() ([]byte, error) {
+func (reality *Reality) MarshalBinary() ([]byte, error) {
 	parentRealityCount := len(reality.parentRealities)
 
 	marshaledReality := make([]byte, 4+parentRealityCount*realityIdLength)
@@ -64,18 +73,20 @@ func (reality *Reality) Marshal() ([]byte, error) {
 	return marshaledReality, nil
 }
 
-func (reality *Reality) Unmarshal(key []byte, serializedObject []byte) (objectstorage.StorableObject, error) {
-	result := &Reality{}
-
-	copy(result.id[:], key[:realityIdLength])
+func (reality *Reality) UnmarshalBinary(serializedObject []byte) error {
+	if err := reality.id.UnmarshalBinary(reality.storageKey[:realityIdLength]); err != nil {
+		return err
+	}
 
 	parentRealityCount := int(binary.LittleEndian.Uint32(serializedObject))
 	parentRealities := make([]RealityId, parentRealityCount)
 	for i := 0; i < parentRealityCount; i++ {
-		copy(parentRealities[i][:], serializedObject[4+i*realityIdLength:])
+		if err := parentRealities[i].UnmarshalBinary(serializedObject[4+i*realityIdLength:]); err != nil {
+			return err
+		}
 	}
 
-	return result, nil
+	return nil
 }
 
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////

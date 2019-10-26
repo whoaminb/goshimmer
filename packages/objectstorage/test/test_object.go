@@ -18,11 +18,11 @@ func NewTestObject(id string, value uint32) *TestObject {
 	}
 }
 
-func (testObject *TestObject) GetId() []byte {
+func (testObject *TestObject) GetStorageKey() []byte {
 	return testObject.id
 }
 
-func (testObject *TestObject) Marshal() ([]byte, error) {
+func (testObject *TestObject) MarshalBinary() ([]byte, error) {
 	result := make([]byte, 4)
 
 	binary.LittleEndian.PutUint32(result, testObject.value)
@@ -38,8 +38,8 @@ func (testObject *TestObject) Update(object objectstorage.StorableObject) {
 	}
 }
 
-func (testObject *TestObject) Unmarshal(key []byte, data []byte) (object objectstorage.StorableObject, e error) {
-	return &TestObject{
-		value: binary.LittleEndian.Uint32(data),
-	}, nil
+func (testObject *TestObject) UnmarshalBinary(data []byte) error {
+	testObject.value = binary.LittleEndian.Uint32(data)
+
+	return nil
 }

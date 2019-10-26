@@ -13,7 +13,7 @@ type TransferOutput struct {
 	balances     []*ColoredBalance
 	realityId    RealityId
 
-	id          []byte
+	storageKey  []byte
 	ledgerState *LedgerState
 }
 
@@ -24,7 +24,7 @@ func NewTransferOutput(ledgerState *LedgerState, realityId RealityId, transferHa
 		balances:     balances,
 		realityId:    realityId,
 
-		id:          append(transferHash[:], addressHash[:]...),
+		storageKey:  append(transferHash[:], addressHash[:]...),
 		ledgerState: ledgerState,
 	}
 }
@@ -40,17 +40,16 @@ func (transferOutput *TransferOutput) String() string {
 
 // region support object storage ///////////////////////////////////////////////////////////////////////////////////////
 
-func (transferOutput *TransferOutput) GetId() []byte {
-	return transferOutput.id
+func (transferOutput *TransferOutput) GetStorageKey() []byte {
+	return transferOutput.storageKey
 }
 
 func (transferOutput *TransferOutput) Update(other objectstorage.StorableObject) {}
 
-func (transferOutput *TransferOutput) Marshal() ([]byte, error) {
+func (transferOutput *TransferOutput) MarshalBinary() ([]byte, error) {
 	balanceCount := len(transferOutput.balances)
-	coloredBalanceLength := colorLength + 64
 
-	result := make([]byte, realityIdLength+balanceCount*coloredBalanceLength)
+	result := make([]byte, realityIdLength+4+balanceCount*coloredBalanceLength)
 
 	copy(result[0:], transferOutput.realityId[:])
 
@@ -63,32 +62,42 @@ func (transferOutput *TransferOutput) Marshal() ([]byte, error) {
 	return result, nil
 }
 
-func (transferOutput *TransferOutput) Unmarshal(key []byte, serializedObject []byte) (objectstorage.StorableObject, error) {
-	result := &TransferOutput{
-		id:       key,
-		balances: transferOutput.unmarshalBalances(serializedObject[realityIdLength:]),
+func (transferOutput *TransferOutput) UnmarshalBinary(serializedObject []byte) error {
+	if err := transferOutput.transferHash.UnmarshalBinary(transferOutput.storageKey[:transferHashLength]); err != nil {
+		return err
 	}
 
-	copy(result.transferHash[:], key[:transferHashLength])
-	copy(result.addressHash[:], key[transferHashLength:transferHashLength+addressHashLength])
-	copy(result.realityId[:], serializedObject[:realityIdLength])
+	if err := transferOutput.addressHash.UnmarshalBinary(transferOutput.storageKey[transferHashLength:]); err != nil {
+		return err
+	}
 
-	return result, nil
+	if err := transferOutput.realityId.UnmarshalBinary(serializedObject[:realityIdLength]); err != nil {
+		return err
+	}
+
+	if balances, err := transferOutput.unmarshalBalances(serializedObject[realityIdLength:]); err != nil {
+		return err
+	} else {
+		transferOutput.balances = balances
+	}
+
+	return nil
 }
 
-func (transferOutput *TransferOutput) unmarshalBalances(serializedBalances []byte) []*ColoredBalance {
+func (transferOutput *TransferOutput) unmarshalBalances(serializedBalances []byte) ([]*ColoredBalance, error) {
 	balanceCount := int(binary.LittleEndian.Uint32(serializedBalances))
-	coloredBalanceLength := colorLength + 64
 
 	balances := make([]*ColoredBalance, balanceCount)
 	for i := 0; i < balanceCount; i++ {
-		color := Color{}
-		copy(color[:], serializedBalances[4+i*coloredBalanceLength:])
+		coloredBalance := ColoredBalance{}
+		if err := coloredBalance.UnmarshalBinary(serializedBalances[4+i*coloredBalanceLength:]); err != nil {
+			return nil, err
+		}
 
-		balances[i] = NewColoredBalance(color, binary.LittleEndian.Uint64(serializedBalances[4+i*coloredBalanceLength+colorLength:]))
+		balances[i] = &coloredBalance
 	}
 
-	return balances
+	return balances, nil
 }
 
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////

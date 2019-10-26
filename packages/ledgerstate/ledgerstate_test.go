@@ -42,6 +42,20 @@ func Test(t *testing.T) {
 
 		reality.BookTransfer(transfer)
 
-		fmt.Println(ledgerState.GetTransferOutput(NewTransferOutputReference(transferHash2, addressHash3)).Get())
+		ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
+			object.Consume(func(object objectstorage.StorableObject) {
+				fmt.Println(object.(*TransferOutput))
+			})
+
+			return true
+		}, pendingReality, addressHash3)
+
+		ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
+			object.Consume(func(object objectstorage.StorableObject) {
+				fmt.Println(object.(*TransferOutput))
+			})
+
+			return true
+		}, transferHash2)
 	})
 }

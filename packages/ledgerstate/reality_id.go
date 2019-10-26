@@ -14,6 +14,12 @@ func NewRealityId(realityId string) (result RealityId) {
 	return
 }
 
+func (realityId *RealityId) UnmarshalBinary(data []byte) error {
+	copy(realityId[:], data[:realityIdLength])
+
+	return nil
+}
+
 func (realityId RealityId) String() string {
 	if utf8.Valid(realityId[:]) {
 		return string(realityId[:])

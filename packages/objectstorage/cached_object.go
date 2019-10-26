@@ -87,18 +87,16 @@ func (cachedObject *CachedObject) isDeleted() bool {
 func (cachedObject *CachedObject) release() {
 	cachedObject.objectStorage.cacheMutex.Lock()
 	if consumers := atomic.LoadInt32(&(cachedObject.consumers)); consumers == 0 && atomic.AddInt32(&(cachedObject.persisted), 1) == 1 {
-		if cachedObject.isDeleted() {
-			if err := cachedObject.objectStorage.deleteObjectFromBadger(cachedObject.value.GetId()); err != nil {
-				panic(err)
-			}
-		} else if cachedObject.value != nil {
-			if err := cachedObject.objectStorage.persistObjectToBadger(cachedObject.value.GetId(), cachedObject.value); err != nil {
-				panic(err)
-			}
-		}
-
 		if cachedObject.value != nil {
-			delete(cachedObject.objectStorage.cachedObjects, typeutils.BytesToString(cachedObject.value.GetId()))
+			if cachedObject.isDeleted() {
+				if err := cachedObject.objectStorage.deleteObjectFromBadger(cachedObject.value.GetStorageKey()); err != nil {
+					panic(err)
+				}
+			} else if err := cachedObject.objectStorage.persistObjectToBadger(cachedObject.value.GetStorageKey(), cachedObject.value); err != nil {
+				panic(err)
+			}
+
+			delete(cachedObject.objectStorage.cachedObjects, typeutils.BytesToString(cachedObject.value.GetStorageKey()))
 		}
 	} else if consumers < 0 {
 		panic("too many unregistered consumers of cached object")

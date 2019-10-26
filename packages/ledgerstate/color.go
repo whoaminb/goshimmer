@@ -14,6 +14,12 @@ func NewColor(color string) (result Color) {
 	return
 }
 
+func (color *Color) UnmarshalBinary(data []byte) error {
+	copy(color[0:], data[:colorLength])
+
+	return nil
+}
+
 func (color Color) String() string {
 	if utf8.Valid(color[:]) {
 		return string(color[:])
@@ -22,4 +28,4 @@ func (color Color) String() string {
 	}
 }
 
-const colorLength = 8
+const colorLength = 32

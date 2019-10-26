@@ -10,9 +10,11 @@ import (
 	"github.com/iotaledger/goshimmer/packages/objectstorage"
 )
 
+func testObjectFactory(key []byte) objectstorage.StorableObject { return &TestObject{id: key} }
+
 func BenchmarkStore(b *testing.B) {
 	// create our storage
-	objects := objectstorage.New("TestObjectStorage", &TestObject{})
+	objects := objectstorage.New("TestObjectStorage", testObjectFactory)
 
 	b.ResetTimer()
 
@@ -22,7 +24,7 @@ func BenchmarkStore(b *testing.B) {
 }
 
 func BenchmarkLoad(b *testing.B) {
-	objects := objectstorage.New("TestObjectStorage", &TestObject{})
+	objects := objectstorage.New("TestObjectStorage", testObjectFactory)
 
 	for i := 0; i < b.N; i++ {
 		objects.Store(NewTestObject("Hans"+strconv.Itoa(i), uint32(i))).Release()
@@ -41,7 +43,7 @@ func BenchmarkLoad(b *testing.B) {
 }
 
 func BenchmarkLoadCachingEnabled(b *testing.B) {
-	objects := objectstorage.New("TestObjectStorage", &TestObject{}, objectstorage.CacheTime(500*time.Millisecond))
+	objects := objectstorage.New("TestObjectStorage", testObjectFactory, objectstorage.CacheTime(500*time.Millisecond))
 
 	for i := 0; i < b.N; i++ {
 		objects.Store(NewTestObject("Hans"+strconv.Itoa(0), uint32(i)))
@@ -60,7 +62,7 @@ func BenchmarkLoadCachingEnabled(b *testing.B) {
 }
 
 func TestDelete(t *testing.T) {
-	objects := objectstorage.New("TestObjectStorage", &TestObject{})
+	objects := objectstorage.New("TestObjectStorage", testObjectFactory)
 	objects.Store(NewTestObject("Hans", 33)).Release()
 
 	cachedObject, err := objects.Load([]byte("Hans"))
@@ -83,7 +85,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestConcurrency(t *testing.T) {
-	objects := objectstorage.New("TestObjectStorage", &TestObject{})
+	objects := objectstorage.New("TestObjectStorage", testObjectFactory)
 	objects.Store(NewTestObject("Hans", 33)).Release()
 
 	var wg sync.WaitGroup

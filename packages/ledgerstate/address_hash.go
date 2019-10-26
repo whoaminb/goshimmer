@@ -14,6 +14,12 @@ func NewAddressHash(addressHash string) (result AddressHash) {
 	return
 }
 
+func (addressHash *AddressHash) UnmarshalBinary(data []byte) error {
+	copy(addressHash[:], data[:addressHashLength])
+
+	return nil
+}
+
 func (addressHash AddressHash) String() string {
 	if utf8.Valid(addressHash[:]) {
 		return string(addressHash[:])
