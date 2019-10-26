@@ -18,6 +18,10 @@ func (transfer *Transfer) GetHash() TransferHash {
 	return transfer.hash
 }
 
+func (transfer *Transfer) GetInputs() []*TransferOutputReference {
+	return transfer.inputs
+}
+
 func (transfer *Transfer) AddInput(input *TransferOutputReference) *Transfer {
 	transfer.inputs = append(transfer.inputs, input)
 

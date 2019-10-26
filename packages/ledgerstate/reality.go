@@ -2,6 +2,9 @@ package ledgerstate
 
 import (
 	"encoding/binary"
+	"fmt"
+
+	"github.com/iotaledger/goshimmer/packages/errors"
 
 	"github.com/iotaledger/goshimmer/packages/stringify"
 
@@ -28,13 +31,64 @@ func newReality(id RealityId, parentRealities ...RealityId) *Reality {
 	return result
 }
 
-func (reality *Reality) BookTransfer(transfer *Transfer) {
+func (reality *Reality) checkTransferBalances(inputs []*objectstorage.CachedObject, outputs map[AddressHash][]*ColoredBalance) error {
+	totalColoredBalances := make(map[Color]uint64)
+
+	for _, cachedInput := range inputs {
+		if !cachedInput.Exists() {
+			return errors.New("missing input in transfer")
+		}
+
+		for _, balance := range cachedInput.Get().(*TransferOutput).GetBalances() {
+			totalColoredBalances[balance.GetColor()] += balance.GetValue()
+		}
+	}
+
+	for _, transferOutput := range outputs {
+		for _, balance := range transferOutput {
+			color := balance.GetColor()
+
+			totalColoredBalances[color] -= balance.GetValue()
+
+			if totalColoredBalances[color] == 0 {
+				delete(totalColoredBalances, color)
+			}
+		}
+	}
+
+	// transfer is valid if sum of funds is 0
+	if len(totalColoredBalances) != 0 {
+		return errors.New("the sum of the balance changes is not 0")
+	}
+
+	return nil
+}
+
+func (reality *Reality) BookTransfer(transfer *Transfer) error {
 	transferHash := transfer.GetHash()
-	transferOutputs := transfer.GetOutputs()
+	inputs := reality.getTransferInputs(transfer)
+	outputs := transfer.GetOutputs()
+
+	if err := reality.checkTransferBalances(inputs, outputs); err != nil {
+		return err
+	}
+	fmt.Println(inputs[0].Get())
 
 	// process outputs
-	reality.bookTransferOutputs(transferHash, transferOutputs)
+	reality.bookTransferOutputs(transferHash, outputs)
 
+	return nil
+}
+
+func (reality *Reality) getTransferInputs(transfer *Transfer) []*objectstorage.CachedObject {
+	inputs := transfer.GetInputs()
+	result := make([]*objectstorage.CachedObject, len(inputs))
+
+	for i, transferOutputReference := range inputs {
+		result[i] = reality.ledgerState.GetTransferOutput(transferOutputReference)
+	}
+
+	return result
 }
 
 func (reality *Reality) bookTransferOutputs(transferHash TransferHash, transferOutputs map[AddressHash][]*ColoredBalance) {

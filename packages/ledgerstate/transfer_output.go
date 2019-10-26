@@ -29,6 +29,10 @@ func NewTransferOutput(ledgerState *LedgerState, realityId RealityId, transferHa
 	}
 }
 
+func (transferOutput *TransferOutput) GetBalances() []*ColoredBalance {
+	return transferOutput.balances
+}
+
 func (transferOutput *TransferOutput) String() string {
 	return stringify.Struct("TransferOutput",
 		stringify.StructField("transferHash", transferOutput.transferHash.String()),

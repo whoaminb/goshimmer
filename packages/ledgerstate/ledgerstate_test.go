@@ -40,7 +40,9 @@ func Test(t *testing.T) {
 			addressHash4, NewColoredBalance(eth, 1000),
 		)
 
-		reality.BookTransfer(transfer)
+		if err := reality.BookTransfer(transfer); err != nil {
+			t.Error(err)
+		}
 
 		ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
 			object.Consume(func(object objectstorage.StorableObject) {
