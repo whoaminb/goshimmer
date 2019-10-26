@@ -21,20 +21,27 @@ func NewLedgerState(storageId string) *LedgerState {
 }
 
 func (ledgerState *LedgerState) AddTransferOutput(transferHash TransferHash, addressHash AddressHash, balances ...*ColoredBalance) *LedgerState {
-	ledgerState.transferOutputs.Store(NewTransferOutput(ledgerState, MAIN_REALITY_ID, transferHash, addressHash, balances...)).Release()
+	ledgerState.storeTransferOutput(NewTransferOutput(ledgerState, MAIN_REALITY_ID, transferHash, addressHash, balances...)).Release()
 
 	return ledgerState
 }
 
-func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *TransferOutputReference) (*objectstorage.CachedObject, error) {
-	cachedTransferOutput, err := ledgerState.transferOutputs.Load(transferOutputReference.GetStorageKey())
-	if err == nil && cachedTransferOutput.Exists() {
-		if transferOutput := cachedTransferOutput.Get().(*TransferOutput); transferOutput != nil {
-			transferOutput.ledgerState = ledgerState
-		}
-	}
+func (ledgerState *LedgerState) storeTransferOutput(transferOutput *TransferOutput) *objectstorage.CachedObject {
+	return ledgerState.transferOutputs.Store(transferOutput)
+}
 
-	return cachedTransferOutput, err
+func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *TransferOutputReference) *objectstorage.CachedObject {
+	if cachedTransferOutput, err := ledgerState.transferOutputs.Load(transferOutputReference.GetStorageKey()); err != nil {
+		panic(err)
+	} else {
+		if cachedTransferOutput.Exists() {
+			if transferOutput := cachedTransferOutput.Get().(*TransferOutput); transferOutput != nil {
+				transferOutput.ledgerState = ledgerState
+			}
+		}
+
+		return cachedTransferOutput
+	}
 }
 
 func (ledgerState *LedgerState) CreateReality(id RealityId) {

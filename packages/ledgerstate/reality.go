@@ -2,7 +2,6 @@ package ledgerstate
 
 import (
 	"encoding/binary"
-	"fmt"
 
 	"github.com/iotaledger/goshimmer/packages/stringify"
 
@@ -24,7 +23,11 @@ func newReality(id RealityId, parentRealities ...RealityId) *Reality {
 }
 
 func (reality *Reality) BookTransfer(transfer *Transfer) {
-	fmt.Println("BOOK")
+	// process outputs
+	for addressHash, coloredBalances := range transfer.GetOutputs() {
+		createdTransferOutput := NewTransferOutput(reality.ledgerState, reality.id, transfer.GetHash(), addressHash, coloredBalances...)
+		reality.ledgerState.storeTransferOutput(createdTransferOutput).Release()
+	}
 }
 
 func (reality *Reality) String() string {

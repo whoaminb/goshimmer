@@ -1,6 +1,7 @@
 package ledgerstate
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/iotaledger/goshimmer/packages/objectstorage"
@@ -40,5 +41,7 @@ func Test(t *testing.T) {
 		)
 
 		reality.BookTransfer(transfer)
+
+		fmt.Println(ledgerState.GetTransferOutput(NewTransferOutputReference(transferHash2, addressHash3)).Get())
 	})
 }

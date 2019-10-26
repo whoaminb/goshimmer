@@ -18,8 +18,6 @@ func Interface(value interface{}) string {
 		return Int(typeCastedValue)
 	case uint64:
 		return strconv.FormatUint(typeCastedValue, 10)
-	case fmt.Stringer:
-		return value.(fmt.Stringer).String()
 	case reflect.Value:
 		switch typeCastedValue.Kind() {
 		case reflect.Slice:
@@ -37,6 +35,8 @@ func Interface(value interface{}) string {
 		default:
 			panic("undefined reflect type: " + typeCastedValue.Kind().String())
 		}
+	case fmt.Stringer:
+		return value.(fmt.Stringer).String()
 	default:
 		value := reflect.ValueOf(value)
 		switch value.Kind() {

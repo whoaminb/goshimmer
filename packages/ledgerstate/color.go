@@ -1,5 +1,11 @@
 package ledgerstate
 
+import (
+	"unicode/utf8"
+
+	"github.com/iotaledger/goshimmer/packages/stringify"
+)
+
 type Color [colorLength]byte
 
 func NewColor(color string) (result Color) {
@@ -9,7 +15,11 @@ func NewColor(color string) (result Color) {
 }
 
 func (color Color) String() string {
-	return "color"
+	if utf8.Valid(color[:]) {
+		return string(color[:])
+	} else {
+		return stringify.SliceOfBytes(color[:])
+	}
 }
 
 const colorLength = 8
