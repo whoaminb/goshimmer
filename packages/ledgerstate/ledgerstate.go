@@ -51,7 +51,7 @@ func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *Trans
 }
 
 func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *objectstorage.CachedObject) bool, filters ...interface{}) {
-	prefixes, searchBookings := ledgerState.generatePrefixes(filters)
+	prefixes, searchBookings := ledgerState.generateFilterPrefixes(filters)
 	if searchBookings {
 		for _, prefix := range prefixes {
 			if err := ledgerState.transferOutputBookings.ForEach(func(key []byte, cachedObject *objectstorage.CachedObject) bool {
@@ -72,54 +72,6 @@ func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *obje
 			}
 		}
 	}
-}
-
-func (ledgerState *LedgerState) generatePrefixes(filters []interface{}) ([][]byte, bool) {
-	filteredRealities := make([]RealityId, 0)
-	filteredAddresses := make([]AddressHash, 0)
-	filteredTransfers := make([]TransferHash, 0)
-
-	for _, filter := range filters {
-		switch typeCastedValue := filter.(type) {
-		case RealityId:
-			filteredRealities = append(filteredRealities, typeCastedValue)
-		case AddressHash:
-			filteredAddresses = append(filteredAddresses, typeCastedValue)
-		case TransferHash:
-			filteredTransfers = append(filteredTransfers, typeCastedValue)
-		default:
-			panic("unknown filter type: " + reflect.ValueOf(filter).Kind().String())
-		}
-	}
-
-	prefixes := make([][]byte, 0)
-	if len(filteredRealities) >= 1 {
-		for _, realityId := range filteredRealities {
-			realityPrefix := append([]byte{}, realityId[:]...)
-
-			if len(filteredAddresses) >= 1 {
-				for _, addressHash := range filteredAddresses {
-					addressPrefix := append([]byte{}, realityPrefix...)
-					addressPrefix = append(addressPrefix, addressHash[:]...)
-
-					// TODO: FILTER UNSPENT + TRANSFER HASH
-					prefixes = append(prefixes, addressPrefix)
-				}
-			} else {
-				prefixes = append(prefixes, realityPrefix)
-			}
-		}
-
-		return prefixes, true
-	} else if len(filteredTransfers) >= 1 {
-		for _, transferHash := range filteredTransfers {
-			transferPrefix := append([]byte{}, transferHash[:]...)
-
-			prefixes = append(prefixes, transferPrefix)
-		}
-	}
-
-	return prefixes, false
 }
 
 func (ledgerState *LedgerState) CreateReality(id RealityId) {
@@ -154,6 +106,86 @@ func (ledgerState *LedgerState) Prune() *LedgerState {
 	}
 
 	return ledgerState
+}
+
+func (ledgerState *LedgerState) generateFilterPrefixes(filters []interface{}) ([][]byte, bool) {
+	filteredRealities := make([]RealityId, 0)
+	filteredAddresses := make([]AddressHash, 0)
+	filteredTransfers := make([]TransferHash, 0)
+	filterSpent := false
+	filterUnspent := false
+
+	for _, filter := range filters {
+		switch typeCastedValue := filter.(type) {
+		case RealityId:
+			filteredRealities = append(filteredRealities, typeCastedValue)
+		case AddressHash:
+			filteredAddresses = append(filteredAddresses, typeCastedValue)
+		case TransferHash:
+			filteredTransfers = append(filteredTransfers, typeCastedValue)
+		case SpentIndicator:
+			switch typeCastedValue {
+			case SPENT:
+				filterSpent = true
+			case UNSPENT:
+				filterUnspent = true
+			default:
+				panic("unknown SpentIndicator")
+			}
+		default:
+			panic("unknown filter type: " + reflect.ValueOf(filter).Kind().String())
+		}
+	}
+
+	prefixes := make([][]byte, 0)
+	if len(filteredRealities) >= 1 {
+		for _, realityId := range filteredRealities {
+			realityPrefix := append([]byte{}, realityId[:]...)
+
+			if len(filteredAddresses) >= 1 {
+				for _, addressHash := range filteredAddresses {
+					addressPrefix := append([]byte{}, realityPrefix...)
+					addressPrefix = append(addressPrefix, addressHash[:]...)
+
+					if filterSpent != filterUnspent {
+						spentPrefix := append([]byte{}, addressPrefix...)
+						if filterSpent {
+							spentPrefix = append(spentPrefix, byte(SPENT))
+						} else {
+							spentPrefix = append(spentPrefix, byte(UNSPENT))
+						}
+
+						// TODO: FILTER TRANSFER HASH
+						prefixes = append(prefixes, spentPrefix)
+					} else {
+						prefixes = append(prefixes, addressPrefix)
+					}
+				}
+			} else {
+				prefixes = append(prefixes, realityPrefix)
+			}
+		}
+
+		return prefixes, true
+	} else if len(filteredTransfers) >= 1 {
+		for _, transferHash := range filteredTransfers {
+			transferPrefix := append([]byte{}, transferHash[:]...)
+
+			if len(filteredAddresses) >= 1 {
+				for _, addressHash := range filteredAddresses {
+					addressPrefix := append([]byte{}, transferPrefix...)
+					addressPrefix = append(addressPrefix, addressHash[:]...)
+
+					// TODO: FILTER UNSPENT + TRANSFER HASH
+					prefixes = append(prefixes, addressPrefix)
+				}
+			} else {
+				prefixes = append(prefixes, transferPrefix)
+			}
+		}
+	}
+
+	return prefixes, false
 }
 
 func transferOutputFactory(key []byte) objectstorage.StorableObject {

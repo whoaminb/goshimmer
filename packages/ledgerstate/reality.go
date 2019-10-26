@@ -29,10 +29,18 @@ func newReality(id RealityId, parentRealities ...RealityId) *Reality {
 }
 
 func (reality *Reality) BookTransfer(transfer *Transfer) {
+	transferHash := transfer.GetHash()
+	transferOutputs := transfer.GetOutputs()
+
 	// process outputs
-	for addressHash, coloredBalances := range transfer.GetOutputs() {
-		createdTransferOutput := NewTransferOutput(reality.ledgerState, reality.id, transfer.GetHash(), addressHash, coloredBalances...)
-		createdBooking := newTransferOutputBooking(reality.id, addressHash, false, transfer.GetHash())
+	reality.bookTransferOutputs(transferHash, transferOutputs)
+
+}
+
+func (reality *Reality) bookTransferOutputs(transferHash TransferHash, transferOutputs map[AddressHash][]*ColoredBalance) {
+	for addressHash, coloredBalances := range transferOutputs {
+		createdTransferOutput := NewTransferOutput(reality.ledgerState, reality.id, transferHash, addressHash, coloredBalances...)
+		createdBooking := newTransferOutputBooking(reality.id, addressHash, false, transferHash)
 
 		reality.ledgerState.storeTransferOutput(createdTransferOutput).Release()
 		reality.ledgerState.storeTransferOutputBooking(createdBooking).Release()

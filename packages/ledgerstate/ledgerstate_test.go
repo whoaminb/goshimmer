@@ -48,7 +48,7 @@ func Test(t *testing.T) {
 			})
 
 			return true
-		}, pendingReality, addressHash3)
+		}, pendingReality, addressHash3, UNSPENT)
 
 		ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
 			object.Consume(func(object objectstorage.StorableObject) {
@@ -56,6 +56,6 @@ func Test(t *testing.T) {
 			})
 
 			return true
-		}, transferHash2)
+		}, transferHash2, addressHash4)
 	})
 }

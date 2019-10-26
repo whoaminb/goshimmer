@@ -83,10 +83,10 @@ func (booking *TransferOutputBooking) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	switch booking.storageKey[marshalTransferOutputBookingSpentStart] {
-	case UNSPENT_SEPARATOR_BYTE:
+	switch SpentIndicator(booking.storageKey[marshalTransferOutputBookingSpentStart]) {
+	case UNSPENT:
 		booking.spent = false
-	case SPENT_SEPARATOR_BYTE:
+	case SPENT:
 		booking.spent = true
 	default:
 		return errors.New("unmarshal failed: invalid spent separator in key")
@@ -107,9 +107,9 @@ func (booking *TransferOutputBooking) buildId() {
 	copy(booking.storageKey[marshalTransferOutputBookingRealityIdStart:marshalTransferOutputBookingRealityIdEnd], booking.realityId[:realityIdLength])
 	copy(booking.storageKey[marshalTransferOutputBookingAddressHashStart:marshalTransferOutputBookingAddressHashEnd], booking.addressHash[:addressHashLength])
 	if booking.spent {
-		booking.storageKey[marshalTransferOutputBookingSpentStart] = SPENT_SEPARATOR_BYTE
+		booking.storageKey[marshalTransferOutputBookingSpentStart] = byte(SPENT)
 	} else {
-		booking.storageKey[marshalTransferOutputBookingSpentStart] = UNSPENT_SEPARATOR_BYTE
+		booking.storageKey[marshalTransferOutputBookingSpentStart] = byte(UNSPENT)
 	}
 	copy(booking.storageKey[marshalTransferOutputBookingTransferHashStart:marshalTransferOutputBookingTransferHashEnd], booking.transferHash[:transferHashLength])
 }

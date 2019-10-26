@@ -1,8 +1,8 @@
 package ledgerstate
 
 const (
-	UNSPENT_SEPARATOR_BYTE = byte(0)
-	SPENT_SEPARATOR_BYTE   = byte(1)
+	UNSPENT = SpentIndicator(0)
+	SPENT   = SpentIndicator(1)
 
 	marshalTransferOutputBookingRealityIdStart    = 0
 	marshalTransferOutputBookingRealityIdEnd      = marshalTransferOutputBookingRealityIdStart + realityIdLength
@@ -14,6 +14,8 @@ const (
 	marshalTransferOutputBookingTransferHashEnd   = marshalTransferOutputBookingTransferHashStart + transferHashLength
 	marshalTransferOutputBookingTotalLength       = marshalTransferOutputBookingTransferHashEnd
 )
+
+type SpentIndicator byte
 
 var (
 	MAIN_REALITY_ID = NewRealityId("MAIN_REALITY")
