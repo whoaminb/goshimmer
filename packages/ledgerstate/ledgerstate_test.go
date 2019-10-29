@@ -25,6 +25,8 @@ func Test(t *testing.T) {
 
 	ledgerState.CreateReality(pendingReality)
 
+	ledgerState.MergeRealities(pendingReality, MAIN_REALITY_ID).Release()
+
 	ledgerState.GetReality(pendingReality).Consume(func(object objectstorage.StorableObject) {
 		reality := object.(*Reality)
 

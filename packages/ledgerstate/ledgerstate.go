@@ -2,6 +2,9 @@ package ledgerstate
 
 import (
 	"reflect"
+	"sort"
+
+	"github.com/iotaledger/goshimmer/packages/errors"
 
 	"github.com/iotaledger/goshimmer/packages/objectstorage"
 )
@@ -14,12 +17,18 @@ type LedgerState struct {
 }
 
 func NewLedgerState(storageId string) *LedgerState {
-	return &LedgerState{
+	result := &LedgerState{
 		storageId:              []byte(storageId),
 		transferOutputs:        objectstorage.New(storageId+"TRANSFER_OUTPUTS", transferOutputFactory),
 		transferOutputBookings: objectstorage.New(storageId+"TRANSFER_OUTPUT_BOOKING", transferOutputBookingFactory),
 		realities:              objectstorage.New(storageId+"REALITIES", realityFactory),
 	}
+
+	mainReality := newReality(MAIN_REALITY_ID)
+	mainReality.ledgerState = result
+	result.realities.Store(mainReality).Release()
+
+	return result
 }
 
 func (ledgerState *LedgerState) AddTransferOutput(transferHash TransferHash, addressHash AddressHash, balances ...*ColoredBalance) *LedgerState {
@@ -75,7 +84,10 @@ func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *obje
 }
 
 func (ledgerState *LedgerState) CreateReality(id RealityId) {
-	ledgerState.realities.Store(newReality(id, MAIN_REALITY_ID))
+	newReality := newReality(id, MAIN_REALITY_ID)
+	newReality.ledgerState = ledgerState
+
+	ledgerState.realities.Store(newReality)
 }
 
 func (ledgerState *LedgerState) GetReality(id RealityId) *objectstorage.CachedObject {
@@ -92,6 +104,92 @@ func (ledgerState *LedgerState) GetReality(id RealityId) *objectstorage.CachedOb
 	}
 }
 
+func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *objectstorage.CachedObject {
+	switch len(realityIds) {
+	case 0:
+		if loadedReality, loadedRealityErr := ledgerState.realities.Load(MAIN_REALITY_ID[:]); loadedRealityErr != nil {
+			panic(loadedRealityErr)
+		} else {
+			return loadedReality
+		}
+	case 1:
+		if loadedReality, loadedRealityErr := ledgerState.realities.Load(realityIds[0][:]); loadedRealityErr != nil {
+			panic(loadedRealityErr)
+		} else {
+			return loadedReality
+		}
+	default:
+		aggregatedRealities := make(map[RealityId]*objectstorage.CachedObject)
+
+	AGGREGATE_REALITIES:
+		for _, realityId := range realityIds {
+			// check if we have processed this reality already
+			if _, exists := aggregatedRealities[realityId]; exists {
+				continue
+			}
+
+			// load reality or abort if it fails
+			cachedReality, loadingErr := ledgerState.realities.Load(realityId[:])
+			if loadingErr != nil {
+				panic(loadingErr)
+			} else if !cachedReality.Exists() {
+				panic(errors.New("referenced reality does not exist: " + realityId.String()))
+			}
+
+			// type cast the reality
+			reality := cachedReality.Get().(*Reality)
+
+			// check if the reality is already included in the aggregated realities
+			for aggregatedRealityId, aggregatedReality := range aggregatedRealities {
+				// if an already aggregated reality "descends" from the current reality, then we have found the more
+				// "specialized" reality already and keep it
+				if aggregatedReality.Get().(*Reality).DescendsFromReality(realityId) {
+					continue AGGREGATE_REALITIES
+				}
+
+				// if the current reality
+				if reality.DescendsFromReality(aggregatedRealityId) {
+					delete(aggregatedRealities, aggregatedRealityId)
+					aggregatedReality.Release()
+
+					aggregatedRealities[reality.GetId()] = cachedReality
+
+					continue AGGREGATE_REALITIES
+				}
+			}
+
+			// store the reality as a new aggregated reality
+			aggregatedRealities[realityId] = cachedReality
+		}
+
+		if len(aggregatedRealities) == 1 {
+			for _, independentReality := range aggregatedRealities {
+				return independentReality
+			}
+		}
+
+		counter := 0
+		aggregatedRealityIds := make([]RealityId, len(aggregatedRealities))
+		for realityId, aggregatedReality := range aggregatedRealities {
+			aggregatedRealityIds[counter] = realityId
+
+			counter++
+
+			aggregatedReality.Release()
+		}
+
+		// TODO: SORT BY BYTES FASTER WITHOUT CONVERTING TO STRING
+		sort.Slice(aggregatedRealityIds, func(i, j int) bool {
+			return string(aggregatedRealityIds[i][:]) < string(aggregatedRealityIds[j][:])
+		})
+
+		// TODO: CALCULATE REALITY ID INSTEAD OF MAIN_REALITY_ID
+		aggregatedReality := newReality(MAIN_REALITY_ID, aggregatedRealityIds...)
+		aggregatedReality.ledgerState = ledgerState
+		return ledgerState.realities.Store(aggregatedReality)
+	}
+}
+
 func (ledgerState *LedgerState) Prune() *LedgerState {
 	if err := ledgerState.transferOutputs.Prune(); err != nil {
 		panic(err)
@@ -104,6 +202,10 @@ func (ledgerState *LedgerState) Prune() *LedgerState {
 	if err := ledgerState.realities.Prune(); err != nil {
 		panic(err)
 	}
+
+	mainReality := newReality(MAIN_REALITY_ID)
+	mainReality.ledgerState = ledgerState
+	ledgerState.realities.Store(mainReality).Release()
 
 	return ledgerState
 }
@@ -176,7 +278,6 @@ func (ledgerState *LedgerState) generateFilterPrefixes(filters []interface{}) ([
 					addressPrefix := append([]byte{}, transferPrefix...)
 					addressPrefix = append(addressPrefix, addressHash[:]...)
 
-					// TODO: FILTER UNSPENT + TRANSFER HASH
 					prefixes = append(prefixes, addressPrefix)
 				}
 			} else {

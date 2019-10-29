@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger"
-	"github.com/iotaledger/goshimmer/packages/typeutils"
 )
 
 type ObjectStorage struct {
@@ -104,7 +103,7 @@ func (objectStorage *ObjectStorage) Prune() error {
 }
 
 func (objectStorage *ObjectStorage) accessCache(key []byte, onCacheHit func(*CachedObject), onCacheMiss func(*CachedObject)) *CachedObject {
-	stringKey := typeutils.BytesToString(key)
+	stringKey := string(key)
 
 	objectStorage.cacheMutex.RLock()
 	cachedObject, cachedObjectExists := objectStorage.cachedObjects[stringKey]

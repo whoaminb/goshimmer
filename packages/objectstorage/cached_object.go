@@ -4,8 +4,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/iotaledger/goshimmer/packages/typeutils"
 )
 
 type CachedObject struct {
@@ -96,7 +94,7 @@ func (cachedObject *CachedObject) release() {
 				panic(err)
 			}
 
-			delete(cachedObject.objectStorage.cachedObjects, typeutils.BytesToString(cachedObject.value.GetStorageKey()))
+			delete(cachedObject.objectStorage.cachedObjects, string(cachedObject.value.GetStorageKey()))
 		}
 	} else if consumers < 0 {
 		panic("too many unregistered consumers of cached object")

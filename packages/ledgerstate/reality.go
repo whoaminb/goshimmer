@@ -2,7 +2,6 @@ package ledgerstate
 
 import (
 	"encoding/binary"
-	"fmt"
 
 	"github.com/iotaledger/goshimmer/packages/errors"
 
@@ -29,6 +28,56 @@ func newReality(id RealityId, parentRealities ...RealityId) *Reality {
 	copy(result.storageKey, id[:])
 
 	return result
+}
+
+func (reality *Reality) GetId() RealityId {
+	return reality.id
+}
+
+func (reality *Reality) DescendsFromReality(realityId RealityId) bool {
+	if reality.id == realityId {
+		return true
+	} else {
+		descendsFromReality := false
+
+		for ancestorRealityId, ancestorReality := range reality.GetAncestorRealities() {
+			if ancestorRealityId == realityId {
+				descendsFromReality = true
+			}
+
+			ancestorReality.Release()
+		}
+
+		return descendsFromReality
+	}
+}
+
+func (reality *Reality) GetParentRealities() map[RealityId]*objectstorage.CachedObject {
+	parentRealities := make(map[RealityId]*objectstorage.CachedObject)
+
+	for _, parentRealityId := range reality.parentRealities {
+		if loadedParentReality := reality.ledgerState.GetReality(parentRealityId); !loadedParentReality.Exists() {
+			panic("could not load parent reality with id \"" + string(parentRealityId[:]) + "\"")
+		} else {
+			parentRealities[loadedParentReality.Get().(*Reality).GetId()] = loadedParentReality
+		}
+	}
+
+	return parentRealities
+}
+
+func (reality *Reality) GetAncestorRealities() (result map[RealityId]*objectstorage.CachedObject) {
+	result = make(map[RealityId]*objectstorage.CachedObject, 1)
+
+	for parentRealityId, parentReality := range reality.GetParentRealities() {
+		result[parentRealityId] = parentReality
+
+		for ancestorId, ancestor := range parentReality.Get().(*Reality).GetAncestorRealities() {
+			result[ancestorId] = ancestor
+		}
+	}
+
+	return
 }
 
 func (reality *Reality) checkTransferBalances(inputs []*objectstorage.CachedObject, outputs map[AddressHash][]*ColoredBalance) error {
@@ -72,7 +121,6 @@ func (reality *Reality) BookTransfer(transfer *Transfer) error {
 	if err := reality.checkTransferBalances(inputs, outputs); err != nil {
 		return err
 	}
-	fmt.Println(inputs[0].Get())
 
 	// process outputs
 	reality.bookTransferOutputs(transferHash, outputs)
