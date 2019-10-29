@@ -4,8 +4,9 @@ import (
 	"reflect"
 	"sort"
 
-	"github.com/iotaledger/goshimmer/packages/errors"
+	"golang.org/x/crypto/blake2b"
 
+	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/objectstorage"
 )
 
@@ -178,15 +179,26 @@ func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *objects
 			aggregatedReality.Release()
 		}
 
-		// TODO: SORT BY BYTES FASTER WITHOUT CONVERTING TO STRING
 		sort.Slice(aggregatedRealityIds, func(i, j int) bool {
-			return string(aggregatedRealityIds[i][:]) < string(aggregatedRealityIds[j][:])
+			for k := 0; k < len(aggregatedRealityIds[k]); k++ {
+				if aggregatedRealityIds[i][k] < aggregatedRealityIds[j][k] {
+					return true
+				} else if aggregatedRealityIds[i][k] > aggregatedRealityIds[j][k] {
+					return false
+				}
+			}
+
+			return false
 		})
 
-		// TODO: CALCULATE REALITY ID INSTEAD OF MAIN_REALITY_ID
-		aggregatedReality := newReality(MAIN_REALITY_ID, aggregatedRealityIds...)
+		aggregatedRealityId := make([]byte, 0)
+		for _, realityId := range aggregatedRealityIds {
+			aggregatedRealityId = append(aggregatedRealityId, realityId[:]...)
+		}
+
+		aggregatedReality := newReality(blake2b.Sum256(aggregatedRealityId), aggregatedRealityIds...)
 		aggregatedReality.ledgerState = ledgerState
-		return ledgerState.realities.Store(aggregatedReality)
+		return ledgerState.realities.Prepare(aggregatedReality)
 	}
 }
 

@@ -8,14 +8,15 @@ import (
 )
 
 var (
-	iota           = NewColor("IOTA")
-	eth            = NewColor("ETH")
-	transferHash1  = NewTransferHash("TRANSFER1")
-	transferHash2  = NewTransferHash("TRANSFER2")
-	addressHash1   = NewAddressHash("ADDRESS1")
-	addressHash3   = NewAddressHash("ADDRESS3")
-	addressHash4   = NewAddressHash("ADDRESS4")
-	pendingReality = NewRealityId("PENDING")
+	iota               = NewColor("IOTA")
+	eth                = NewColor("ETH")
+	transferHash1      = NewTransferHash("TRANSFER1")
+	transferHash2      = NewTransferHash("TRANSFER2")
+	addressHash1       = NewAddressHash("ADDRESS1")
+	addressHash3       = NewAddressHash("ADDRESS3")
+	addressHash4       = NewAddressHash("ADDRESS4")
+	pendingReality     = NewRealityId("PENDING")
+	conflictingReality = NewRealityId("CONFLICTING")
 )
 
 func Test(t *testing.T) {
@@ -24,8 +25,11 @@ func Test(t *testing.T) {
 	)
 
 	ledgerState.CreateReality(pendingReality)
+	ledgerState.CreateReality(conflictingReality)
 
-	ledgerState.MergeRealities(pendingReality, MAIN_REALITY_ID).Release()
+	mergedReality := ledgerState.MergeRealities(pendingReality, MAIN_REALITY_ID, conflictingReality)
+	fmt.Println(mergedReality.Get())
+	mergedReality.Release()
 
 	ledgerState.GetReality(pendingReality).Consume(func(object objectstorage.StorableObject) {
 		reality := object.(*Reality)

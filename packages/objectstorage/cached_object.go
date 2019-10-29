@@ -12,6 +12,7 @@ type CachedObject struct {
 	err           error
 	consumers     int32
 	published     int32
+	persist       int32
 	persisted     int32
 	deleted       int32
 	wg            sync.WaitGroup
@@ -62,6 +63,10 @@ func (cachedObject *CachedObject) Delete() {
 	cachedObject.setDeleted(true)
 }
 
+func (cachedObject *CachedObject) Persist() {
+	atomic.StoreInt32(&(cachedObject.persist), 1)
+}
+
 func (cachedObject *CachedObject) RegisterConsumer() {
 	atomic.AddInt32(&(cachedObject.consumers), 1)
 }
@@ -90,8 +95,10 @@ func (cachedObject *CachedObject) release() {
 				if err := cachedObject.objectStorage.deleteObjectFromBadger(cachedObject.value.GetStorageKey()); err != nil {
 					panic(err)
 				}
-			} else if err := cachedObject.objectStorage.persistObjectToBadger(cachedObject.value.GetStorageKey(), cachedObject.value); err != nil {
-				panic(err)
+			} else if atomic.LoadInt32(&(cachedObject.persist)) == 1 {
+				if err := cachedObject.objectStorage.persistObjectToBadger(cachedObject.value.GetStorageKey(), cachedObject.value); err != nil {
+					panic(err)
+				}
 			}
 
 			delete(cachedObject.objectStorage.cachedObjects, string(cachedObject.value.GetStorageKey()))

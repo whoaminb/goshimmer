@@ -25,6 +25,21 @@ func New(storageId string, objectFactory StorableObjectFactory, optionalOptions 
 	}
 }
 
+func (objectStorage *ObjectStorage) Prepare(object StorableObject) *CachedObject {
+	return objectStorage.accessCache(object.GetStorageKey(), func(cachedObject *CachedObject) {
+		if !cachedObject.publishResult(object, nil) {
+			if currentValue := cachedObject.Get(); currentValue != nil {
+				currentValue.Update(object)
+			} else {
+				cachedObject.updateValue(object)
+			}
+		}
+	}, func(cachedObject *CachedObject) {
+		cachedObject.persist = 0
+		cachedObject.publishResult(object, nil)
+	})
+}
+
 func (objectStorage *ObjectStorage) Store(object StorableObject) *CachedObject {
 	return objectStorage.accessCache(object.GetStorageKey(), func(cachedObject *CachedObject) {
 		if !cachedObject.publishResult(object, nil) {
@@ -35,6 +50,7 @@ func (objectStorage *ObjectStorage) Store(object StorableObject) *CachedObject {
 			}
 		}
 	}, func(cachedObject *CachedObject) {
+		cachedObject.persist = 1
 		cachedObject.publishResult(object, nil)
 	})
 }
