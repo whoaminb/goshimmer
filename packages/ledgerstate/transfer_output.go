@@ -29,6 +29,10 @@ func NewTransferOutput(ledgerState *LedgerState, realityId RealityId, transferHa
 	}
 }
 
+func (transferOutput *TransferOutput) GetRealityId() RealityId {
+	return transferOutput.realityId
+}
+
 func (transferOutput *TransferOutput) GetBalances() []*ColoredBalance {
 	return transferOutput.balances
 }

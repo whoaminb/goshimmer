@@ -1,6 +1,7 @@
 package ledgerstate
 
 import (
+	"fmt"
 	"reflect"
 	"sort"
 
@@ -105,6 +106,33 @@ func (ledgerState *LedgerState) GetReality(id RealityId) *objectstorage.CachedOb
 	}
 }
 
+func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) {
+	inputs := ledgerState.getTransferInputs(transfer)
+	targetReality := ledgerState.getTargetReality(inputs)
+
+	fmt.Println("BOOK TO: ", targetReality.Get())
+}
+
+func (ledgerState *LedgerState) getTransferInputs(transfer *Transfer) []*objectstorage.CachedObject {
+	inputs := transfer.GetInputs()
+	result := make([]*objectstorage.CachedObject, len(inputs))
+
+	for i, transferOutputReference := range inputs {
+		result[i] = ledgerState.GetTransferOutput(transferOutputReference)
+	}
+
+	return result
+}
+
+func (ledgerState *LedgerState) getTargetReality(inputs []*objectstorage.CachedObject) *objectstorage.CachedObject {
+	realityIds := make([]RealityId, len(inputs))
+	for i, input := range inputs {
+		realityIds[i] = input.Get().(*TransferOutput).GetRealityId()
+	}
+
+	return ledgerState.MergeRealities(realityIds...)
+}
+
 func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *objectstorage.CachedObject {
 	switch len(realityIds) {
 	case 0:
@@ -159,7 +187,7 @@ func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *objects
 				}
 			}
 
-			// store the reality as a new aggregated reality
+			// store the reality as a new aggregate candidate
 			aggregatedRealities[realityId] = cachedReality
 		}
 
@@ -169,37 +197,48 @@ func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *objects
 			}
 		}
 
-		counter := 0
-		aggregatedRealityIds := make([]RealityId, len(aggregatedRealities))
-		for realityId, aggregatedReality := range aggregatedRealities {
-			aggregatedRealityIds[counter] = realityId
+		sortedRealityIds := ledgerState.sortRealityIds(aggregatedRealities)
 
-			counter++
-
-			aggregatedReality.Release()
-		}
-
-		sort.Slice(aggregatedRealityIds, func(i, j int) bool {
-			for k := 0; k < len(aggregatedRealityIds[k]); k++ {
-				if aggregatedRealityIds[i][k] < aggregatedRealityIds[j][k] {
-					return true
-				} else if aggregatedRealityIds[i][k] > aggregatedRealityIds[j][k] {
-					return false
-				}
-			}
-
-			return false
-		})
-
-		aggregatedRealityId := make([]byte, 0)
-		for _, realityId := range aggregatedRealityIds {
-			aggregatedRealityId = append(aggregatedRealityId, realityId[:]...)
-		}
-
-		aggregatedReality := newReality(blake2b.Sum256(aggregatedRealityId), aggregatedRealityIds...)
+		aggregatedReality := newReality(ledgerState.generateAggregatedRealityId(sortedRealityIds), sortedRealityIds...)
 		aggregatedReality.ledgerState = ledgerState
+
 		return ledgerState.realities.Prepare(aggregatedReality)
 	}
+}
+
+func (ledgerState *LedgerState) sortRealityIds(aggregatedRealities map[RealityId]*objectstorage.CachedObject) []RealityId {
+	counter := 0
+	sortedRealityIds := make([]RealityId, len(aggregatedRealities))
+	for realityId, aggregatedReality := range aggregatedRealities {
+		sortedRealityIds[counter] = realityId
+
+		counter++
+
+		aggregatedReality.Release()
+	}
+
+	sort.Slice(sortedRealityIds, func(i, j int) bool {
+		for k := 0; k < len(sortedRealityIds[k]); k++ {
+			if sortedRealityIds[i][k] < sortedRealityIds[j][k] {
+				return true
+			} else if sortedRealityIds[i][k] > sortedRealityIds[j][k] {
+				return false
+			}
+		}
+
+		return false
+	})
+
+	return sortedRealityIds
+}
+
+func (ledgerState *LedgerState) generateAggregatedRealityId(sortedRealityIds []RealityId) [32]byte {
+	aggregatedRealityId := make([]byte, 0)
+	for _, realityId := range sortedRealityIds {
+		aggregatedRealityId = append(aggregatedRealityId, realityId[:]...)
+	}
+
+	return blake2b.Sum256(aggregatedRealityId)
 }
 
 func (ledgerState *LedgerState) Prune() *LedgerState {

@@ -115,7 +115,7 @@ func (reality *Reality) checkTransferBalances(inputs []*objectstorage.CachedObje
 
 func (reality *Reality) BookTransfer(transfer *Transfer) error {
 	transferHash := transfer.GetHash()
-	inputs := reality.getTransferInputs(transfer)
+	inputs := reality.ledgerState.getTransferInputs(transfer)
 	outputs := transfer.GetOutputs()
 
 	if err := reality.checkTransferBalances(inputs, outputs); err != nil {
@@ -126,17 +126,6 @@ func (reality *Reality) BookTransfer(transfer *Transfer) error {
 	reality.bookTransferOutputs(transferHash, outputs)
 
 	return nil
-}
-
-func (reality *Reality) getTransferInputs(transfer *Transfer) []*objectstorage.CachedObject {
-	inputs := transfer.GetInputs()
-	result := make([]*objectstorage.CachedObject, len(inputs))
-
-	for i, transferOutputReference := range inputs {
-		result[i] = reality.ledgerState.GetTransferOutput(transferOutputReference)
-	}
-
-	return result
 }
 
 func (reality *Reality) bookTransferOutputs(transferHash TransferHash, transferOutputs map[AddressHash][]*ColoredBalance) {

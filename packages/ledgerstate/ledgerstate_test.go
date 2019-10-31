@@ -25,26 +25,23 @@ func Test(t *testing.T) {
 	)
 
 	ledgerState.CreateReality(pendingReality)
-	ledgerState.CreateReality(conflictingReality)
 
-	mergedReality := ledgerState.MergeRealities(pendingReality, MAIN_REALITY_ID, conflictingReality)
-	fmt.Println(mergedReality.Get())
-	mergedReality.Release()
+	transfer := NewTransfer(transferHash2).AddInput(
+		NewTransferOutputReference(transferHash1, addressHash1),
+	).AddOutput(
+		addressHash3, NewColoredBalance(iota, 338),
+	).AddOutput(
+		addressHash3, NewColoredBalance(eth, 337),
+	).AddOutput(
+		addressHash4, NewColoredBalance(iota, 1000),
+	).AddOutput(
+		addressHash4, NewColoredBalance(eth, 1000),
+	)
+
+	ledgerState.BookTransfer(transfer)
 
 	ledgerState.GetReality(pendingReality).Consume(func(object objectstorage.StorableObject) {
 		reality := object.(*Reality)
-
-		transfer := NewTransfer(transferHash2).AddInput(
-			NewTransferOutputReference(transferHash1, addressHash1),
-		).AddOutput(
-			addressHash3, NewColoredBalance(iota, 338),
-		).AddOutput(
-			addressHash3, NewColoredBalance(eth, 337),
-		).AddOutput(
-			addressHash4, NewColoredBalance(iota, 1000),
-		).AddOutput(
-			addressHash4, NewColoredBalance(eth, 1000),
-		)
 
 		if err := reality.BookTransfer(transfer); err != nil {
 			t.Error(err)
