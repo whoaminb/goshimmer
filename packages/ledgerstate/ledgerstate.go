@@ -39,14 +39,6 @@ func (ledgerState *LedgerState) AddTransferOutput(transferHash TransferHash, add
 	return ledgerState
 }
 
-func (ledgerState *LedgerState) storeTransferOutput(transferOutput *TransferOutput) *objectstorage.CachedObject {
-	return ledgerState.transferOutputs.Store(transferOutput)
-}
-
-func (ledgerState *LedgerState) storeTransferOutputBooking(transferOutputBooking *TransferOutputBooking) *objectstorage.CachedObject {
-	return ledgerState.transferOutputBookings.Store(transferOutputBooking)
-}
-
 func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *TransferOutputReference) *objectstorage.CachedObject {
 	if cachedTransferOutput, err := ledgerState.transferOutputs.Load(transferOutputReference.GetStorageKey()); err != nil {
 		panic(err)
@@ -107,30 +99,13 @@ func (ledgerState *LedgerState) GetReality(id RealityId) *objectstorage.CachedOb
 }
 
 func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) {
+	transferHash := transfer.GetHash()
 	inputs := ledgerState.getTransferInputs(transfer)
+	outputs := transfer.GetOutputs()
 	targetReality := ledgerState.getTargetReality(inputs)
 
+	targetReality.Get().(*Reality).bookTransferOutputs(transferHash, outputs)
 	fmt.Println("BOOK TO: ", targetReality.Get())
-}
-
-func (ledgerState *LedgerState) getTransferInputs(transfer *Transfer) []*objectstorage.CachedObject {
-	inputs := transfer.GetInputs()
-	result := make([]*objectstorage.CachedObject, len(inputs))
-
-	for i, transferOutputReference := range inputs {
-		result[i] = ledgerState.GetTransferOutput(transferOutputReference)
-	}
-
-	return result
-}
-
-func (ledgerState *LedgerState) getTargetReality(inputs []*objectstorage.CachedObject) *objectstorage.CachedObject {
-	realityIds := make([]RealityId, len(inputs))
-	for i, input := range inputs {
-		realityIds[i] = input.Get().(*TransferOutput).GetRealityId()
-	}
-
-	return ledgerState.MergeRealities(realityIds...)
 }
 
 func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *objectstorage.CachedObject {
@@ -139,12 +114,16 @@ func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *objects
 		if loadedReality, loadedRealityErr := ledgerState.realities.Load(MAIN_REALITY_ID[:]); loadedRealityErr != nil {
 			panic(loadedRealityErr)
 		} else {
+			loadedReality.Get().(*Reality).ledgerState = ledgerState
+
 			return loadedReality
 		}
 	case 1:
 		if loadedReality, loadedRealityErr := ledgerState.realities.Load(realityIds[0][:]); loadedRealityErr != nil {
 			panic(loadedRealityErr)
 		} else {
+			loadedReality.Get().(*Reality).ledgerState = ledgerState
+
 			return loadedReality
 		}
 	default:
@@ -204,41 +183,6 @@ func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *objects
 
 		return ledgerState.realities.Prepare(aggregatedReality)
 	}
-}
-
-func (ledgerState *LedgerState) sortRealityIds(aggregatedRealities map[RealityId]*objectstorage.CachedObject) []RealityId {
-	counter := 0
-	sortedRealityIds := make([]RealityId, len(aggregatedRealities))
-	for realityId, aggregatedReality := range aggregatedRealities {
-		sortedRealityIds[counter] = realityId
-
-		counter++
-
-		aggregatedReality.Release()
-	}
-
-	sort.Slice(sortedRealityIds, func(i, j int) bool {
-		for k := 0; k < len(sortedRealityIds[k]); k++ {
-			if sortedRealityIds[i][k] < sortedRealityIds[j][k] {
-				return true
-			} else if sortedRealityIds[i][k] > sortedRealityIds[j][k] {
-				return false
-			}
-		}
-
-		return false
-	})
-
-	return sortedRealityIds
-}
-
-func (ledgerState *LedgerState) generateAggregatedRealityId(sortedRealityIds []RealityId) [32]byte {
-	aggregatedRealityId := make([]byte, 0)
-	for _, realityId := range sortedRealityIds {
-		aggregatedRealityId = append(aggregatedRealityId, realityId[:]...)
-	}
-
-	return blake2b.Sum256(aggregatedRealityId)
 }
 
 func (ledgerState *LedgerState) Prune() *LedgerState {
@@ -338,6 +282,69 @@ func (ledgerState *LedgerState) generateFilterPrefixes(filters []interface{}) ([
 	}
 
 	return prefixes, false
+}
+
+func (ledgerState *LedgerState) storeTransferOutput(transferOutput *TransferOutput) *objectstorage.CachedObject {
+	return ledgerState.transferOutputs.Store(transferOutput)
+}
+
+func (ledgerState *LedgerState) storeTransferOutputBooking(transferOutputBooking *TransferOutputBooking) *objectstorage.CachedObject {
+	return ledgerState.transferOutputBookings.Store(transferOutputBooking)
+}
+
+func (ledgerState *LedgerState) sortRealityIds(aggregatedRealities map[RealityId]*objectstorage.CachedObject) []RealityId {
+	counter := 0
+	sortedRealityIds := make([]RealityId, len(aggregatedRealities))
+	for realityId, aggregatedReality := range aggregatedRealities {
+		sortedRealityIds[counter] = realityId
+
+		counter++
+
+		aggregatedReality.Release()
+	}
+
+	sort.Slice(sortedRealityIds, func(i, j int) bool {
+		for k := 0; k < len(sortedRealityIds[k]); k++ {
+			if sortedRealityIds[i][k] < sortedRealityIds[j][k] {
+				return true
+			} else if sortedRealityIds[i][k] > sortedRealityIds[j][k] {
+				return false
+			}
+		}
+
+		return false
+	})
+
+	return sortedRealityIds
+}
+
+func (ledgerState *LedgerState) generateAggregatedRealityId(sortedRealityIds []RealityId) [32]byte {
+	aggregatedRealityId := make([]byte, 0)
+	for _, realityId := range sortedRealityIds {
+		aggregatedRealityId = append(aggregatedRealityId, realityId[:]...)
+	}
+
+	return blake2b.Sum256(aggregatedRealityId)
+}
+
+func (ledgerState *LedgerState) getTargetReality(inputs []*objectstorage.CachedObject) *objectstorage.CachedObject {
+	realityIds := make([]RealityId, len(inputs))
+	for i, input := range inputs {
+		realityIds[i] = input.Get().(*TransferOutput).GetRealityId()
+	}
+
+	return ledgerState.MergeRealities(realityIds...)
+}
+
+func (ledgerState *LedgerState) getTransferInputs(transfer *Transfer) []*objectstorage.CachedObject {
+	inputs := transfer.GetInputs()
+	result := make([]*objectstorage.CachedObject, len(inputs))
+
+	for i, transferOutputReference := range inputs {
+		result[i] = ledgerState.GetTransferOutput(transferOutputReference)
+	}
+
+	return result
 }
 
 func transferOutputFactory(key []byte) objectstorage.StorableObject {

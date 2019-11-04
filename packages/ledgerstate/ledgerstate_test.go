@@ -40,27 +40,11 @@ func Test(t *testing.T) {
 
 	ledgerState.BookTransfer(transfer)
 
-	ledgerState.GetReality(pendingReality).Consume(func(object objectstorage.StorableObject) {
-		reality := object.(*Reality)
+	ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
+		object.Consume(func(object objectstorage.StorableObject) {
+			fmt.Println(object.(*TransferOutput))
+		})
 
-		if err := reality.BookTransfer(transfer); err != nil {
-			t.Error(err)
-		}
-
-		ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
-			object.Consume(func(object objectstorage.StorableObject) {
-				fmt.Println(object.(*TransferOutput))
-			})
-
-			return true
-		}, pendingReality, addressHash3, UNSPENT)
-
-		ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
-			object.Consume(func(object objectstorage.StorableObject) {
-				fmt.Println(object.(*TransferOutput))
-			})
-
-			return true
-		}, transferHash2, addressHash4)
-	})
+		return true
+	}, MAIN_REALITY_ID)
 }
