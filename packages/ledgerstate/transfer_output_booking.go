@@ -23,10 +23,8 @@ func newTransferOutputBooking(realityId RealityId, addressHash AddressHash, spen
 		spent:        spent,
 		transferHash: transferHash,
 
-		storageKey: make([]byte, realityIdLength+addressHashLength+1+transferHashLength),
+		storageKey: generateTransferOutputBookingStorageKey(realityId, addressHash, spent, transferHash),
 	}
-
-	result.buildId()
 
 	return
 }
@@ -103,15 +101,19 @@ func (booking *TransferOutputBooking) UnmarshalBinary(data []byte) error {
 
 // region private utility methods //////////////////////////////////////////////////////////////////////////////////////
 
-func (booking *TransferOutputBooking) buildId() {
-	copy(booking.storageKey[marshalTransferOutputBookingRealityIdStart:marshalTransferOutputBookingRealityIdEnd], booking.realityId[:realityIdLength])
-	copy(booking.storageKey[marshalTransferOutputBookingAddressHashStart:marshalTransferOutputBookingAddressHashEnd], booking.addressHash[:addressHashLength])
-	if booking.spent {
-		booking.storageKey[marshalTransferOutputBookingSpentStart] = byte(SPENT)
+func generateTransferOutputBookingStorageKey(realityId RealityId, addressHash AddressHash, spent bool, transferHash TransferHash) (storageKey []byte) {
+	storageKey = make([]byte, realityIdLength+addressHashLength+1+transferHashLength)
+
+	copy(storageKey[marshalTransferOutputBookingRealityIdStart:marshalTransferOutputBookingRealityIdEnd], realityId[:realityIdLength])
+	copy(storageKey[marshalTransferOutputBookingAddressHashStart:marshalTransferOutputBookingAddressHashEnd], addressHash[:addressHashLength])
+	if spent {
+		storageKey[marshalTransferOutputBookingSpentStart] = byte(SPENT)
 	} else {
-		booking.storageKey[marshalTransferOutputBookingSpentStart] = byte(UNSPENT)
+		storageKey[marshalTransferOutputBookingSpentStart] = byte(UNSPENT)
 	}
-	copy(booking.storageKey[marshalTransferOutputBookingTransferHashStart:marshalTransferOutputBookingTransferHashEnd], booking.transferHash[:transferHashLength])
+	copy(storageKey[marshalTransferOutputBookingTransferHashStart:marshalTransferOutputBookingTransferHashEnd], transferHash[:transferHashLength])
+
+	return
 }
 
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////

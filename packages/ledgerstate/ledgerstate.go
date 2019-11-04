@@ -35,6 +35,7 @@ func NewLedgerState(storageId string) *LedgerState {
 
 func (ledgerState *LedgerState) AddTransferOutput(transferHash TransferHash, addressHash AddressHash, balances ...*ColoredBalance) *LedgerState {
 	ledgerState.storeTransferOutput(NewTransferOutput(ledgerState, MAIN_REALITY_ID, transferHash, addressHash, balances...)).Release()
+	ledgerState.storeTransferOutputBooking(newTransferOutputBooking(MAIN_REALITY_ID, addressHash, false, transferHash)).Release()
 
 	return ledgerState
 }
@@ -102,9 +103,15 @@ func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) {
 	transferHash := transfer.GetHash()
 	inputs := ledgerState.getTransferInputs(transfer)
 	outputs := transfer.GetOutputs()
+
 	targetReality := ledgerState.getTargetReality(inputs)
 
+	for _, x := range inputs {
+		x.Get().(*TransferOutput).addConsumer(transferHash)
+	}
+	// mark inputs as consumed / changed spent/unspent booking
 	targetReality.Get().(*Reality).bookTransferOutputs(transferHash, outputs)
+
 	fmt.Println("BOOK TO: ", targetReality.Get())
 }
 
@@ -290,6 +297,10 @@ func (ledgerState *LedgerState) storeTransferOutput(transferOutput *TransferOutp
 
 func (ledgerState *LedgerState) storeTransferOutputBooking(transferOutputBooking *TransferOutputBooking) *objectstorage.CachedObject {
 	return ledgerState.transferOutputBookings.Store(transferOutputBooking)
+}
+
+func (ledgerState *LedgerState) getTransferOutputBooking(key []byte) (*objectstorage.CachedObject, error) {
+	return ledgerState.transferOutputBookings.Load(key)
 }
 
 func (ledgerState *LedgerState) sortRealityIds(aggregatedRealities map[RealityId]*objectstorage.CachedObject) []RealityId {

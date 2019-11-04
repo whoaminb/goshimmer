@@ -12,6 +12,7 @@ var (
 	eth                = NewColor("ETH")
 	transferHash1      = NewTransferHash("TRANSFER1")
 	transferHash2      = NewTransferHash("TRANSFER2")
+	transferHash3      = NewTransferHash("TRANSFER3")
 	addressHash1       = NewAddressHash("ADDRESS1")
 	addressHash3       = NewAddressHash("ADDRESS3")
 	addressHash4       = NewAddressHash("ADDRESS4")
@@ -39,6 +40,17 @@ func Test(t *testing.T) {
 	)
 
 	ledgerState.BookTransfer(transfer)
+	ledgerState.BookTransfer(NewTransfer(transferHash3).AddInput(
+		NewTransferOutputReference(transferHash1, addressHash1),
+	).AddOutput(
+		addressHash3, NewColoredBalance(iota, 338),
+	).AddOutput(
+		addressHash3, NewColoredBalance(eth, 337),
+	).AddOutput(
+		addressHash4, NewColoredBalance(iota, 1000),
+	).AddOutput(
+		addressHash4, NewColoredBalance(eth, 1000),
+	))
 
 	ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
 		object.Consume(func(object objectstorage.StorableObject) {

@@ -59,8 +59,10 @@ func (cachedObject *CachedObject) Consume(consumer func(object StorableObject)) 
 	cachedObject.Release()
 }
 
-func (cachedObject *CachedObject) Delete() {
+func (cachedObject *CachedObject) Delete() *CachedObject {
 	cachedObject.setDeleted(true)
+
+	return cachedObject
 }
 
 func (cachedObject *CachedObject) Persist() {
