@@ -2,6 +2,7 @@ package ledgerstate
 
 import (
 	"encoding/binary"
+	"fmt"
 
 	"github.com/iotaledger/goshimmer/packages/errors"
 
@@ -114,16 +115,27 @@ func (reality *Reality) checkTransferBalances(inputs []*objectstorage.CachedObje
 }
 
 func (reality *Reality) BookTransfer(transfer *Transfer) error {
-	transferHash := transfer.GetHash()
-	inputs := reality.ledgerState.getTransferInputs(transfer)
-	outputs := transfer.GetOutputs()
+	return reality.bookTransfer(transfer.GetHash(), reality.ledgerState.getTransferInputs(transfer), transfer.GetOutputs())
+}
 
+func (reality *Reality) bookTransfer(transferHash TransferHash, inputs []*objectstorage.CachedObject, outputs map[AddressHash][]*ColoredBalance) error {
 	if err := reality.checkTransferBalances(inputs, outputs); err != nil {
 		return err
 	}
 
-	// process outputs
+	// 1. determine target reality
+	// 2. check if transfer is valid within target reality
+	// 3. book new transfer outputs into target reality
+	// 4. mark inputs as spent / trigger double spend detection
+	// 5. release objects
+
+	// register consumer
+	for _, x := range inputs {
+		x.Get().(*TransferOutput).addConsumer(transferHash)
+	}
 	reality.bookTransferOutputs(transferHash, outputs)
+
+	fmt.Println("BOOK TO: ", reality)
 
 	return nil
 }

@@ -1,7 +1,6 @@
 package ledgerstate
 
 import (
-	"fmt"
 	"reflect"
 	"sort"
 
@@ -100,19 +99,13 @@ func (ledgerState *LedgerState) GetReality(id RealityId) *objectstorage.CachedOb
 }
 
 func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) {
-	transferHash := transfer.GetHash()
 	inputs := ledgerState.getTransferInputs(transfer)
-	outputs := transfer.GetOutputs()
 
 	targetReality := ledgerState.getTargetReality(inputs)
+	targetReality.Get().(*Reality).bookTransfer(transfer.GetHash(), inputs, transfer.GetOutputs())
+	targetReality.Persist()
+	targetReality.Release()
 
-	for _, x := range inputs {
-		x.Get().(*TransferOutput).addConsumer(transferHash)
-	}
-	// mark inputs as consumed / changed spent/unspent booking
-	targetReality.Get().(*Reality).bookTransferOutputs(transferHash, outputs)
-
-	fmt.Println("BOOK TO: ", targetReality.Get())
 }
 
 func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *objectstorage.CachedObject {

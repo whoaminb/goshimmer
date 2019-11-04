@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"sync"
 
+	"github.com/iotaledger/goshimmer/packages/errors"
+
 	"github.com/iotaledger/goshimmer/packages/objectstorage"
 	"github.com/iotaledger/goshimmer/packages/stringify"
 )
@@ -53,26 +55,27 @@ func (transferOutput *TransferOutput) GetBalances() []*ColoredBalance {
 	return transferOutput.balances
 }
 
-func (transferOutput *TransferOutput) addConsumer(consumer TransferHash) bool {
+func (transferOutput *TransferOutput) addConsumer(consumer TransferHash) error {
 	transferOutput.consumersMutex.RLock()
 	if _, exist := transferOutput.consumers[consumer]; exist {
 		transferOutput.consumersMutex.RUnlock()
-
-		return false
 	} else {
 		transferOutput.consumersMutex.RUnlock()
 
 		transferOutput.consumersMutex.Lock()
 		if len(transferOutput.consumers) == 0 {
-			transferOutput.markAsSpent()
+			if err := transferOutput.markAsSpent(); err != nil {
+				return err
+			}
 		} else {
 			panic("DOUBLE SPEND DETECTED")
 		}
+
 		transferOutput.consumers[consumer] = void
 		transferOutput.consumersMutex.Unlock()
-
-		return true
 	}
+
+	return nil
 }
 
 func (transferOutput *TransferOutput) getConsumers() (consumers map[TransferHash]empty) {
@@ -83,13 +86,13 @@ func (transferOutput *TransferOutput) getConsumers() (consumers map[TransferHash
 	return
 }
 
-func (transferOutput *TransferOutput) markAsSpent() {
+func (transferOutput *TransferOutput) markAsSpent() error {
 	currentBookingKey := generateTransferOutputBookingStorageKey(transferOutput.realityId, transferOutput.addressHash, false, transferOutput.transferHash)
 
 	if cachedTransferOutputBooking, err := transferOutput.ledgerState.transferOutputBookings.Load(currentBookingKey); err != nil {
-		panic(err)
+		return err
 	} else if !cachedTransferOutputBooking.Exists() {
-		panic("could not find TransferOutputBooking")
+		return errors.New("could not find TransferOutputBooking")
 	} else {
 		transferOutputBooking := cachedTransferOutputBooking.Get().(*TransferOutputBooking)
 		transferOutput.ledgerState.storeTransferOutputBooking(newTransferOutputBooking(transferOutputBooking.GetRealityId(), transferOutputBooking.GetAddressHash(), true, transferOutputBooking.GetTransferHash())).Release()
@@ -97,6 +100,8 @@ func (transferOutput *TransferOutput) markAsSpent() {
 		cachedTransferOutputBooking.Delete()
 		cachedTransferOutputBooking.Release()
 	}
+
+	return nil
 }
 
 func (transferOutput *TransferOutput) String() string {
