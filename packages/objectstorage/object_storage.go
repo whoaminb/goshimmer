@@ -55,6 +55,8 @@ func (objectStorage *ObjectStorage) Delete(key []byte) {
 	})
 }
 
+// Foreach can only iterate over persisted entries, so there might be a slight delay before you can find previously
+// stored items in such an iteration.
 func (objectStorage *ObjectStorage) ForEach(consumer func(key []byte, cachedObject *CachedObject) bool, optionalPrefixes ...[]byte) error {
 	return objectStorage.badgerInstance.View(func(txn *badger.Txn) error {
 		iteratorOptions := badger.DefaultIteratorOptions

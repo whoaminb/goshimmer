@@ -68,7 +68,7 @@ func (transferOutput *TransferOutput) addConsumer(consumer TransferHash) error {
 				return err
 			}
 		} else {
-			panic("DOUBLE SPEND DETECTED")
+			//return errors.New("DOUBLE SPEND DETECTED")
 		}
 
 		transferOutput.consumers[consumer] = void

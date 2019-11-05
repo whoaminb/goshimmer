@@ -50,7 +50,7 @@ func (cachedObject *CachedObject) Release() {
 		} else {
 			batchWrite(cachedObject)
 		}
-	} else if consumers > 0 {
+	} else if consumers < 0 {
 		panic("called Release() too often")
 	}
 }

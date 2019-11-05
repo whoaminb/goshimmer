@@ -294,10 +294,6 @@ func (ledgerState *LedgerState) storeTransferOutputBooking(transferOutputBooking
 	return ledgerState.transferOutputBookings.Store(transferOutputBooking)
 }
 
-func (ledgerState *LedgerState) getTransferOutputBooking(key []byte) (*objectstorage.CachedObject, error) {
-	return ledgerState.transferOutputBookings.Load(key)
-}
-
 func (ledgerState *LedgerState) sortRealityIds(aggregatedRealities map[RealityId]*objectstorage.CachedObject) []RealityId {
 	counter := 0
 	sortedRealityIds := make([]RealityId, len(aggregatedRealities))

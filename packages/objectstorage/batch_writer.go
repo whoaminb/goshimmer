@@ -103,7 +103,7 @@ func runBatchWriter() {
 			}
 		}
 
-		if err := wb.Flush(); err != nil {
+		if err := wb.Flush(); err != nil && err != badger.ErrBlockedWrites {
 			panic(err)
 		}
 
