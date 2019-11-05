@@ -20,6 +20,28 @@ var (
 	conflictingReality = NewRealityId("CONFLICTING")
 )
 
+func Benchmark(b *testing.B) {
+	ledgerState := NewLedgerState("testLedger").Prune().AddTransferOutput(
+		transferHash1, addressHash1, NewColoredBalance(eth, 1337), NewColoredBalance(iota, 1338),
+	)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		ledgerState.BookTransfer(NewTransfer(transferHash2).AddInput(
+			NewTransferOutputReference(transferHash1, addressHash1),
+		).AddOutput(
+			addressHash3, NewColoredBalance(iota, 338),
+		).AddOutput(
+			addressHash3, NewColoredBalance(eth, 337),
+		).AddOutput(
+			addressHash4, NewColoredBalance(iota, 1000),
+		).AddOutput(
+			addressHash4, NewColoredBalance(eth, 1000),
+		))
+	}
+}
+
 func Test(t *testing.T) {
 	ledgerState := NewLedgerState("testLedger").Prune().AddTransferOutput(
 		transferHash1, addressHash1, NewColoredBalance(eth, 1337), NewColoredBalance(iota, 1338),

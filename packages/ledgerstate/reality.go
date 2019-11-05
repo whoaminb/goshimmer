@@ -2,7 +2,6 @@ package ledgerstate
 
 import (
 	"encoding/binary"
-	"fmt"
 
 	"github.com/iotaledger/goshimmer/packages/errors"
 
@@ -89,7 +88,12 @@ func (reality *Reality) checkTransferBalances(inputs []*objectstorage.CachedObje
 			return errors.New("missing input in transfer")
 		}
 
-		for _, balance := range cachedInput.Get().(*TransferOutput).GetBalances() {
+		transferOutput := cachedInput.Get().(*TransferOutput)
+		if !reality.DescendsFromReality(transferOutput.GetRealityId()) {
+			return errors.New("the referenced funds do not exist in this reality")
+		}
+
+		for _, balance := range transferOutput.GetBalances() {
 			totalColoredBalances[balance.GetColor()] += balance.GetValue()
 		}
 	}
@@ -119,23 +123,20 @@ func (reality *Reality) BookTransfer(transfer *Transfer) error {
 }
 
 func (reality *Reality) bookTransfer(transferHash TransferHash, inputs []*objectstorage.CachedObject, outputs map[AddressHash][]*ColoredBalance) error {
+	// check if transfer is valid within this reality
 	if err := reality.checkTransferBalances(inputs, outputs); err != nil {
 		return err
 	}
 
-	// 1. determine target reality
-	// 2. check if transfer is valid within target reality
-	// 3. book new transfer outputs into target reality
-	// 4. mark inputs as spent / trigger double spend detection
-	// 5. release objects
+	// book new transfer outputs into target reality
+	reality.bookTransferOutputs(transferHash, outputs)
 
-	// register consumer
+	// mark inputs as spent / trigger double spend detection
 	for _, x := range inputs {
 		x.Get().(*TransferOutput).addConsumer(transferHash)
 	}
-	reality.bookTransferOutputs(transferHash, outputs)
 
-	fmt.Println("BOOK TO: ", reality)
+	// 5. release objects
 
 	return nil
 }

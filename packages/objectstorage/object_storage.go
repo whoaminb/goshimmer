@@ -26,38 +26,21 @@ func New(storageId string, objectFactory StorableObjectFactory, optionalOptions 
 }
 
 func (objectStorage *ObjectStorage) Prepare(object StorableObject) *CachedObject {
-	return objectStorage.accessCache(object.GetStorageKey(), func(cachedObject *CachedObject) {
-		if !cachedObject.publishResult(object, nil) {
-			if currentValue := cachedObject.Get(); currentValue != nil {
-				currentValue.Update(object)
-			} else {
-				cachedObject.updateValue(object)
-			}
-		}
-	}, func(cachedObject *CachedObject) {
-		cachedObject.persist = 0
-		cachedObject.publishResult(object, nil)
-	})
+	return objectStorage.storeObjectInCache(object, false)
 }
 
 func (objectStorage *ObjectStorage) Store(object StorableObject) *CachedObject {
-	return objectStorage.accessCache(object.GetStorageKey(), func(cachedObject *CachedObject) {
-		if !cachedObject.publishResult(object, nil) {
-			if currentValue := cachedObject.Get(); currentValue != nil {
-				currentValue.Update(object)
-			} else {
-				cachedObject.updateValue(object)
-			}
-		}
-	}, func(cachedObject *CachedObject) {
-		cachedObject.persist = 1
-		cachedObject.publishResult(object, nil)
-	})
+	return objectStorage.storeObjectInCache(object, true)
 }
 
 func (objectStorage *ObjectStorage) Load(key []byte) (*CachedObject, error) {
 	return objectStorage.accessCache(key, nil, func(cachedObject *CachedObject) {
-		cachedObject.publishResult(objectStorage.loadObjectFromBadger(key))
+		loadedObject, err := objectStorage.loadObjectFromBadger(key)
+		if loadedObject != nil {
+			cachedObject.stored = 1
+		}
+
+		cachedObject.publishResult(loadedObject, err)
 	}).waitForResult()
 }
 
@@ -158,21 +141,21 @@ func (objectStorage *ObjectStorage) accessCache(key []byte, onCacheHit func(*Cac
 	return cachedObject
 }
 
-func (objectStorage *ObjectStorage) persistObjectToBadger(key []byte, value StorableObject) error {
-	if value != nil {
-		return objectStorage.badgerInstance.Update(func(txn *badger.Txn) error {
-			marshaledObject, _ := value.MarshalBinary()
+func (objectStorage *ObjectStorage) storeObjectInCache(object StorableObject, persist bool) *CachedObject {
+	return objectStorage.accessCache(object.GetStorageKey(), func(cachedObject *CachedObject) {
+		if !cachedObject.publishResult(object, nil) {
+			if currentValue := cachedObject.Get(); currentValue != nil {
+				currentValue.Update(object)
+			} else {
+				cachedObject.updateValue(object)
+			}
+		}
+	}, func(cachedObject *CachedObject) {
+		if persist {
+			cachedObject.store = 1
+		}
 
-			return txn.Set(objectStorage.generatePrefix([][]byte{key}), marshaledObject)
-		})
-	}
-
-	return nil
-}
-
-func (objectStorage *ObjectStorage) deleteObjectFromBadger(key []byte) error {
-	return objectStorage.badgerInstance.Update(func(txn *badger.Txn) error {
-		return txn.Delete(objectStorage.generatePrefix([][]byte{key}))
+		cachedObject.publishResult(object, nil)
 	})
 }
 

@@ -12,9 +12,9 @@ type CachedObject struct {
 	err           error
 	consumers     int32
 	published     int32
-	persist       int32
-	persisted     int32
-	deleted       int32
+	store         int32
+	stored        int32
+	delete        int32
 	wg            sync.WaitGroup
 	valueMutex    sync.RWMutex
 }
@@ -29,8 +29,9 @@ func newCachedObject(database *ObjectStorage) (result *CachedObject) {
 	return
 }
 
+// Retrieves the StorableObject, that is cached in this container.
 func (cachedObject *CachedObject) Get() (result StorableObject) {
-	if !cachedObject.isDeleted() {
+	if !cachedObject.IsDeleted() {
 		cachedObject.valueMutex.RLock()
 		result = cachedObject.value
 		cachedObject.valueMutex.RUnlock()
@@ -39,18 +40,24 @@ func (cachedObject *CachedObject) Get() (result StorableObject) {
 	return
 }
 
+// Releases the object, to be picked up by the persistence layer (as soon as all consumers are done).
 func (cachedObject *CachedObject) Release() {
 	if consumers := atomic.AddInt32(&(cachedObject.consumers), -1); consumers == 0 {
 		if cachedObject.objectStorage.options.cacheTime != 0 {
-			time.AfterFunc(cachedObject.objectStorage.options.cacheTime, cachedObject.release)
+			time.AfterFunc(cachedObject.objectStorage.options.cacheTime, func() {
+				batchWrite(cachedObject)
+			})
 		} else {
-			cachedObject.release()
+			batchWrite(cachedObject)
 		}
+	} else if consumers > 0 {
+		panic("called Release() too often")
 	}
 }
 
+// Directly consumes the StorableObject. This method automatically Release()s the object when the callback is done.
 func (cachedObject *CachedObject) Consume(consumer func(object StorableObject)) {
-	if cachedObject.isDeleted() {
+	if cachedObject.IsDeleted() {
 		consumer(nil)
 	} else if cachedObject.Exists() {
 		consumer(cachedObject.Get())
@@ -59,56 +66,38 @@ func (cachedObject *CachedObject) Consume(consumer func(object StorableObject)) 
 	cachedObject.Release()
 }
 
+// Marks an object for deletion in the persistence layer.
 func (cachedObject *CachedObject) Delete() *CachedObject {
-	cachedObject.setDeleted(true)
+	atomic.StoreInt32(&(cachedObject.store), 0)
+	atomic.StoreInt32(&(cachedObject.stored), 0)
+	atomic.StoreInt32(&(cachedObject.delete), 1)
 
 	return cachedObject
 }
 
-func (cachedObject *CachedObject) Persist() {
-	atomic.StoreInt32(&(cachedObject.persist), 1)
+// Returns true if this object is supposed to be deleted from the in the persistence layer (Delete() was called).
+func (cachedObject *CachedObject) IsDeleted() bool {
+	return atomic.LoadInt32(&(cachedObject.delete)) == 1
 }
 
+// Marks an object for being stored in the persistence layer.
+func (cachedObject *CachedObject) Store() {
+	atomic.StoreInt32(&(cachedObject.delete), 0)
+	atomic.StoreInt32(&(cachedObject.store), 1)
+}
+
+// Returns true if the object is either persisted already or is supposed to be persisted (Store() was called).
+func (cachedObject *CachedObject) IsStored() bool {
+	return atomic.LoadInt32(&(cachedObject.stored)) == 1 || atomic.LoadInt32(&(cachedObject.store)) == 1
+}
+
+// Registers a new consumer for this cached object.
 func (cachedObject *CachedObject) RegisterConsumer() {
 	atomic.AddInt32(&(cachedObject.consumers), 1)
 }
 
 func (cachedObject *CachedObject) Exists() bool {
 	return cachedObject.Get() != nil
-}
-
-func (cachedObject *CachedObject) setDeleted(deleted bool) {
-	if deleted {
-		atomic.StoreInt32(&(cachedObject.deleted), 1)
-	} else {
-		atomic.StoreInt32(&(cachedObject.deleted), 0)
-	}
-}
-
-func (cachedObject *CachedObject) isDeleted() bool {
-	return atomic.LoadInt32(&(cachedObject.deleted)) == 1
-}
-
-func (cachedObject *CachedObject) release() {
-	cachedObject.objectStorage.cacheMutex.Lock()
-	if consumers := atomic.LoadInt32(&(cachedObject.consumers)); consumers == 0 && atomic.AddInt32(&(cachedObject.persisted), 1) == 1 {
-		if cachedObject.value != nil {
-			if cachedObject.isDeleted() {
-				if err := cachedObject.objectStorage.deleteObjectFromBadger(cachedObject.value.GetStorageKey()); err != nil {
-					panic(err)
-				}
-			} else if atomic.LoadInt32(&(cachedObject.persist)) == 1 {
-				if err := cachedObject.objectStorage.persistObjectToBadger(cachedObject.value.GetStorageKey(), cachedObject.value); err != nil {
-					panic(err)
-				}
-			}
-
-			delete(cachedObject.objectStorage.cachedObjects, string(cachedObject.value.GetStorageKey()))
-		}
-	} else if consumers < 0 {
-		panic("too many unregistered consumers of cached object")
-	}
-	cachedObject.objectStorage.cacheMutex.Unlock()
 }
 
 func (cachedObject *CachedObject) updateValue(value StorableObject) {

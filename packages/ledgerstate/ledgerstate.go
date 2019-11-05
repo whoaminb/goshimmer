@@ -103,7 +103,9 @@ func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) {
 
 	targetReality := ledgerState.getTargetReality(inputs)
 	targetReality.Get().(*Reality).bookTransfer(transfer.GetHash(), inputs, transfer.GetOutputs())
-	targetReality.Persist()
+	if !targetReality.IsStored() {
+		targetReality.Store()
+	}
 	targetReality.Release()
 
 }

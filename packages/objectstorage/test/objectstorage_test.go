@@ -15,12 +15,17 @@ func testObjectFactory(key []byte) objectstorage.StorableObject { return &TestOb
 func BenchmarkStore(b *testing.B) {
 	// create our storage
 	objects := objectstorage.New("TestObjectStorage", testObjectFactory)
+	if err := objects.Prune(); err != nil {
+		b.Error(err)
+	}
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		objects.Store(NewTestObject("Hans"+strconv.Itoa(i), uint32(i))).Release()
 	}
+
+	objectstorage.StopBatchWriter()
 }
 
 func BenchmarkLoad(b *testing.B) {
