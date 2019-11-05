@@ -55,7 +55,7 @@ func (transferOutput *TransferOutput) GetBalances() []*ColoredBalance {
 	return transferOutput.balances
 }
 
-func (transferOutput *TransferOutput) addConsumer(consumer TransferHash) error {
+func (transferOutput *TransferOutput) addConsumer(consumer TransferHash) (conflicting bool, err error) {
 	transferOutput.consumersMutex.RLock()
 	if _, exist := transferOutput.consumers[consumer]; exist {
 		transferOutput.consumersMutex.RUnlock()
@@ -63,19 +63,17 @@ func (transferOutput *TransferOutput) addConsumer(consumer TransferHash) error {
 		transferOutput.consumersMutex.RUnlock()
 
 		transferOutput.consumersMutex.Lock()
-		if len(transferOutput.consumers) == 0 {
-			if err := transferOutput.markAsSpent(); err != nil {
-				return err
+		if conflicting = len(transferOutput.consumers) != 0; !conflicting {
+			if markAsSpentErr := transferOutput.markAsSpent(); markAsSpentErr != nil {
+				err = markAsSpentErr
 			}
-		} else {
-			//return errors.New("DOUBLE SPEND DETECTED")
 		}
 
 		transferOutput.consumers[consumer] = void
 		transferOutput.consumersMutex.Unlock()
 	}
 
-	return nil
+	return
 }
 
 func (transferOutput *TransferOutput) getConsumers() (consumers map[TransferHash]empty) {

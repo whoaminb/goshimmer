@@ -2,6 +2,7 @@ package ledgerstate
 
 import (
 	"encoding/binary"
+	"fmt"
 
 	"github.com/iotaledger/goshimmer/packages/errors"
 
@@ -118,6 +119,13 @@ func (reality *Reality) checkTransferBalances(inputs []*objectstorage.CachedObje
 	return nil
 }
 
+func (reality *Reality) CreateReality(id RealityId) *objectstorage.CachedObject {
+	newReality := newReality(id, reality.id)
+	newReality.ledgerState = reality.ledgerState
+
+	return reality.ledgerState.realities.Store(newReality)
+}
+
 func (reality *Reality) BookTransfer(transfer *Transfer) error {
 	return reality.bookTransfer(transfer.GetHash(), reality.ledgerState.getTransferInputs(transfer), transfer.GetOutputs())
 }
@@ -128,12 +136,32 @@ func (reality *Reality) bookTransfer(transferHash TransferHash, inputs []*object
 		return err
 	}
 
-	// book new transfer outputs into target reality
-	reality.bookTransferOutputs(transferHash, outputs)
-
 	// mark inputs as spent / trigger double spend detection
-	for _, x := range inputs {
-		x.Get().(*TransferOutput).addConsumer(transferHash)
+	conflicting := false
+	for _, input := range inputs {
+		consumedTransferOutput := input.Get().(*TransferOutput)
+
+		inputConflicting, err := consumedTransferOutput.addConsumer(transferHash)
+		if err != nil {
+			return err
+		}
+
+		conflicting = conflicting || inputConflicting
+	}
+
+	if conflicting {
+		fmt.Println("CONFLICT DETECTED")
+		var targetRealityId RealityId
+
+		copy(targetRealityId[:], transferHash[:])
+
+		cachedTargetReality := reality.CreateReality(targetRealityId)
+		cachedTargetReality.Store()
+		cachedTargetReality.Get().(*Reality).bookTransferOutputs(transferHash, outputs)
+		cachedTargetReality.Release()
+	} else {
+		// book new transfer outputs into target reality
+		reality.bookTransferOutputs(transferHash, outputs)
 	}
 
 	// 5. release objects

@@ -67,10 +67,18 @@ func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *obje
 			}
 		}
 	} else {
-		for _, prefix := range prefixes {
+		if len(prefixes) >= 1 {
+			for _, prefix := range prefixes {
+				if err := ledgerState.transferOutputs.ForEach(func(key []byte, cachedObject *objectstorage.CachedObject) bool {
+					return callback(cachedObject)
+				}, prefix); err != nil {
+					panic(err)
+				}
+			}
+		} else {
 			if err := ledgerState.transferOutputs.ForEach(func(key []byte, cachedObject *objectstorage.CachedObject) bool {
 				return callback(cachedObject)
-			}, prefix); err != nil {
+			}); err != nil {
 				panic(err)
 			}
 		}
@@ -98,16 +106,21 @@ func (ledgerState *LedgerState) GetReality(id RealityId) *objectstorage.CachedOb
 	}
 }
 
-func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) {
+func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) error {
 	inputs := ledgerState.getTransferInputs(transfer)
 
 	targetReality := ledgerState.getTargetReality(inputs)
-	targetReality.Get().(*Reality).bookTransfer(transfer.GetHash(), inputs, transfer.GetOutputs())
+	defer targetReality.Release()
+
+	if bookingErr := targetReality.Get().(*Reality).bookTransfer(transfer.GetHash(), inputs, transfer.GetOutputs()); bookingErr != nil {
+		return bookingErr
+	}
+
 	if !targetReality.IsStored() {
 		targetReality.Store()
 	}
-	targetReality.Release()
 
+	return nil
 }
 
 func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *objectstorage.CachedObject {

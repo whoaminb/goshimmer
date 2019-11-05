@@ -78,5 +78,5 @@ func Test(t *testing.T) {
 		})
 
 		return true
-	}, MAIN_REALITY_ID, addressHash1)
+	})
 }
