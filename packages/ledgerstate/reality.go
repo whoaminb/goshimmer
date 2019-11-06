@@ -130,37 +130,48 @@ func (reality *Reality) BookTransfer(transfer *Transfer) error {
 	return reality.bookTransfer(transfer.GetHash(), reality.ledgerState.getTransferInputs(transfer), transfer.GetOutputs())
 }
 
-func (reality *Reality) bookTransfer(transferHash TransferHash, inputs []*objectstorage.CachedObject, outputs map[AddressHash][]*ColoredBalance) error {
-	// check if transfer is valid within this reality
-	if err := reality.checkTransferBalances(inputs, outputs); err != nil {
-		return err
-	}
-
-	// mark inputs as spent / trigger double spend detection
-	conflicting := false
+func (reality *Reality) consumeInputs(inputs []*objectstorage.CachedObject, transferHash TransferHash, outputs map[AddressHash][]*ColoredBalance) (conflicting bool, err error) {
 	for _, input := range inputs {
 		consumedTransferOutput := input.Get().(*TransferOutput)
 
-		inputConflicting, err := consumedTransferOutput.addConsumer(transferHash)
-		if err != nil {
-			return err
+		inputConflicting, consumersToElevate, consumeErr := consumedTransferOutput.addConsumer(transferHash, outputs)
+		if consumeErr != nil {
+			err = consumeErr
+
+			return
+		}
+
+		if inputConflicting {
+			for transferHash, consumerToElevate := range consumersToElevate {
+				// elevate previous liked transactions
+				fmt.Println(transferHash, consumerToElevate)
+			}
 		}
 
 		conflicting = conflicting || inputConflicting
 	}
 
-	if conflicting {
-		fmt.Println("CONFLICT DETECTED")
-		var targetRealityId RealityId
+	return
+}
 
+func (reality *Reality) bookTransfer(transferHash TransferHash, inputs []*objectstorage.CachedObject, outputs map[AddressHash][]*ColoredBalance) error {
+	if err := reality.checkTransferBalances(inputs, outputs); err != nil {
+		return err
+	}
+
+	conflicting, err := reality.consumeInputs(inputs, transferHash, outputs)
+	if err != nil {
+		return err
+	}
+
+	if conflicting {
+		var targetRealityId RealityId
 		copy(targetRealityId[:], transferHash[:])
 
 		cachedTargetReality := reality.CreateReality(targetRealityId)
-		cachedTargetReality.Store()
 		cachedTargetReality.Get().(*Reality).bookTransferOutputs(transferHash, outputs)
 		cachedTargetReality.Release()
 	} else {
-		// book new transfer outputs into target reality
 		reality.bookTransferOutputs(transferHash, outputs)
 	}
 

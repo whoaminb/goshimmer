@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"sync"
 
-	"github.com/iotaledger/goshimmer/packages/errors"
-
 	"github.com/iotaledger/goshimmer/packages/objectstorage"
 	"github.com/iotaledger/goshimmer/packages/stringify"
 )
@@ -15,13 +13,14 @@ type TransferOutput struct {
 	addressHash  AddressHash
 	balances     []*ColoredBalance
 	realityId    RealityId
-	consumers    map[TransferHash]empty
+	consumers    map[TransferHash][]AddressHash
 
 	storageKey  []byte
 	ledgerState *LedgerState
 
 	realityIdMutex sync.RWMutex
 	consumersMutex sync.RWMutex
+	bookingMutex   sync.Mutex
 }
 
 func NewTransferOutput(ledgerState *LedgerState, realityId RealityId, transferHash TransferHash, addressHash AddressHash, balances ...*ColoredBalance) *TransferOutput {
@@ -30,11 +29,17 @@ func NewTransferOutput(ledgerState *LedgerState, realityId RealityId, transferHa
 		addressHash:  addressHash,
 		balances:     balances,
 		realityId:    realityId,
-		consumers:    make(map[TransferHash]empty),
+		consumers:    make(map[TransferHash][]AddressHash),
 
 		storageKey:  append(transferHash[:], addressHash[:]...),
 		ledgerState: ledgerState,
 	}
+}
+
+func (transferOutput *TransferOutput) GetTransferHash() (transferHash TransferHash) {
+	transferHash = transferOutput.transferHash
+
+	return
 }
 
 func (transferOutput *TransferOutput) GetRealityId() (realityId RealityId) {
@@ -43,6 +48,10 @@ func (transferOutput *TransferOutput) GetRealityId() (realityId RealityId) {
 	transferOutput.realityIdMutex.RUnlock()
 
 	return
+}
+
+func (transferOutput *TransferOutput) GetAddressHash() (addressHash AddressHash) {
+	return transferOutput.addressHash
 }
 
 func (transferOutput *TransferOutput) SetRealityId(realityId RealityId) {
@@ -55,7 +64,7 @@ func (transferOutput *TransferOutput) GetBalances() []*ColoredBalance {
 	return transferOutput.balances
 }
 
-func (transferOutput *TransferOutput) addConsumer(consumer TransferHash) (conflicting bool, err error) {
+func (transferOutput *TransferOutput) addConsumer(consumer TransferHash, outputs map[AddressHash][]*ColoredBalance) (isConflicting bool, consumersToElevate map[TransferHash][]AddressHash, err error) {
 	transferOutput.consumersMutex.RLock()
 	if _, exist := transferOutput.consumers[consumer]; exist {
 		transferOutput.consumersMutex.RUnlock()
@@ -63,41 +72,72 @@ func (transferOutput *TransferOutput) addConsumer(consumer TransferHash) (confli
 		transferOutput.consumersMutex.RUnlock()
 
 		transferOutput.consumersMutex.Lock()
-		if conflicting = len(transferOutput.consumers) != 0; !conflicting {
-			if markAsSpentErr := transferOutput.markAsSpent(); markAsSpentErr != nil {
-				err = markAsSpentErr
+		switch len(transferOutput.consumers) {
+		case 0:
+			isConflicting = false
+			consumersToElevate = nil
+			err = transferOutput.markAsSpent()
+		case 1:
+			isConflicting = true
+			consumersToElevate = make(map[TransferHash][]AddressHash, 1)
+			for transferHash, addresses := range transferOutput.consumers {
+				consumersToElevate[transferHash] = addresses
 			}
+			err = nil
+		default:
+			isConflicting = true
+			consumersToElevate = nil
+			err = nil
+		}
+		consumers := make([]AddressHash, len(outputs))
+		i := 0
+		for addressHash, _ := range outputs {
+			consumers[i] = addressHash
+
+			i++
 		}
 
-		transferOutput.consumers[consumer] = void
+		transferOutput.consumers[consumer] = consumers
 		transferOutput.consumersMutex.Unlock()
 	}
 
 	return
 }
 
-func (transferOutput *TransferOutput) getConsumers() (consumers map[TransferHash]empty) {
-	transferOutput.consumersMutex.RLock()
-	consumers = transferOutput.consumers
-	transferOutput.consumersMutex.RUnlock()
+func (transferOutput *TransferOutput) moveToReality(realityId RealityId) error {
+	transferOutput.bookingMutex.Lock()
 
-	return
+	currentBookingKey := generateTransferOutputBookingStorageKey(transferOutput.GetRealityId(), transferOutput.addressHash, len(transferOutput.consumers) >= 1, transferOutput.transferHash)
+	if oldTransferOutputBooking, err := transferOutput.ledgerState.transferOutputBookings.Load(currentBookingKey); err != nil {
+		transferOutput.bookingMutex.Unlock()
+
+		return err
+	} else {
+		transferOutput.ledgerState.storeTransferOutputBooking(newTransferOutputBooking(realityId, transferOutput.addressHash, len(transferOutput.consumers) >= 1, transferOutput.transferHash)).Release()
+
+		oldTransferOutputBooking.Delete().Release()
+	}
+
+	transferOutput.bookingMutex.Unlock()
+
+	return nil
 }
 
 func (transferOutput *TransferOutput) markAsSpent() error {
-	currentBookingKey := generateTransferOutputBookingStorageKey(transferOutput.realityId, transferOutput.addressHash, false, transferOutput.transferHash)
+	transferOutput.bookingMutex.Lock()
 
-	if cachedTransferOutputBooking, err := transferOutput.ledgerState.transferOutputBookings.Load(currentBookingKey); err != nil {
+	currentBookingKey := generateTransferOutputBookingStorageKey(transferOutput.GetRealityId(), transferOutput.addressHash, false, transferOutput.transferHash)
+	if oldTransferOutputBooking, err := transferOutput.ledgerState.transferOutputBookings.Load(currentBookingKey); err != nil {
+		transferOutput.bookingMutex.Unlock()
+
 		return err
-	} else if !cachedTransferOutputBooking.Exists() {
-		return errors.New("could not find TransferOutputBooking")
 	} else {
-		transferOutputBooking := cachedTransferOutputBooking.Get().(*TransferOutputBooking)
-		transferOutput.ledgerState.storeTransferOutputBooking(newTransferOutputBooking(transferOutputBooking.GetRealityId(), transferOutputBooking.GetAddressHash(), true, transferOutputBooking.GetTransferHash())).Release()
+		transferOutput.ledgerState.storeTransferOutputBooking(newTransferOutputBooking(transferOutput.GetRealityId(), transferOutput.addressHash, true, transferOutput.transferHash)).Release()
 
-		cachedTransferOutputBooking.Delete()
-		cachedTransferOutputBooking.Release()
+		oldTransferOutputBooking.Delete().Release()
 	}
+
+	transferOutput.bookingMutex.Unlock()
 
 	return nil
 }
@@ -137,9 +177,18 @@ func (transferOutput *TransferOutput) MarshalBinary() ([]byte, error) {
 	offset := realityIdLength + 4 + balanceCount*coloredBalanceLength
 	binary.LittleEndian.PutUint32(result[offset:], uint32(consumerCount))
 	offset += 4
-	for consumer := range transferOutput.consumers {
-		copy(result[offset:], consumer[:transferHashLength])
+	for transferHash, addresses := range transferOutput.consumers {
+		copy(result[offset:], transferHash[:transferHashLength])
 		offset += transferHashLength
+
+		binary.LittleEndian.PutUint32(result[offset:], uint32(len(addresses)))
+		offset += 4
+
+		for _, addressHash := range addresses {
+			copy(result[offset:], addressHash[:addressHashLength])
+			offset += addressHashLength
+
+		}
 	}
 
 	return result, nil
@@ -189,17 +238,33 @@ func (transferOutput *TransferOutput) unmarshalBalances(serializedBalances []byt
 	return balances, nil
 }
 
-func (transferOutput *TransferOutput) unmarshalConsumers(serializedConsumers []byte) (map[TransferHash]empty, error) {
-	consumerCount := int(binary.LittleEndian.Uint32(serializedConsumers))
+func (transferOutput *TransferOutput) unmarshalConsumers(serializedConsumers []byte) (map[TransferHash][]AddressHash, error) {
+	offset := 0
 
-	consumers := make(map[TransferHash]empty, consumerCount)
+	consumerCount := int(binary.LittleEndian.Uint32(serializedConsumers[offset:]))
+	offset += 4
+
+	consumers := make(map[TransferHash][]AddressHash, consumerCount)
 	for i := 0; i < consumerCount; i++ {
 		transferHash := TransferHash{}
-		if err := transferHash.UnmarshalBinary(serializedConsumers[4+i*transferHashLength:]); err != nil {
+		if err := transferHash.UnmarshalBinary(serializedConsumers[offset:]); err != nil {
 			return nil, err
 		}
+		offset += transferHashLength
 
-		consumers[transferHash] = void
+		addressHashCount := int(binary.LittleEndian.Uint32(serializedConsumers[offset:]))
+		offset += 4
+
+		consumers[transferHash] = make([]AddressHash, addressHashCount)
+		for i := 0; i < addressHashCount; i++ {
+			addressHash := AddressHash{}
+			if err := addressHash.UnmarshalBinary(serializedConsumers[offset:]); err != nil {
+				return nil, err
+			}
+			offset += addressHashLength
+
+			consumers[transferHash][i] = addressHash
+		}
 	}
 
 	return consumers, nil

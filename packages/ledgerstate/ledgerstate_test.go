@@ -70,7 +70,7 @@ func Test(t *testing.T) {
 		addressHash4, NewColoredBalance(eth, 1000),
 	))
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(3 * time.Second)
 
 	ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
 		object.Consume(func(object objectstorage.StorableObject) {
