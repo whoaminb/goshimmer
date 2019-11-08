@@ -80,7 +80,7 @@ func releaseObject(cachedObject *CachedObject) {
 	objectStorage := cachedObject.objectStorage
 
 	objectStorage.cacheMutex.Lock()
-	if consumers := atomic.LoadInt32(&(cachedObject.consumers)); consumers == 0 {
+	if consumers := atomic.LoadInt32(&(cachedObject.consumers)); consumers == 0 && cachedObject.value != nil {
 		delete(objectStorage.cachedObjects, string(cachedObject.value.GetStorageKey()))
 	}
 	objectStorage.cacheMutex.Unlock()

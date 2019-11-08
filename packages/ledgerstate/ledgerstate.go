@@ -3,6 +3,7 @@ package ledgerstate
 import (
 	"reflect"
 	"sort"
+	"time"
 
 	"golang.org/x/crypto/blake2b"
 
@@ -20,9 +21,9 @@ type LedgerState struct {
 func NewLedgerState(storageId string) *LedgerState {
 	result := &LedgerState{
 		storageId:              []byte(storageId),
-		transferOutputs:        objectstorage.New(storageId+"TRANSFER_OUTPUTS", transferOutputFactory),
-		transferOutputBookings: objectstorage.New(storageId+"TRANSFER_OUTPUT_BOOKING", transferOutputBookingFactory),
-		realities:              objectstorage.New(storageId+"REALITIES", realityFactory),
+		transferOutputs:        objectstorage.New(storageId+"TRANSFER_OUTPUTS", transferOutputFactory, objectstorage.CacheTime(1*time.Second)),
+		transferOutputBookings: objectstorage.New(storageId+"TRANSFER_OUTPUT_BOOKING", transferOutputBookingFactory, objectstorage.CacheTime(1*time.Second)),
+		realities:              objectstorage.New(storageId+"REALITIES", realityFactory, objectstorage.CacheTime(1*time.Second)),
 	}
 
 	mainReality := newReality(MAIN_REALITY_ID)

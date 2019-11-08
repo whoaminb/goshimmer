@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 )
 
 type CachedObject struct {
@@ -17,6 +18,7 @@ type CachedObject struct {
 	delete        int32
 	wg            sync.WaitGroup
 	valueMutex    sync.RWMutex
+	releaseTimer  unsafe.Pointer
 }
 
 func newCachedObject(database *ObjectStorage) (result *CachedObject) {
@@ -44,14 +46,18 @@ func (cachedObject *CachedObject) Get() (result StorableObject) {
 func (cachedObject *CachedObject) Release() {
 	if consumers := atomic.AddInt32(&(cachedObject.consumers), -1); consumers == 0 {
 		if cachedObject.objectStorage.options.cacheTime != 0 {
-			time.AfterFunc(cachedObject.objectStorage.options.cacheTime, func() {
-				batchWrite(cachedObject)
-			})
+			atomic.StorePointer(&cachedObject.releaseTimer, unsafe.Pointer(time.AfterFunc(cachedObject.objectStorage.options.cacheTime, func() {
+				atomic.StorePointer(&cachedObject.releaseTimer, nil)
+
+				if consumers := atomic.LoadInt32(&(cachedObject.consumers)); consumers == 0 {
+					batchWrite(cachedObject)
+				} else if consumers < 0 {
+					panic("called Release() too often")
+				}
+			})))
 		} else {
 			batchWrite(cachedObject)
 		}
-	} else if consumers < 0 {
-		panic("called Release() too often")
 	}
 }
 
@@ -81,6 +87,7 @@ func (cachedObject *CachedObject) IsDeleted() bool {
 // Marks an object for being stored in the persistence layer.
 func (cachedObject *CachedObject) Store() {
 	atomic.StoreInt32(&(cachedObject.delete), 0)
+	atomic.StoreInt32(&(cachedObject.stored), 0)
 	atomic.StoreInt32(&(cachedObject.store), 1)
 }
 
@@ -92,6 +99,10 @@ func (cachedObject *CachedObject) IsStored() bool {
 // Registers a new consumer for this cached object.
 func (cachedObject *CachedObject) RegisterConsumer() {
 	atomic.AddInt32(&(cachedObject.consumers), 1)
+
+	if timer := atomic.LoadPointer(&cachedObject.releaseTimer); timer != nil {
+		(*(*time.Timer)(timer)).Stop()
+	}
 }
 
 func (cachedObject *CachedObject) Exists() bool {

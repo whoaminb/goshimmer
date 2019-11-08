@@ -64,6 +64,19 @@ func (transferOutput *TransferOutput) GetBalances() []*ColoredBalance {
 	return transferOutput.balances
 }
 
+func (transferOutput *TransferOutput) GetConsumers() (consumers map[TransferHash][]AddressHash) {
+	consumers = make(map[TransferHash][]AddressHash)
+
+	transferOutput.consumersMutex.RLock()
+	for transferHash, addresses := range transferOutput.consumers {
+		consumers[transferHash] = make([]AddressHash, len(addresses))
+		copy(consumers[transferHash], addresses)
+	}
+	transferOutput.consumersMutex.RUnlock()
+
+	return
+}
+
 func (transferOutput *TransferOutput) addConsumer(consumer TransferHash, outputs map[AddressHash][]*ColoredBalance) (isConflicting bool, consumersToElevate map[TransferHash][]AddressHash, err error) {
 	transferOutput.consumersMutex.RLock()
 	if _, exist := transferOutput.consumers[consumer]; exist {
@@ -165,6 +178,9 @@ func (transferOutput *TransferOutput) GetStorageKey() []byte {
 func (transferOutput *TransferOutput) Update(other objectstorage.StorableObject) {}
 
 func (transferOutput *TransferOutput) MarshalBinary() ([]byte, error) {
+	transferOutput.realityIdMutex.RLock()
+	transferOutput.consumersMutex.RLock()
+
 	balanceCount := len(transferOutput.balances)
 	consumerCount := len(transferOutput.consumers)
 
@@ -202,6 +218,9 @@ func (transferOutput *TransferOutput) MarshalBinary() ([]byte, error) {
 
 		}
 	}
+
+	transferOutput.consumersMutex.RUnlock()
+	transferOutput.realityIdMutex.RUnlock()
 
 	return result, nil
 }

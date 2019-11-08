@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/iotaledger/goshimmer/packages/objectstorage"
 )
@@ -29,11 +28,13 @@ func Benchmark(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		ledgerState.BookTransfer(NewTransfer(NewTransferHash(strconv.Itoa(i))).AddInput(
+		if err := ledgerState.BookTransfer(NewTransfer(NewTransferHash(strconv.Itoa(i))).AddInput(
 			NewTransferOutputReference(transferHash1, addressHash1),
 		).AddOutput(
 			addressHash3, NewColoredBalance(eth, 1337),
-		))
+		)); err != nil {
+			b.Error(err)
+		}
 	}
 }
 
@@ -56,8 +57,11 @@ func Test(t *testing.T) {
 		addressHash4, NewColoredBalance(eth, 1000),
 	)
 
-	ledgerState.BookTransfer(transfer)
-	ledgerState.BookTransfer(NewTransfer(transferHash3).AddInput(
+	if err := ledgerState.BookTransfer(transfer); err != nil {
+		t.Error(err)
+	}
+
+	if err := ledgerState.BookTransfer(NewTransfer(transferHash3).AddInput(
 		NewTransferOutputReference(transferHash1, addressHash1),
 	).AddOutput(
 		addressHash3, NewColoredBalance(iota, 338),
@@ -67,9 +71,9 @@ func Test(t *testing.T) {
 		addressHash4, NewColoredBalance(iota, 1000),
 	).AddOutput(
 		addressHash4, NewColoredBalance(eth, 1000),
-	))
-
-	time.Sleep(100 * time.Millisecond)
+	)); err != nil {
+		t.Error(err)
+	}
 
 	objectstorage.WaitForWritesToFlush()
 

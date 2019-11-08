@@ -57,11 +57,12 @@ func (reality *Reality) GetParentRealities() map[RealityId]*objectstorage.Cached
 	parentRealities := make(map[RealityId]*objectstorage.CachedObject)
 
 	for _, parentRealityId := range reality.parentRealities {
-		if loadedParentReality := reality.ledgerState.GetReality(parentRealityId); !loadedParentReality.Exists() {
+		loadedParentReality := reality.ledgerState.GetReality(parentRealityId)
+		if !loadedParentReality.Exists() {
 			panic("could not load parent reality with id \"" + string(parentRealityId[:]) + "\"")
-		} else {
-			parentRealities[loadedParentReality.Get().(*Reality).GetId()] = loadedParentReality
 		}
+
+		parentRealities[loadedParentReality.Get().(*Reality).GetId()] = loadedParentReality
 	}
 
 	return parentRealities
@@ -132,18 +133,26 @@ func (reality *Reality) BookTransfer(transfer *Transfer) error {
 
 func (reality *Reality) elevateTransferOutput(transferOutputReference *TransferOutputReference, newRealityId RealityId) error {
 	cachedTransferOutputToElevate := reality.ledgerState.GetTransferOutput(transferOutputReference)
+	defer cachedTransferOutputToElevate.Release()
+
 	if !cachedTransferOutputToElevate.Exists() {
 		return errors.New("could not find TransferOutput to elevate")
 	}
 
 	transferOutputToElevate := cachedTransferOutputToElevate.Get().(*TransferOutput)
-
 	if transferOutputToElevate.GetRealityId() == reality.id {
 		if err := transferOutputToElevate.moveToReality(newRealityId); err != nil {
-			panic(err)
+			return err
 		}
 		cachedTransferOutputToElevate.Store()
-		cachedTransferOutputToElevate.Release()
+
+		for transferHash, addresses := range transferOutputToElevate.GetConsumers() {
+			for _, addressHash := range addresses {
+				if err := reality.elevateTransferOutput(NewTransferOutputReference(transferHash, addressHash), newRealityId); err != nil {
+					return err
+				}
+			}
+		}
 	} else {
 		fmt.Println("ALREADY ELEVATED")
 	}
