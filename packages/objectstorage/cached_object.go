@@ -57,9 +57,7 @@ func (cachedObject *CachedObject) Release() {
 
 // Directly consumes the StorableObject. This method automatically Release()s the object when the callback is done.
 func (cachedObject *CachedObject) Consume(consumer func(object StorableObject)) {
-	if cachedObject.IsDeleted() {
-		consumer(nil)
-	} else if cachedObject.Exists() {
+	if cachedObject.Exists() && !cachedObject.IsDeleted() {
 		consumer(cachedObject.Get())
 	}
 

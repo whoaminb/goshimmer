@@ -3,6 +3,7 @@ package ledgerstate
 import (
 	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/objectstorage"
+	"github.com/iotaledger/goshimmer/packages/stringify"
 )
 
 // region struct + constructor + public api ////////////////////////////////////////////////////////////////////////////
@@ -43,6 +44,15 @@ func (booking *TransferOutputBooking) IsSpent() bool {
 
 func (booking *TransferOutputBooking) GetTransferHash() TransferHash {
 	return booking.transferHash
+}
+
+func (booking *TransferOutputBooking) String() string {
+	return stringify.Struct("TransferOutputBooking",
+		stringify.StructField("realityId", booking.realityId),
+		stringify.StructField("addressHash", booking.addressHash),
+		stringify.StructField("spent", booking.spent),
+		stringify.StructField("transferHash", booking.transferHash),
+	)
 }
 
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////

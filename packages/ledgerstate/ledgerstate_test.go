@@ -10,16 +10,15 @@ import (
 )
 
 var (
-	iota               = NewColor("IOTA")
-	eth                = NewColor("ETH")
-	transferHash1      = NewTransferHash("TRANSFER1")
-	transferHash2      = NewTransferHash("TRANSFER2")
-	transferHash3      = NewTransferHash("TRANSFER3")
-	addressHash1       = NewAddressHash("ADDRESS1")
-	addressHash3       = NewAddressHash("ADDRESS3")
-	addressHash4       = NewAddressHash("ADDRESS4")
-	pendingReality     = NewRealityId("PENDING")
-	conflictingReality = NewRealityId("CONFLICTING")
+	iota           = NewColor("IOTA")
+	eth            = NewColor("ETH")
+	transferHash1  = NewTransferHash("TRANSFER1")
+	transferHash2  = NewTransferHash("TRANSFER2")
+	transferHash3  = NewTransferHash("TRANSFER3")
+	addressHash1   = NewAddressHash("ADDRESS1")
+	addressHash3   = NewAddressHash("ADDRESS3")
+	addressHash4   = NewAddressHash("ADDRESS4")
+	pendingReality = NewRealityId("PENDING")
 )
 
 func Benchmark(b *testing.B) {
@@ -70,7 +69,9 @@ func Test(t *testing.T) {
 		addressHash4, NewColoredBalance(eth, 1000),
 	))
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(100 * time.Millisecond)
+
+	objectstorage.WaitForWritesToFlush()
 
 	ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
 		object.Consume(func(object objectstorage.StorableObject) {

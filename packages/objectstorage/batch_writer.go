@@ -12,6 +12,10 @@ import (
 
 var writeWg sync.WaitGroup
 
+var timeoutWg sync.WaitGroup
+
+var waitingForTimeout bool
+
 var startStopMutex sync.Mutex
 
 var running int32 = 0
@@ -36,6 +40,10 @@ func StopBatchWriter() {
 		writeWg.Wait()
 	}
 	startStopMutex.Unlock()
+}
+
+func WaitForWritesToFlush() {
+	timeoutWg.Wait()
 }
 
 func batchWrite(object *CachedObject) {
@@ -84,6 +92,11 @@ func runBatchWriter() {
 	for atomic.LoadInt32(&running) == 1 {
 		writeWg.Add(1)
 
+		if !waitingForTimeout {
+			waitingForTimeout = true
+			timeoutWg.Add(1)
+		}
+
 		wb := badgerInstance.NewWriteBatch()
 
 		writtenValues := make([]*CachedObject, BATCH_WRITER_BATCH_SIZE)
@@ -97,6 +110,9 @@ func runBatchWriter() {
 				writtenValues[writtenValuesCounter] = objectToPersist
 				writtenValuesCounter++
 			case <-time.After(BATCH_WRITER_BATCH_TIMEOUT):
+				waitingForTimeout = false
+				timeoutWg.Done()
+
 				break COLLECT_VALUES
 			case <-daemon.ShutdownSignal:
 				break COLLECT_VALUES

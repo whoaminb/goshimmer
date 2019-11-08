@@ -91,7 +91,7 @@ func (transferOutput *TransferOutput) addConsumer(consumer TransferHash, outputs
 		}
 		consumers := make([]AddressHash, len(outputs))
 		i := 0
-		for addressHash, _ := range outputs {
+		for addressHash := range outputs {
 			consumers[i] = addressHash
 
 			i++
@@ -113,6 +113,10 @@ func (transferOutput *TransferOutput) moveToReality(realityId RealityId) error {
 
 		return err
 	} else {
+		transferOutput.realityIdMutex.Lock()
+		transferOutput.realityId = realityId
+		transferOutput.realityIdMutex.Unlock()
+
 		transferOutput.ledgerState.storeTransferOutputBooking(newTransferOutputBooking(realityId, transferOutput.addressHash, len(transferOutput.consumers) >= 1, transferOutput.transferHash)).Release()
 
 		oldTransferOutputBooking.Delete().Release()
@@ -164,7 +168,15 @@ func (transferOutput *TransferOutput) MarshalBinary() ([]byte, error) {
 	balanceCount := len(transferOutput.balances)
 	consumerCount := len(transferOutput.consumers)
 
-	result := make([]byte, realityIdLength+4+balanceCount*coloredBalanceLength+4+consumerCount*transferHashLength)
+	serializedLength := realityIdLength + 4 + balanceCount*coloredBalanceLength + 4 + consumerCount*transferHashLength
+	for _, addresses := range transferOutput.consumers {
+		serializedLength += 4
+		for range addresses {
+			serializedLength += addressHashLength
+		}
+	}
+
+	result := make([]byte, serializedLength)
 
 	copy(result[0:], transferOutput.realityId[:])
 
@@ -173,8 +185,8 @@ func (transferOutput *TransferOutput) MarshalBinary() ([]byte, error) {
 		copy(result[realityIdLength+4+i*coloredBalanceLength:], transferOutput.balances[i].color[:colorLength])
 		binary.LittleEndian.PutUint64(result[realityIdLength+4+i*coloredBalanceLength+colorLength:], transferOutput.balances[i].balance)
 	}
-
 	offset := realityIdLength + 4 + balanceCount*coloredBalanceLength
+
 	binary.LittleEndian.PutUint32(result[offset:], uint32(consumerCount))
 	offset += 4
 	for transferHash, addresses := range transferOutput.consumers {

@@ -130,7 +130,41 @@ func (reality *Reality) BookTransfer(transfer *Transfer) error {
 	return reality.bookTransfer(transfer.GetHash(), reality.ledgerState.getTransferInputs(transfer), transfer.GetOutputs())
 }
 
-func (reality *Reality) consumeInputs(inputs []*objectstorage.CachedObject, transferHash TransferHash, outputs map[AddressHash][]*ColoredBalance) (conflicting bool, err error) {
+func (reality *Reality) elevateTransferOutput(transferOutputReference *TransferOutputReference, newRealityId RealityId) error {
+	cachedTransferOutputToElevate := reality.ledgerState.GetTransferOutput(transferOutputReference)
+	if !cachedTransferOutputToElevate.Exists() {
+		return errors.New("could not find TransferOutput to elevate")
+	}
+
+	transferOutputToElevate := cachedTransferOutputToElevate.Get().(*TransferOutput)
+
+	if transferOutputToElevate.GetRealityId() == reality.id {
+		if err := transferOutputToElevate.moveToReality(newRealityId); err != nil {
+			panic(err)
+		}
+		cachedTransferOutputToElevate.Store()
+		cachedTransferOutputToElevate.Release()
+	} else {
+		fmt.Println("ALREADY ELEVATED")
+	}
+
+	return nil
+}
+
+// Creates a new reality for consumers that have previously been booked in this reality.
+func (reality *Reality) elevateTransferOutputConsumersToOwnReality(consumers map[TransferHash][]AddressHash) {
+	for transferHash, addressHashes := range consumers {
+		var elevatedRealityId RealityId
+		copy(elevatedRealityId[:], transferHash[:])
+		reality.CreateReality(elevatedRealityId).Release()
+
+		for _, addressHash := range addressHashes {
+			reality.elevateTransferOutput(NewTransferOutputReference(transferHash, addressHash), elevatedRealityId)
+		}
+	}
+}
+
+func (reality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transferHash TransferHash, outputs map[AddressHash][]*ColoredBalance) (conflicting bool, err error) {
 	for _, input := range inputs {
 		consumedTransferOutput := input.Get().(*TransferOutput)
 
@@ -141,20 +175,19 @@ func (reality *Reality) consumeInputs(inputs []*objectstorage.CachedObject, tran
 			return
 		}
 
-		if inputConflicting {
-			for transferHash, consumerToElevate := range consumersToElevate {
-				// elevate previous liked transactions
-				fmt.Println(transferHash, consumerToElevate)
-			}
+		if inputConflicting && len(consumersToElevate) >= 1 {
+			reality.elevateTransferOutputConsumersToOwnReality(consumersToElevate)
 		}
 
 		conflicting = conflicting || inputConflicting
+
+		input.Store()
 	}
 
 	return
 }
 
-func (reality *Reality) bookTransfer(transferHash TransferHash, inputs []*objectstorage.CachedObject, outputs map[AddressHash][]*ColoredBalance) error {
+func (reality *Reality) bookTransfer(transferHash TransferHash, inputs objectstorage.CachedObjects, outputs map[AddressHash][]*ColoredBalance) error {
 	if err := reality.checkTransferBalances(inputs, outputs); err != nil {
 		return err
 	}
@@ -176,6 +209,7 @@ func (reality *Reality) bookTransfer(transferHash TransferHash, inputs []*object
 	}
 
 	// 5. release objects
+	inputs.Release()
 
 	return nil
 }
