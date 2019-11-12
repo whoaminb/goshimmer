@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/iotaledger/goshimmer/packages/typeutils"
+
 	"github.com/dgraph-io/badger"
 
 	"github.com/iotaledger/goshimmer/packages/daemon"
@@ -58,17 +60,15 @@ func writeObject(writeBatch *badger.WriteBatch, cachedObject *CachedObject) {
 	objectStorage := cachedObject.objectStorage
 
 	if consumers := atomic.LoadInt32(&(cachedObject.consumers)); consumers == 0 && atomic.AddInt32(&(cachedObject.stored), 1) == 1 {
-		if cachedObject.value != nil {
-			if cachedObject.IsDeleted() {
-				if err := writeBatch.Delete(objectStorage.generatePrefix([][]byte{cachedObject.value.GetStorageKey()})); err != nil {
-					panic(err)
-				}
-			} else if atomic.LoadInt32(&(cachedObject.store)) == 1 {
-				marshaledObject, _ := cachedObject.value.MarshalBinary()
+		if cachedObject.IsDeleted() {
+			if err := writeBatch.Delete(objectStorage.generatePrefix([][]byte{cachedObject.key})); err != nil {
+				panic(err)
+			}
+		} else if atomic.LoadInt32(&(cachedObject.store)) == 1 && cachedObject.value != nil {
+			marshaledObject, _ := cachedObject.value.MarshalBinary()
 
-				if err := writeBatch.Set(objectStorage.generatePrefix([][]byte{cachedObject.value.GetStorageKey()}), marshaledObject); err != nil {
-					panic(err)
-				}
+			if err := writeBatch.Set(objectStorage.generatePrefix([][]byte{cachedObject.value.GetStorageKey()}), marshaledObject); err != nil {
+				panic(err)
 			}
 		}
 	} else if consumers < 0 {
@@ -80,8 +80,8 @@ func releaseObject(cachedObject *CachedObject) {
 	objectStorage := cachedObject.objectStorage
 
 	objectStorage.cacheMutex.Lock()
-	if consumers := atomic.LoadInt32(&(cachedObject.consumers)); consumers == 0 && cachedObject.value != nil {
-		delete(objectStorage.cachedObjects, string(cachedObject.value.GetStorageKey()))
+	if consumers := atomic.LoadInt32(&(cachedObject.consumers)); consumers == 0 {
+		delete(objectStorage.cachedObjects, typeutils.BytesToString(cachedObject.key))
 	}
 	objectStorage.cacheMutex.Unlock()
 }

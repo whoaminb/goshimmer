@@ -8,6 +8,7 @@ import (
 )
 
 type CachedObject struct {
+	key           []byte
 	objectStorage *ObjectStorage
 	value         StorableObject
 	err           error
@@ -21,9 +22,10 @@ type CachedObject struct {
 	releaseTimer  unsafe.Pointer
 }
 
-func newCachedObject(database *ObjectStorage) (result *CachedObject) {
+func newCachedObject(database *ObjectStorage, key []byte) (result *CachedObject) {
 	result = &CachedObject{
 		objectStorage: database,
+		key:           key,
 	}
 
 	result.wg.Add(1)
@@ -100,7 +102,7 @@ func (cachedObject *CachedObject) IsStored() bool {
 func (cachedObject *CachedObject) RegisterConsumer() {
 	atomic.AddInt32(&(cachedObject.consumers), 1)
 
-	if timer := atomic.LoadPointer(&cachedObject.releaseTimer); timer != nil {
+	if timer := atomic.SwapPointer(&cachedObject.releaseTimer, nil); timer != nil {
 		(*(*time.Timer)(timer)).Stop()
 	}
 }

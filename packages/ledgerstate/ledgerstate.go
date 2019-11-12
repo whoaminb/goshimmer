@@ -8,7 +8,7 @@ import (
 	"golang.org/x/crypto/blake2b"
 
 	"github.com/iotaledger/goshimmer/packages/errors"
-	"github.com/iotaledger/goshimmer/packages/objectstorage"
+	"github.com/iotaledger/hive.go/objectstorage"
 )
 
 type LedgerState struct {

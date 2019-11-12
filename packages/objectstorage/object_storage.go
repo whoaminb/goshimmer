@@ -3,6 +3,8 @@ package objectstorage
 import (
 	"sync"
 
+	"github.com/iotaledger/goshimmer/packages/typeutils"
+
 	"github.com/dgraph-io/badger"
 )
 
@@ -104,7 +106,9 @@ func (objectStorage *ObjectStorage) Prune() error {
 }
 
 func (objectStorage *ObjectStorage) accessCache(key []byte, onCacheHit func(*CachedObject), onCacheMiss func(*CachedObject)) *CachedObject {
-	stringKey := string(key)
+	copiedKey := make([]byte, len(key))
+	copy(copiedKey, key)
+	stringKey := typeutils.BytesToString(copiedKey)
 
 	objectStorage.cacheMutex.RLock()
 	cachedObject, cachedObjectExists := objectStorage.cachedObjects[stringKey]
@@ -128,7 +132,7 @@ func (objectStorage *ObjectStorage) accessCache(key []byte, onCacheHit func(*Cac
 				onCacheHit(cachedObject)
 			}
 		} else {
-			cachedObject = newCachedObject(objectStorage)
+			cachedObject = newCachedObject(objectStorage, copiedKey)
 			cachedObject.RegisterConsumer()
 
 			objectStorage.cachedObjects[stringKey] = cachedObject

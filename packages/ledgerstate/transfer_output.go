@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"sync"
 
-	"github.com/iotaledger/goshimmer/packages/objectstorage"
 	"github.com/iotaledger/goshimmer/packages/stringify"
+	"github.com/iotaledger/hive.go/objectstorage"
 )
 
 type TransferOutput struct {

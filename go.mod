@@ -12,6 +12,7 @@ require (
 	github.com/golang/protobuf v1.3.2 // indirect
 	github.com/google/open-location-code/go v0.0.0-20190723034300-2c7115db77a3
 	github.com/gorilla/websocket v1.4.1
+	github.com/iotaledger/hive.go v0.0.0-20191112142249-92832505dd6d
 	github.com/iotaledger/iota.go v1.0.0-beta.7
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/kr/text v0.1.0

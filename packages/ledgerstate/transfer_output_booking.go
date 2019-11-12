@@ -2,8 +2,8 @@ package ledgerstate
 
 import (
 	"github.com/iotaledger/goshimmer/packages/errors"
-	"github.com/iotaledger/goshimmer/packages/objectstorage"
 	"github.com/iotaledger/goshimmer/packages/stringify"
+	"github.com/iotaledger/hive.go/objectstorage"
 )
 
 // region struct + constructor + public api ////////////////////////////////////////////////////////////////////////////

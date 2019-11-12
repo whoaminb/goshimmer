@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
+	"time"
 
-	"github.com/iotaledger/goshimmer/packages/objectstorage"
+	"github.com/iotaledger/hive.go/objectstorage"
 )
 
 var (
@@ -74,6 +75,8 @@ func Test(t *testing.T) {
 	)); err != nil {
 		t.Error(err)
 	}
+
+	time.Sleep(1000 * time.Millisecond)
 
 	objectstorage.WaitForWritesToFlush()
 
