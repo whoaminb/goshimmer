@@ -6,6 +6,7 @@ require (
 	github.com/AndreasBriese/bbloom v0.0.0-20190825152654-46b345b51c96 // indirect
 	github.com/dgraph-io/badger v1.6.0
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
+	github.com/emicklei/dot v0.10.1
 	github.com/ethereum/go-ethereum v1.9.3
 	github.com/gdamore/tcell v1.2.0
 	github.com/go-zeromq/zmq4 v0.5.0

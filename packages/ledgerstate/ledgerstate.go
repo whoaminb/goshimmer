@@ -1,11 +1,17 @@
 package ledgerstate
 
 import (
+	"io/ioutil"
+	"os"
+	"os/exec"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/blake2b"
+
+	"github.com/emicklei/dot"
 
 	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/hive.go/objectstorage"
@@ -16,6 +22,7 @@ type LedgerState struct {
 	transferOutputs        *objectstorage.ObjectStorage
 	transferOutputBookings *objectstorage.ObjectStorage
 	realities              *objectstorage.ObjectStorage
+	conflictSets           *objectstorage.ObjectStorage
 }
 
 func NewLedgerState(storageId string) *LedgerState {
@@ -24,6 +31,7 @@ func NewLedgerState(storageId string) *LedgerState {
 		transferOutputs:        objectstorage.New(storageId+"TRANSFER_OUTPUTS", transferOutputFactory, objectstorage.CacheTime(1*time.Second)),
 		transferOutputBookings: objectstorage.New(storageId+"TRANSFER_OUTPUT_BOOKING", transferOutputBookingFactory, objectstorage.CacheTime(1*time.Second)),
 		realities:              objectstorage.New(storageId+"REALITIES", realityFactory, objectstorage.CacheTime(1*time.Second)),
+		conflictSets:           objectstorage.New(storageId+"CONFLICT_SETS", conflictSetFactory, objectstorage.CacheTime(1*time.Second)),
 	}
 
 	mainReality := newReality(MAIN_REALITY_ID)
@@ -54,6 +62,26 @@ func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *Trans
 	}
 }
 
+func (ledgerState *LedgerState) ForEachConflictSet(callback func(object *objectstorage.CachedObject) bool) {
+	if err := ledgerState.conflictSets.ForEach(func(key []byte, cachedObject *objectstorage.CachedObject) bool {
+		cachedObject.Get().(*ConflictSet).ledgerState = ledgerState
+
+		return callback(cachedObject)
+	}); err != nil {
+		panic(err)
+	}
+}
+
+func (ledgerState *LedgerState) ForEachReality(callback func(object *objectstorage.CachedObject) bool) {
+	if err := ledgerState.realities.ForEach(func(key []byte, cachedObject *objectstorage.CachedObject) bool {
+		cachedObject.Get().(*Reality).ledgerState = ledgerState
+
+		return callback(cachedObject)
+	}); err != nil {
+		panic(err)
+	}
+}
+
 func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *objectstorage.CachedObject) bool, filters ...interface{}) {
 	prefixes, searchBookings := ledgerState.generateFilterPrefixes(filters)
 	if searchBookings {
@@ -71,6 +99,8 @@ func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *obje
 		if len(prefixes) >= 1 {
 			for _, prefix := range prefixes {
 				if err := ledgerState.transferOutputs.ForEach(func(key []byte, cachedObject *objectstorage.CachedObject) bool {
+					cachedObject.Get().(*TransferOutput).ledgerState = ledgerState
+
 					return callback(cachedObject)
 				}, prefix); err != nil {
 					panic(err)
@@ -78,6 +108,8 @@ func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *obje
 			}
 		} else {
 			if err := ledgerState.transferOutputs.ForEach(func(key []byte, cachedObject *objectstorage.CachedObject) bool {
+				cachedObject.Get().(*TransferOutput).ledgerState = ledgerState
+
 				return callback(cachedObject)
 			}); err != nil {
 				panic(err)
@@ -119,6 +151,126 @@ func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) error {
 
 	if !targetReality.IsStored() {
 		targetReality.Store()
+	}
+
+	return nil
+}
+
+func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string) error {
+	di := dot.NewGraph(dot.Directed)
+
+	realityNodes := make(map[RealityId]dot.Node)
+
+	var drawReality func(reality *Reality) dot.Node
+	drawReality = func(reality *Reality) dot.Node {
+		realityNode, exists := realityNodes[reality.GetId()]
+		if !exists {
+			if len(reality.parentRealities) > 1 {
+				realityNode = di.Node("AGGREGATED REALITY: " + strings.Trim(reality.GetId().String(), "\x00"))
+			} else {
+				realityNode = di.Node("REALITY: " + strings.Trim(reality.GetId().String(), "\x00"))
+			}
+			realityNode.Attr("style", "rounded")
+			realityNode.Attr("shape", "rect")
+
+			realityNodes[reality.GetId()] = realityNode
+		}
+
+		if !exists {
+			parentRealities := reality.GetParentRealities()
+
+			for _, cachedReality := range parentRealities {
+				cachedReality.Consume(func(object objectstorage.StorableObject) {
+					realityNode.Edge(drawReality(object.(*Reality)))
+				})
+			}
+		}
+
+		return realityNode
+	}
+
+	ledgerState.ForEachReality(func(object *objectstorage.CachedObject) bool {
+		object.Consume(func(object objectstorage.StorableObject) {
+			drawReality(object.(*Reality))
+		})
+
+		return true
+	})
+
+	d1 := []byte(di.String())
+	if err := ioutil.WriteFile("_tmp.dot", d1, 0755); err != nil {
+		return err
+	}
+
+	_, err := exec.Command("dot", "-Tpng", "_tmp.dot", "-o", pngFilename).Output()
+	if err != nil {
+		return err
+	}
+
+	if err := os.Remove("_tmp.dot"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (ledgerState *LedgerState) GenerateVisualization() error {
+	di := dot.NewGraph(dot.Directed)
+
+	realityGraphs := make(map[RealityId]*dot.Graph)
+
+	getRealityGraph := func(realityId RealityId) *dot.Graph {
+		realityGraph, exists := realityGraphs[realityId]
+		if !exists {
+			realityGraph = di.Subgraph("REALITY: "+strings.Trim(realityId.String(), "\x00"), dot.ClusterOption{})
+			realityGraph.Attr("style", "filled")
+			realityGraph.Attr("color", "lightgrey")
+			realityGraph.Attr("fillcolor", "lightgrey")
+
+			realityGraphs[realityId] = realityGraph
+		}
+
+		return realityGraph
+	}
+
+	var drawTransferOutput func(transferOutput *TransferOutput) dot.Node
+	drawTransferOutput = func(transferOutput *TransferOutput) dot.Node {
+		transferOutputNode := getRealityGraph(transferOutput.GetRealityId()).Node(transferOutput.GetTransferHash().String() + "\n" + transferOutput.GetAddressHash().String())
+		transferOutputNode.Attr("style", "filled")
+		transferOutputNode.Attr("color", "white")
+		transferOutputNode.Attr("fillcolor", "white")
+
+		for transferHash, addresses := range transferOutput.GetConsumers() {
+			for _, addressHash := range addresses {
+				ledgerState.GetTransferOutput(NewTransferOutputReference(transferHash, addressHash)).Consume(func(object objectstorage.StorableObject) {
+					transferOutputNode.Edge(drawTransferOutput(object.(*TransferOutput)))
+				})
+			}
+		}
+
+		return transferOutputNode
+	}
+
+	ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
+		object.Consume(func(object objectstorage.StorableObject) {
+			drawTransferOutput(object.(*TransferOutput))
+		})
+
+		return true
+	}, MAIN_REALITY_ID)
+
+	d1 := []byte(di.String())
+	if err := ioutil.WriteFile("_tmp.dot", d1, 0755); err != nil {
+		return err
+	}
+
+	_, err := exec.Command("dot", "-Tpng", "_tmp.dot", "-o", "viz.png").Output()
+	if err != nil {
+		return err
+	}
+
+	if err := os.Remove("_tmp.dot"); err != nil {
+		return err
 	}
 
 	return nil
@@ -383,6 +535,15 @@ func transferOutputBookingFactory(key []byte) objectstorage.StorableObject {
 
 func realityFactory(key []byte) objectstorage.StorableObject {
 	result := &Reality{
+		storageKey: make([]byte, len(key)),
+	}
+	copy(result.storageKey, key)
+
+	return result
+}
+
+func conflictSetFactory(key []byte) objectstorage.StorableObject {
+	result := &ConflictSet{
 		storageKey: make([]byte, len(key)),
 	}
 	copy(result.storageKey, key)

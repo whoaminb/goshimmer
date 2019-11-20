@@ -32,6 +32,8 @@ func Interface(value interface{}) string {
 			return Int(int(typeCastedValue.Uint()))
 		case reflect.Ptr:
 			return Interface(typeCastedValue.Interface())
+		case reflect.Struct:
+			return fmt.Sprint(value)
 		default:
 			panic("undefined reflect type: " + typeCastedValue.Kind().String())
 		}

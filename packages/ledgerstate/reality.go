@@ -3,6 +3,7 @@ package ledgerstate
 import (
 	"encoding/binary"
 	"fmt"
+	"sync"
 
 	"github.com/iotaledger/goshimmer/packages/errors"
 
@@ -13,26 +14,50 @@ import (
 
 type Reality struct {
 	id              RealityId
-	parentRealities []RealityId
+	parentRealities map[RealityId]empty
 
 	storageKey  []byte
 	ledgerState *LedgerState
+
+	parentRealitiesMutex sync.RWMutex
 }
 
 func newReality(id RealityId, parentRealities ...RealityId) *Reality {
 	result := &Reality{
 		id:              id,
-		parentRealities: parentRealities,
+		parentRealities: make(map[RealityId]empty),
 
 		storageKey: make([]byte, len(id)),
 	}
 	copy(result.storageKey, id[:])
+
+	for _, parentRealityId := range parentRealities {
+		result.parentRealities[parentRealityId] = void
+	}
 
 	return result
 }
 
 func (reality *Reality) GetId() RealityId {
 	return reality.id
+}
+
+func (reality *Reality) Elevate(oldParentRealityId RealityId, newParentRealityId RealityId) {
+	reality.parentRealitiesMutex.Lock()
+
+	fmt.Println(reality.id)
+
+	if len(reality.parentRealities) > 1 {
+		// aggregated reality
+		fmt.Println("AGGREGATED REALITY")
+		delete(reality.parentRealities, oldParentRealityId)
+		reality.parentRealities[newParentRealityId] = void
+	} else {
+		delete(reality.parentRealities, oldParentRealityId)
+		reality.parentRealities[newParentRealityId] = void
+	}
+
+	reality.parentRealitiesMutex.Unlock()
 }
 
 func (reality *Reality) DescendsFromReality(realityId RealityId) bool {
@@ -56,14 +81,20 @@ func (reality *Reality) DescendsFromReality(realityId RealityId) bool {
 func (reality *Reality) GetParentRealities() map[RealityId]*objectstorage.CachedObject {
 	parentRealities := make(map[RealityId]*objectstorage.CachedObject)
 
-	for _, parentRealityId := range reality.parentRealities {
+	reality.parentRealitiesMutex.RLock()
+
+	for parentRealityId := range reality.parentRealities {
 		loadedParentReality := reality.ledgerState.GetReality(parentRealityId)
 		if !loadedParentReality.Exists() {
+			reality.parentRealitiesMutex.RUnlock()
+
 			panic("could not load parent reality with id \"" + string(parentRealityId[:]) + "\"")
 		}
 
 		parentRealities[loadedParentReality.Get().(*Reality).GetId()] = loadedParentReality
 	}
+
+	reality.parentRealitiesMutex.RUnlock()
 
 	return parentRealities
 }
@@ -154,18 +185,22 @@ func (reality *Reality) elevateTransferOutput(transferOutputReference *TransferO
 			}
 		}
 	} else {
-		fmt.Println("ALREADY ELEVATED")
+		reality.ledgerState.GetReality(transferOutputToElevate.GetRealityId()).Consume(func(nestedReality objectstorage.StorableObject) {
+			nestedReality.(*Reality).Elevate(reality.id, newRealityId)
+		})
 	}
 
 	return nil
 }
 
 // Creates a new reality for consumers that have previously been booked in this reality.
-func (reality *Reality) elevateTransferOutputConsumersToOwnReality(consumers map[TransferHash][]AddressHash) {
+func (reality *Reality) elevateTransferOutputConsumersToOwnReality(consumers map[TransferHash][]AddressHash, conflictSet *objectstorage.CachedObject) {
 	for transferHash, addressHashes := range consumers {
 		var elevatedRealityId RealityId
 		copy(elevatedRealityId[:], transferHash[:])
 		reality.CreateReality(elevatedRealityId).Release()
+
+		conflictSet.Get().(*ConflictSet).AddMember(elevatedRealityId)
 
 		for _, addressHash := range addressHashes {
 			reality.elevateTransferOutput(NewTransferOutputReference(transferHash, addressHash), elevatedRealityId)
@@ -173,7 +208,9 @@ func (reality *Reality) elevateTransferOutputConsumersToOwnReality(consumers map
 	}
 }
 
-func (reality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transferHash TransferHash, outputs map[AddressHash][]*ColoredBalance) (conflicting bool, err error) {
+func (reality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transferHash TransferHash, outputs map[AddressHash][]*ColoredBalance) (conflictSets objectstorage.CachedObjects, err error) {
+	conflictSets = make(objectstorage.CachedObjects, 0)
+
 	for _, input := range inputs {
 		consumedTransferOutput := input.Get().(*TransferOutput)
 
@@ -184,11 +221,27 @@ func (reality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transf
 			return
 		}
 
-		if inputConflicting && len(consumersToElevate) >= 1 {
-			reality.elevateTransferOutputConsumersToOwnReality(consumersToElevate)
-		}
+		if inputConflicting {
+			conflictSetId := NewConflictSetId(consumedTransferOutput.GetTransferHash(), consumedTransferOutput.GetAddressHash())
 
-		conflicting = conflicting || inputConflicting
+			var conflictSet *objectstorage.CachedObject
+			if len(consumersToElevate) >= 1 {
+				newConflictSet := newConflictSet(conflictSetId)
+				newConflictSet.ledgerState = reality.ledgerState
+
+				conflictSet = reality.ledgerState.conflictSets.Store(newConflictSet)
+
+				reality.elevateTransferOutputConsumersToOwnReality(consumersToElevate, conflictSet)
+			} else {
+				conflictSet, err = reality.ledgerState.conflictSets.Load(conflictSetId[:])
+				if err != nil {
+					return
+				}
+				conflictSet.Get().(*ConflictSet).ledgerState = reality.ledgerState
+			}
+
+			conflictSets = append(conflictSets, conflictSet)
+		}
 
 		input.Store()
 	}
@@ -201,14 +254,18 @@ func (reality *Reality) bookTransfer(transferHash TransferHash, inputs objectsto
 		return err
 	}
 
-	conflicting, err := reality.consumeInputs(inputs, transferHash, outputs)
+	conflictSets, err := reality.consumeInputs(inputs, transferHash, outputs)
 	if err != nil {
 		return err
 	}
 
-	if conflicting {
+	if len(conflictSets) >= 1 {
 		var targetRealityId RealityId
 		copy(targetRealityId[:], transferHash[:])
+
+		for _, conflictSet := range conflictSets {
+			conflictSet.Get().(*ConflictSet).AddMember(targetRealityId)
+		}
 
 		cachedTargetReality := reality.CreateReality(targetRealityId)
 		cachedTargetReality.Get().(*Reality).bookTransferOutputs(transferHash, outputs)
@@ -217,7 +274,7 @@ func (reality *Reality) bookTransfer(transferHash TransferHash, inputs objectsto
 		reality.bookTransferOutputs(transferHash, outputs)
 	}
 
-	// 5. release objects
+	conflictSets.Release()
 	inputs.Release()
 
 	return nil
@@ -233,11 +290,26 @@ func (reality *Reality) bookTransferOutputs(transferHash TransferHash, transferO
 	}
 }
 
-func (reality *Reality) String() string {
-	return stringify.Struct("Reality",
+func (reality *Reality) String() (result string) {
+	reality.parentRealitiesMutex.RLock()
+
+	parentRealities := make([]string, len(reality.parentRealities))
+
+	i := 0
+	for parentRealityId := range reality.parentRealities {
+		parentRealities[i] = parentRealityId.String()
+
+		i++
+	}
+
+	result = stringify.Struct("Reality",
 		stringify.StructField("id", reality.id.String()),
-		stringify.StructField("parentRealities", reality.parentRealities),
+		stringify.StructField("parentRealities", parentRealities),
 	)
+
+	reality.parentRealitiesMutex.RUnlock()
+
+	return
 }
 
 // region support object storage ///////////////////////////////////////////////////////////////////////////////////////
@@ -247,22 +319,35 @@ func (reality *Reality) GetStorageKey() []byte {
 }
 
 func (reality *Reality) Update(other objectstorage.StorableObject) {
+	reality.parentRealitiesMutex.Lock()
+
 	if otherReality, ok := other.(*Reality); !ok {
+		reality.parentRealitiesMutex.Unlock()
+
 		panic("Update method expects a *TransferOutputBooking")
 	} else {
 		reality.parentRealities = otherReality.parentRealities
 	}
+
+	reality.parentRealitiesMutex.Unlock()
 }
 
 func (reality *Reality) MarshalBinary() ([]byte, error) {
+	reality.parentRealitiesMutex.RLock()
+
 	parentRealityCount := len(reality.parentRealities)
 
 	marshaledReality := make([]byte, 4+parentRealityCount*realityIdLength)
 
 	binary.LittleEndian.PutUint32(marshaledReality, uint32(parentRealityCount))
-	for i := 0; i < parentRealityCount; i++ {
-		copy(marshaledReality[4+i*realityIdLength:], reality.parentRealities[i][:])
+	i := 0
+	for parentRealityId := range reality.parentRealities {
+		copy(marshaledReality[4+i*realityIdLength:], parentRealityId[:])
+
+		i++
 	}
+
+	reality.parentRealitiesMutex.RUnlock()
 
 	return marshaledReality, nil
 }
@@ -272,12 +357,16 @@ func (reality *Reality) UnmarshalBinary(serializedObject []byte) error {
 		return err
 	}
 
+	reality.parentRealities = make(map[RealityId]empty)
+
 	parentRealityCount := int(binary.LittleEndian.Uint32(serializedObject))
-	parentRealities := make([]RealityId, parentRealityCount)
 	for i := 0; i < parentRealityCount; i++ {
-		if err := parentRealities[i].UnmarshalBinary(serializedObject[4+i*realityIdLength:]); err != nil {
+		var restoredRealityId RealityId
+		if err := restoredRealityId.UnmarshalBinary(serializedObject[4+i*realityIdLength:]); err != nil {
 			return err
 		}
+
+		reality.parentRealities[restoredRealityId] = void
 	}
 
 	return nil
