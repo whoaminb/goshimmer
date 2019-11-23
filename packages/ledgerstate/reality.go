@@ -55,6 +55,8 @@ func (reality *Reality) GetTransferOutputCount() (transferOutputCount int) {
 	return
 }
 
+// [DONE] Checks if the Reality "descends" from the given RealityId. It returns true, if the RealityId addresses the
+// Reality itself, or one of its ancestors.
 func (reality *Reality) DescendsFromReality(realityId RealityId) bool {
 	if reality.id == realityId {
 		return true
@@ -73,6 +75,8 @@ func (reality *Reality) DescendsFromReality(realityId RealityId) bool {
 	}
 }
 
+// [DONE] Returns a map of all parent realities (one level). They have to manually be "released" when they are not
+// needed anymore.
 func (reality *Reality) GetParentRealities() map[RealityId]*objectstorage.CachedObject {
 	parentRealities := make(map[RealityId]*objectstorage.CachedObject)
 
@@ -94,6 +98,8 @@ func (reality *Reality) GetParentRealities() map[RealityId]*objectstorage.Cached
 	return parentRealities
 }
 
+// [DONE] Returns a map of all ancestor realities (up till the MAIN_REALITY). They have to manually be "released" when
+// they are not needed anymore.
 func (reality *Reality) GetAncestorRealities() (result map[RealityId]*objectstorage.CachedObject) {
 	result = make(map[RealityId]*objectstorage.CachedObject, 1)
 
@@ -108,12 +114,14 @@ func (reality *Reality) GetAncestorRealities() (result map[RealityId]*objectstor
 	return
 }
 
+// [DONE] Registers the conflict set in the Reality.
 func (reality *Reality) AddConflictSet(conflictSetId ConflictSetId) {
 	reality.conflictSetsMutex.Lock()
 	reality.conflictSets[conflictSetId] = void
 	reality.conflictSetsMutex.Unlock()
 }
 
+// [DONE] Creates a new sub Reality and "stores" it. It has to manually be "released" when it is not needed anymore.
 func (reality *Reality) CreateReality(id RealityId) *objectstorage.CachedObject {
 	newReality := newReality(id, reality.id)
 	newReality.ledgerState = reality.ledgerState

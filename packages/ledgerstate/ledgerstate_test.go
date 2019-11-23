@@ -36,14 +36,20 @@ func Benchmark(b *testing.B) {
 
 	b.ResetTimer()
 
+	lastTransferHash := transferHash1
+
 	for i := 0; i < b.N; i++ {
-		if err := ledgerState.BookTransfer(NewTransfer(NewTransferHash(strconv.Itoa(i))).AddInput(
-			NewTransferOutputReference(transferHash1, addressHash1),
+		newTransferHash := NewTransferHash(strconv.Itoa(i))
+
+		if err := ledgerState.BookTransfer(NewTransfer(newTransferHash).AddInput(
+			NewTransferOutputReference(lastTransferHash, addressHash1),
 		).AddOutput(
-			addressHash3, NewColoredBalance(eth, 1337),
+			addressHash1, NewColoredBalance(eth, 1337),
 		)); err != nil {
 			b.Error(err)
 		}
+
+		lastTransferHash = newTransferHash
 	}
 }
 
