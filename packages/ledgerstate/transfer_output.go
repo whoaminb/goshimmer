@@ -77,7 +77,7 @@ func (transferOutput *TransferOutput) GetConsumers() (consumers map[TransferHash
 	return
 }
 
-func (transferOutput *TransferOutput) addConsumer(consumer TransferHash, outputs map[AddressHash][]*ColoredBalance) (isConflicting bool, consumersToElevate map[TransferHash][]AddressHash, err error) {
+func (transferOutput *TransferOutput) addConsumer(consumer TransferHash, outputs map[AddressHash][]*ColoredBalance) (consumersToElevate map[TransferHash][]AddressHash, err error) {
 	transferOutput.consumersMutex.RLock()
 	if _, exist := transferOutput.consumers[consumer]; exist {
 		transferOutput.consumersMutex.RUnlock()
@@ -87,19 +87,16 @@ func (transferOutput *TransferOutput) addConsumer(consumer TransferHash, outputs
 		transferOutput.consumersMutex.Lock()
 		switch len(transferOutput.consumers) {
 		case 0:
-			isConflicting = false
 			consumersToElevate = nil
 			err = transferOutput.markAsSpent()
 		case 1:
-			isConflicting = true
 			consumersToElevate = make(map[TransferHash][]AddressHash, 1)
 			for transferHash, addresses := range transferOutput.consumers {
 				consumersToElevate[transferHash] = addresses
 			}
 			err = nil
 		default:
-			isConflicting = true
-			consumersToElevate = nil
+			consumersToElevate = make(map[TransferHash][]AddressHash)
 			err = nil
 		}
 		consumers := make([]AddressHash, len(outputs))
@@ -115,29 +112,6 @@ func (transferOutput *TransferOutput) addConsumer(consumer TransferHash, outputs
 	}
 
 	return
-}
-
-func (transferOutput *TransferOutput) moveToReality(realityId RealityId) error {
-	transferOutput.bookingMutex.Lock()
-
-	currentBookingKey := generateTransferOutputBookingStorageKey(transferOutput.GetRealityId(), transferOutput.addressHash, len(transferOutput.consumers) >= 1, transferOutput.transferHash)
-	if oldTransferOutputBooking, err := transferOutput.ledgerState.transferOutputBookings.Load(currentBookingKey); err != nil {
-		transferOutput.bookingMutex.Unlock()
-
-		return err
-	} else {
-		transferOutput.realityIdMutex.Lock()
-		transferOutput.realityId = realityId
-		transferOutput.realityIdMutex.Unlock()
-
-		transferOutput.ledgerState.storeTransferOutputBooking(newTransferOutputBooking(realityId, transferOutput.addressHash, len(transferOutput.consumers) >= 1, transferOutput.transferHash)).Release()
-
-		oldTransferOutputBooking.Delete().Release()
-	}
-
-	transferOutput.bookingMutex.Unlock()
-
-	return nil
 }
 
 func (transferOutput *TransferOutput) markAsSpent() error {

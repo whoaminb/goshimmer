@@ -15,7 +15,7 @@ func NewColor(color string) (result Color) {
 }
 
 func (color *Color) UnmarshalBinary(data []byte) error {
-	copy(color[0:], data[:colorLength])
+	copy(color[:], data[:colorLength])
 
 	return nil
 }

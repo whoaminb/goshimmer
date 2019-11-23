@@ -14,6 +14,12 @@ func NewTransferHash(transferHash string) (result TransferHash) {
 	return
 }
 
+func (transferHash TransferHash) ToRealityId() (realityId RealityId) {
+	copy(realityId[:], transferHash[:])
+
+	return
+}
+
 func (transferHash *TransferHash) UnmarshalBinary(data []byte) error {
 	copy(transferHash[:], data[:transferHashLength])
 

@@ -1,0 +1,29 @@
+digraph  {
+	ranksep="1.0 equally";
+	n9[color="#B85450",fillcolor="#F8CECC",label="",shape="Mdiamond",style="filled"];
+	n10[color="#B85450",fillcolor="#F8CECC",label="",shape="Mdiamond",style="filled"];
+	n11[color="#B85450",fillcolor="#F8CECC",label="",shape="Mdiamond",style="filled"];
+	n1[color="#9673A6",fillcolor="#DAE8FC",label="AGGREGATED REALITY\n\n0x17d02430e44868352c620ef6ca9fd8fc0acfac29e2e571de80d08dd55da5db75 (1)",penwidth="2.0",shape="rect",style="filled"];
+	n2[color="#6C8EBF",fillcolor="#DAE8FC",label="REALITY\n\nArhncsLPwUWykuoZDzvFFUnkiPiNixeH (1)",shape="rect",style="filled"];
+	n6[color="#6C8EBF",fillcolor="#DAE8FC",label="REALITY\n\nBIMPICrFaarazOVGVrilELndvrEfllBW (1)",shape="rect",style="filled"];
+	n3[color="#6C8EBF",fillcolor="#DAE8FC",label="REALITY\n\nMAIN_REALITY (2)",shape="rect",style="filled"];
+	n7[color="#6C8EBF",fillcolor="#DAE8FC",label="REALITY\n\nTBEcRwHcbQRDRDlgLtrgHYPFksNwYdJb (1)",shape="rect",style="filled"];
+	n4[color="#6C8EBF",fillcolor="#DAE8FC",label="REALITY\n\nYmgLgfukWgtDzqiMldTzRZNbIGejXgnp (1)",shape="rect",style="filled"];
+	n8[color="#6C8EBF",fillcolor="#DAE8FC",label="REALITY\n\nbNuXJYJCjbIzVcKWcctpRvUHYlncCiqZ (1)",shape="rect",style="filled"];
+	n5[color="#6C8EBF",fillcolor="#DAE8FC",label="REALITY\n\nfDaBtodiIfuJXQMumMGPeiADlfVRVDtd (1)",shape="rect",style="filled"];
+	n9->n5[arrowhead="none",arrowtail="none",color="#B85450"];
+	n9->n8[arrowhead="none",arrowtail="none",color="#B85450"];
+	n10->n7[arrowhead="none",arrowtail="none",color="#B85450"];
+	n10->n4[arrowhead="none",arrowtail="none",color="#B85450"];
+	n11->n2[arrowhead="none",arrowtail="none",color="#B85450"];
+	n11->n6[arrowhead="none",arrowtail="none",color="#B85450"];
+	n1->n2[arrowhead="none",arrowtail="none"];
+	n1->n4[arrowhead="none",arrowtail="none"];
+	n2->n3[arrowhead="none",arrowtail="none"];
+	n6->n3[arrowhead="none",arrowtail="none"];
+	n7->n5[arrowhead="none",arrowtail="none"];
+	n4->n5[arrowhead="none",arrowtail="none"];
+	n8->n3[arrowhead="none",arrowtail="none"];
+	n5->n3[arrowhead="none",arrowtail="none"];
+	
+}

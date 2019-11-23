@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,8 +43,11 @@ func NewLedgerState(storageId string) *LedgerState {
 }
 
 func (ledgerState *LedgerState) AddTransferOutput(transferHash TransferHash, addressHash AddressHash, balances ...*ColoredBalance) *LedgerState {
-	ledgerState.storeTransferOutput(NewTransferOutput(ledgerState, MAIN_REALITY_ID, transferHash, addressHash, balances...)).Release()
-	ledgerState.storeTransferOutputBooking(newTransferOutputBooking(MAIN_REALITY_ID, addressHash, false, transferHash)).Release()
+	ledgerState.GetReality(MAIN_REALITY_ID).Consume(func(object objectstorage.StorableObject) {
+		mainReality := object.(*Reality)
+
+		mainReality.bookTransferOutput(NewTransferOutput(ledgerState, emptyRealityId, transferHash, addressHash, balances...))
+	})
 
 	return ledgerState
 }
@@ -122,7 +126,7 @@ func (ledgerState *LedgerState) CreateReality(id RealityId) {
 	newReality := newReality(id, MAIN_REALITY_ID)
 	newReality.ledgerState = ledgerState
 
-	ledgerState.realities.Store(newReality)
+	ledgerState.realities.Store(newReality).Release()
 }
 
 func (ledgerState *LedgerState) GetReality(id RealityId) *objectstorage.CachedObject {
@@ -158,20 +162,41 @@ func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) error {
 
 func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string) error {
 	di := dot.NewGraph(dot.Directed)
+	di.Attr("ranksep", "1.0 equally")
 
 	realityNodes := make(map[RealityId]dot.Node)
+
+	drawConflictSet := func(conflictSet *ConflictSet) {
+		conflictSetNode := di.Node(strings.Trim(conflictSet.id.String(), "\x00"))
+		conflictSetNode.Attr("label", "")
+		conflictSetNode.Attr("shape", "Mdiamond")
+		conflictSetNode.Attr("style", "filled")
+		conflictSetNode.Attr("color", "#B85450")
+		conflictSetNode.Attr("fillcolor", "#F8CECC")
+
+		for realityId := range conflictSet.members {
+			conflictSetNode.Edge(realityNodes[realityId]).Attr("arrowhead", "none").Attr("arrowtail", "none").Attr("color", "#B85450")
+		}
+	}
 
 	var drawReality func(reality *Reality) dot.Node
 	drawReality = func(reality *Reality) dot.Node {
 		realityNode, exists := realityNodes[reality.GetId()]
 		if !exists {
 			if len(reality.parentRealities) > 1 {
-				realityNode = di.Node("AGGREGATED REALITY: " + strings.Trim(reality.GetId().String(), "\x00"))
+				realityNode = di.Node("AGGREGATED REALITY\n\n" + strings.Trim(reality.GetId().String(), "\x00") + " (" + strconv.Itoa(reality.GetTransferOutputCount()) + ")")
+				realityNode.Attr("style", "filled")
+				realityNode.Attr("shape", "rect")
+				realityNode.Attr("color", "#9673A6")
+				realityNode.Attr("fillcolor", "#DAE8FC")
+				realityNode.Attr("penwidth", "2.0")
 			} else {
-				realityNode = di.Node("REALITY: " + strings.Trim(reality.GetId().String(), "\x00"))
+				realityNode = di.Node("REALITY\n\n" + strings.Trim(reality.GetId().String(), "\x00") + " (" + strconv.Itoa(reality.GetTransferOutputCount()) + ")")
+				realityNode.Attr("style", "filled")
+				realityNode.Attr("shape", "rect")
+				realityNode.Attr("color", "#6C8EBF")
+				realityNode.Attr("fillcolor", "#DAE8FC")
 			}
-			realityNode.Attr("style", "rounded")
-			realityNode.Attr("shape", "rect")
 
 			realityNodes[reality.GetId()] = realityNode
 		}
@@ -181,7 +206,7 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 
 			for _, cachedReality := range parentRealities {
 				cachedReality.Consume(func(object objectstorage.StorableObject) {
-					realityNode.Edge(drawReality(object.(*Reality)))
+					realityNode.Edge(drawReality(object.(*Reality))).Attr("arrowhead", "none").Attr("arrowtail", "none")
 				})
 			}
 		}
@@ -197,6 +222,14 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 		return true
 	})
 
+	ledgerState.ForEachConflictSet(func(object *objectstorage.CachedObject) bool {
+		object.Consume(func(object objectstorage.StorableObject) {
+			drawConflictSet(object.(*ConflictSet))
+		})
+
+		return true
+	})
+
 	d1 := []byte(di.String())
 	if err := ioutil.WriteFile("_tmp.dot", d1, 0755); err != nil {
 		return err
@@ -207,9 +240,9 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 		return err
 	}
 
-	if err := os.Remove("_tmp.dot"); err != nil {
-		return err
-	}
+	//if err := os.Remove("_tmp.dot"); err != nil {
+	//	return err
+	//}
 
 	return nil
 }
@@ -354,6 +387,8 @@ func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *objects
 }
 
 func (ledgerState *LedgerState) Prune() *LedgerState {
+	time.Sleep(2 * time.Second)
+
 	if err := ledgerState.transferOutputs.Prune(); err != nil {
 		panic(err)
 	}
@@ -363,6 +398,10 @@ func (ledgerState *LedgerState) Prune() *LedgerState {
 	}
 
 	if err := ledgerState.realities.Prune(); err != nil {
+		panic(err)
+	}
+
+	if err := ledgerState.conflictSets.Prune(); err != nil {
 		panic(err)
 	}
 

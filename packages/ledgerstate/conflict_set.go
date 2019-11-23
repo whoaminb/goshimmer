@@ -32,7 +32,11 @@ func newConflictSet(id ConflictSetId) *ConflictSet {
 	return result
 }
 
-func (conflictSet *ConflictSet) AddMember(realityId RealityId) {
+func (conflictSet *ConflictSet) GetId() ConflictSetId {
+	return conflictSet.id
+}
+
+func (conflictSet *ConflictSet) AddReality(realityId RealityId) {
 	conflictSet.membersMutex.Lock()
 
 	conflictSet.members[realityId] = void

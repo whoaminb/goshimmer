@@ -28,4 +28,6 @@ func (realityId RealityId) String() string {
 	}
 }
 
+var emptyRealityId = RealityId{}
+
 const realityIdLength = 32
