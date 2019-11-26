@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/iotaledger/hive.go/parameter"
+
 	"github.com/iotaledger/goshimmer/packages/utils"
 
 	"github.com/iotaledger/hive.go/objectstorage"
@@ -28,6 +30,12 @@ var (
 	addressHash6   = NewAddressHash("ADDRESS6")
 	pendingReality = NewRealityId("PENDING")
 )
+
+func init() {
+	if err := parameter.FetchConfig(false); err != nil {
+		panic(err)
+	}
+}
 
 func Benchmark(b *testing.B) {
 	ledgerState := NewLedgerState("testLedger").Prune().AddTransferOutput(

@@ -10,8 +10,8 @@ import (
 	"github.com/iotaledger/hive.go/objectstorage"
 )
 
-type ConflictSet struct {
-	id      ConflictSetId
+type Conflict struct {
+	id      ConflictId
 	members map[RealityId]empty
 
 	storageKey  []byte
@@ -20,8 +20,8 @@ type ConflictSet struct {
 	membersMutex sync.RWMutex
 }
 
-func newConflictSet(id ConflictSetId) *ConflictSet {
-	result := &ConflictSet{
+func newConflictSet(id ConflictId) *Conflict {
+	result := &Conflict{
 		id:      id,
 		members: make(map[RealityId]empty),
 
@@ -32,73 +32,73 @@ func newConflictSet(id ConflictSetId) *ConflictSet {
 	return result
 }
 
-func (conflictSet *ConflictSet) GetId() ConflictSetId {
-	return conflictSet.id
+func (conflict *Conflict) GetId() ConflictId {
+	return conflict.id
 }
 
-func (conflictSet *ConflictSet) AddReality(realityId RealityId) {
-	conflictSet.membersMutex.Lock()
+func (conflict *Conflict) AddReality(realityId RealityId) {
+	conflict.membersMutex.Lock()
 
-	conflictSet.members[realityId] = void
+	conflict.members[realityId] = void
 
-	conflictSet.membersMutex.Unlock()
+	conflict.membersMutex.Unlock()
 }
 
-func (conflictSet *ConflictSet) String() string {
-	conflictSet.membersMutex.RLock()
-	defer conflictSet.membersMutex.RUnlock()
+func (conflict *Conflict) String() string {
+	conflict.membersMutex.RLock()
+	defer conflict.membersMutex.RUnlock()
 
-	return stringify.Struct("ConflictSet",
-		stringify.StructField("id", conflictSet.id.String()),
-		stringify.StructField("members", conflictSet.members),
+	return stringify.Struct("Conflict",
+		stringify.StructField("id", conflict.id.String()),
+		stringify.StructField("members", conflict.members),
 	)
 }
 
 // region support object storage ///////////////////////////////////////////////////////////////////////////////////////
 
-func (conflictSet *ConflictSet) GetStorageKey() []byte {
-	return conflictSet.storageKey
+func (conflict *Conflict) GetStorageKey() []byte {
+	return conflict.storageKey
 }
 
-func (conflictSet *ConflictSet) Update(other objectstorage.StorableObject) {
+func (conflict *Conflict) Update(other objectstorage.StorableObject) {
 	fmt.Println("UPDATE")
 }
 
-func (conflictSet *ConflictSet) MarshalBinary() ([]byte, error) {
-	conflictSet.membersMutex.RLock()
+func (conflict *Conflict) MarshalBinary() ([]byte, error) {
+	conflict.membersMutex.RLock()
 
 	offset := 0
-	membersCount := len(conflictSet.members)
+	membersCount := len(conflict.members)
 	result := make([]byte, 4+membersCount*realityIdLength)
 
 	binary.LittleEndian.PutUint32(result[offset:], uint32(membersCount))
 	offset += 4
 
-	for realityId := range conflictSet.members {
+	for realityId := range conflict.members {
 		copy(result[offset:], realityId[:realityIdLength])
 		offset += realityIdLength
 	}
 
-	conflictSet.membersMutex.RUnlock()
+	conflict.membersMutex.RUnlock()
 
 	return result, nil
 }
 
-func (conflictSet *ConflictSet) UnmarshalBinary(serializedObject []byte) error {
-	if err := conflictSet.id.UnmarshalBinary(conflictSet.storageKey); err != nil {
+func (conflict *Conflict) UnmarshalBinary(serializedObject []byte) error {
+	if err := conflict.id.UnmarshalBinary(conflict.storageKey); err != nil {
 		return err
 	}
 
-	if members, err := conflictSet.unmarshalMembers(serializedObject); err != nil {
+	if members, err := conflict.unmarshalMembers(serializedObject); err != nil {
 		return err
 	} else {
-		conflictSet.members = members
+		conflict.members = members
 	}
 
 	return nil
 }
 
-func (conflictSet *ConflictSet) unmarshalMembers(serializedConsumers []byte) (map[RealityId]empty, error) {
+func (conflict *Conflict) unmarshalMembers(serializedConsumers []byte) (map[RealityId]empty, error) {
 	offset := 0
 
 	membersCount := int(binary.LittleEndian.Uint32(serializedConsumers[offset:]))

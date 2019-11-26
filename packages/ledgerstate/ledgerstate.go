@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iotaledger/goshimmer/packages/graphviz"
+
 	"golang.org/x/crypto/blake2b"
 
 	"github.com/emicklei/dot"
@@ -68,7 +70,7 @@ func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *Trans
 
 func (ledgerState *LedgerState) ForEachConflictSet(callback func(object *objectstorage.CachedObject) bool) {
 	if err := ledgerState.conflictSets.ForEach(func(key []byte, cachedObject *objectstorage.CachedObject) bool {
-		cachedObject.Get().(*ConflictSet).ledgerState = ledgerState
+		cachedObject.Get().(*Conflict).ledgerState = ledgerState
 
 		return callback(cachedObject)
 	}); err != nil {
@@ -161,13 +163,13 @@ func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) error {
 }
 
 func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string) error {
-	di := dot.NewGraph(dot.Directed)
-	di.Attr("ranksep", "1.0 equally")
+	graph := dot.NewGraph(dot.Directed)
+	graph.Attr("ranksep", "1.0 equally")
 
 	realityNodes := make(map[RealityId]dot.Node)
 
-	drawConflictSet := func(conflictSet *ConflictSet) {
-		conflictSetNode := di.Node(strings.Trim(conflictSet.id.String(), "\x00"))
+	drawConflictSet := func(conflictSet *Conflict) {
+		conflictSetNode := graph.Node(strings.Trim(conflictSet.id.String(), "\x00"))
 		conflictSetNode.Attr("label", "")
 		conflictSetNode.Attr("shape", "Mdiamond")
 		conflictSetNode.Attr("style", "filled")
@@ -181,24 +183,24 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 
 	var drawReality func(reality *Reality) dot.Node
 	drawReality = func(reality *Reality) dot.Node {
-		realityNode, exists := realityNodes[reality.GetId()]
+		realityNode, exists := realityNodes[reality.id]
 		if !exists {
-			if len(reality.parentRealities) > 1 {
-				realityNode = di.Node("AGGREGATED REALITY\n\n" + strings.Trim(reality.GetId().String(), "\x00") + " (" + strconv.Itoa(reality.GetTransferOutputCount()) + ")")
+			if reality.IsAggregated() {
+				realityNode = graph.Node("AGGREGATED REALITY\n\n" + strings.Trim(reality.id.String(), "\x00") + " (" + strconv.Itoa(int(reality.GetTransferOutputCount())) + ")")
 				realityNode.Attr("style", "filled")
 				realityNode.Attr("shape", "rect")
 				realityNode.Attr("color", "#9673A6")
 				realityNode.Attr("fillcolor", "#DAE8FC")
 				realityNode.Attr("penwidth", "2.0")
 			} else {
-				realityNode = di.Node("REALITY\n\n" + strings.Trim(reality.GetId().String(), "\x00") + " (" + strconv.Itoa(reality.GetTransferOutputCount()) + ")")
+				realityNode = graph.Node("REALITY\n\n" + strings.Trim(reality.id.String(), "\x00") + " (" + strconv.Itoa(int(reality.GetTransferOutputCount())) + ")")
 				realityNode.Attr("style", "filled")
 				realityNode.Attr("shape", "rect")
 				realityNode.Attr("color", "#6C8EBF")
 				realityNode.Attr("fillcolor", "#DAE8FC")
 			}
 
-			realityNodes[reality.GetId()] = realityNode
+			realityNodes[reality.id] = realityNode
 		}
 
 		if !exists {
@@ -221,30 +223,15 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 
 		return true
 	})
-
 	ledgerState.ForEachConflictSet(func(object *objectstorage.CachedObject) bool {
 		object.Consume(func(object objectstorage.StorableObject) {
-			drawConflictSet(object.(*ConflictSet))
+			drawConflictSet(object.(*Conflict))
 		})
 
 		return true
 	})
 
-	d1 := []byte(di.String())
-	if err := ioutil.WriteFile("_tmp.dot", d1, 0755); err != nil {
-		return err
-	}
-
-	_, err := exec.Command("dot", "-Tpng", "_tmp.dot", "-o", pngFilename).Output()
-	if err != nil {
-		return err
-	}
-
-	//if err := os.Remove("_tmp.dot"); err != nil {
-	//	return err
-	//}
-
-	return nil
+	return graphviz.RenderPNG(graph, pngFilename)
 }
 
 func (ledgerState *LedgerState) GenerateVisualization() error {
@@ -309,7 +296,7 @@ func (ledgerState *LedgerState) GenerateVisualization() error {
 	return nil
 }
 
-func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *objectstorage.CachedObject {
+func (ledgerState *LedgerState) AggregateRealities(realityIds ...RealityId) *objectstorage.CachedObject {
 	switch len(realityIds) {
 	case 0:
 		if loadedReality, loadedRealityErr := ledgerState.realities.Load(MAIN_REALITY_ID[:]); loadedRealityErr != nil {
@@ -352,16 +339,16 @@ func (ledgerState *LedgerState) MergeRealities(realityIds ...RealityId) *objects
 			for aggregatedRealityId, aggregatedReality := range aggregatedRealities {
 				// if an already aggregated reality "descends" from the current reality, then we have found the more
 				// "specialized" reality already and keep it
-				if aggregatedReality.Get().(*Reality).DescendsFromReality(realityId) {
+				if aggregatedReality.Get().(*Reality).DescendsFrom(realityId) {
 					continue AGGREGATE_REALITIES
 				}
 
 				// if the current reality
-				if reality.DescendsFromReality(aggregatedRealityId) {
+				if reality.DescendsFrom(aggregatedRealityId) {
 					delete(aggregatedRealities, aggregatedRealityId)
 					aggregatedReality.Release()
 
-					aggregatedRealities[reality.GetId()] = cachedReality
+					aggregatedRealities[reality.id] = cachedReality
 
 					continue AGGREGATE_REALITIES
 				}
@@ -540,7 +527,7 @@ func (ledgerState *LedgerState) getTargetReality(inputs []*objectstorage.CachedO
 		realityIds[i] = input.Get().(*TransferOutput).GetRealityId()
 	}
 
-	return ledgerState.MergeRealities(realityIds...)
+	return ledgerState.AggregateRealities(realityIds...)
 }
 
 func (ledgerState *LedgerState) getTransferInputs(transfer *Transfer) []*objectstorage.CachedObject {
@@ -582,7 +569,7 @@ func realityFactory(key []byte) objectstorage.StorableObject {
 }
 
 func conflictSetFactory(key []byte) objectstorage.StorableObject {
-	result := &ConflictSet{
+	result := &Conflict{
 		storageKey: make([]byte, len(key)),
 	}
 	copy(result.storageKey, key)

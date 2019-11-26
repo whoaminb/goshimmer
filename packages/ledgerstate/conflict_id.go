@@ -7,17 +7,17 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-type ConflictSetId [conflictSetIdLength]byte
+type ConflictId [conflictSetIdLength]byte
 
-func NewConflictSetId(conflictSetBytes ...interface{}) (result ConflictSetId) {
-	switch len(conflictSetBytes) {
+func NewConflictSetId(conflictBytes ...interface{}) (result ConflictId) {
+	switch len(conflictBytes) {
 	case 2:
-		transferHash, ok := conflictSetBytes[0].(TransferHash)
+		transferHash, ok := conflictBytes[0].(TransferHash)
 		if !ok {
 			panic("expected first parameter of NewConflictSetId to be a TransferHash")
 		}
 
-		addressHash, ok := conflictSetBytes[0].(TransferHash)
+		addressHash, ok := conflictBytes[0].(TransferHash)
 		if !ok {
 			panic("expected second parameter of NewConflictSetId to be a AddressHash")
 		}
@@ -35,17 +35,17 @@ func NewConflictSetId(conflictSetBytes ...interface{}) (result ConflictSetId) {
 	return
 }
 
-func (conflictSetId *ConflictSetId) UnmarshalBinary(data []byte) error {
-	copy(conflictSetId[:], data[:conflictSetIdLength])
+func (conflictId *ConflictId) UnmarshalBinary(data []byte) error {
+	copy(conflictId[:], data[:conflictSetIdLength])
 
 	return nil
 }
 
-func (conflictSetId ConflictSetId) String() string {
-	if utf8.Valid(conflictSetId[:]) {
-		return string(conflictSetId[:])
+func (conflictId ConflictId) String() string {
+	if utf8.Valid(conflictId[:]) {
+		return string(conflictId[:])
 	} else {
-		return stringify.SliceOfBytes(conflictSetId[:])
+		return stringify.SliceOfBytes(conflictId[:])
 	}
 }
 

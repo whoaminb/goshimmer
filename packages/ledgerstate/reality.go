@@ -1,63 +1,90 @@
 package ledgerstate
 
 import (
-	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/iotaledger/goshimmer/packages/errors"
-
 	"github.com/iotaledger/goshimmer/packages/stringify"
 
 	"github.com/iotaledger/hive.go/objectstorage"
 )
 
 type Reality struct {
-	id                  RealityId
-	transferOutputCount int
-	parentRealities     map[RealityId]empty
-	conflictSets        map[ConflictSetId]empty
+	id                    RealityId
+	parentRealityIds      RealityIdSet
+	parentRealityIdsMutex sync.RWMutex
+	conflictIds           ConflictIdSet
+	conflictIdsMutex      sync.RWMutex
+	transferOutputCount   uint32
 
 	storageKey  []byte
 	ledgerState *LedgerState
-
-	bookingMutex             sync.RWMutex
-	transferOutputCountMutex sync.RWMutex
-	parentRealitiesMutex     sync.RWMutex
-	conflictSetsMutex        sync.RWMutex
 }
 
+// region DONE REVIEWING ///////////////////////////////////////////////////////////////////////////////////////////////
+
+// Creates a new Reality with the given id and parents. It is only used internally and therefore "private".
 func newReality(id RealityId, parentRealities ...RealityId) *Reality {
 	result := &Reality{
-		id:              id,
-		parentRealities: make(map[RealityId]empty),
-		conflictSets:    make(map[ConflictSetId]empty),
+		id:               id,
+		parentRealityIds: NewRealityIdSet(parentRealities...),
+		conflictIds:      NewConflictIdSet(),
 
 		storageKey: make([]byte, len(id)),
 	}
 	copy(result.storageKey, id[:])
 
-	for _, parentRealityId := range parentRealities {
-		result.parentRealities[parentRealityId] = void
-	}
-
 	return result
 }
 
+// Returns the id of this Reality. Since the id never changes, we do not need a mutex to protect this property.
 func (reality *Reality) GetId() RealityId {
 	return reality.id
 }
 
-func (reality *Reality) GetTransferOutputCount() (transferOutputCount int) {
-	reality.transferOutputCountMutex.RLock()
-	transferOutputCount = reality.transferOutputCount
-	reality.transferOutputCountMutex.RUnlock()
+// Returns the set of RealityIds that are the parents of this Reality (it creates a clone).
+func (reality *Reality) GetParentRealityIds() (realityIdSet RealityIdSet) {
+	reality.parentRealityIdsMutex.RLock()
+	realityIdSet = reality.parentRealityIds.Clone()
+	reality.parentRealityIdsMutex.RUnlock()
 
 	return
 }
 
-// [DONE] Checks if the Reality "descends" from the given RealityId. It returns true, if the RealityId addresses the
-// Reality itself, or one of its ancestors.
-func (reality *Reality) DescendsFromReality(realityId RealityId) bool {
+// Sets the set of RealityIds that are the parents of this Reality.
+func (reality *Reality) SetParentRealityIds(parentRealityIds RealityIdSet) {
+	reality.parentRealityIdsMutex.Lock()
+	reality.parentRealityIds = parentRealityIds
+	reality.parentRealityIdsMutex.Unlock()
+}
+
+// Returns the amount of TransferOutputs in this Reality.
+func (reality *Reality) GetTransferOutputCount() uint32 {
+	return atomic.LoadUint32(&(reality.transferOutputCount))
+}
+
+// Increases (and returns) the amount of TransferOutputs in this Reality.
+func (reality *Reality) IncreaseTransferOutputCount() uint32 {
+	return atomic.AddUint32(&(reality.transferOutputCount), 1)
+}
+
+// Decreases (and returns) the amount of TransferOutputs in this Reality.
+func (reality *Reality) DecreaseTransferOutputCount() uint32 {
+	return atomic.AddUint32(&(reality.transferOutputCount), ^uint32(0))
+}
+
+// Returns true, if this reality is an "aggregated reality" that combines multiple other realities.
+func (reality *Reality) IsAggregated() (isAggregated bool) {
+	reality.parentRealityIdsMutex.RLock()
+	isAggregated = len(reality.parentRealityIds) > 1
+	reality.parentRealityIdsMutex.RUnlock()
+
+	return
+}
+
+// Returns true if the given RealityId addresses the Reality itself or one of its ancestors.
+func (reality *Reality) DescendsFrom(realityId RealityId) bool {
 	if reality.id == realityId {
 		return true
 	} else {
@@ -75,25 +102,27 @@ func (reality *Reality) DescendsFromReality(realityId RealityId) bool {
 	}
 }
 
+// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 // [DONE] Returns a map of all parent realities (one level). They have to manually be "released" when they are not
 // needed anymore.
 func (reality *Reality) GetParentRealities() map[RealityId]*objectstorage.CachedObject {
 	parentRealities := make(map[RealityId]*objectstorage.CachedObject)
 
-	reality.parentRealitiesMutex.RLock()
+	reality.parentRealityIdsMutex.RLock()
 
-	for parentRealityId := range reality.parentRealities {
+	for parentRealityId := range reality.parentRealityIds {
 		loadedParentReality := reality.ledgerState.GetReality(parentRealityId)
 		if !loadedParentReality.Exists() {
-			reality.parentRealitiesMutex.RUnlock()
+			reality.parentRealityIdsMutex.RUnlock()
 
 			panic("could not load parent reality with id \"" + string(parentRealityId[:]) + "\"")
 		}
 
-		parentRealities[loadedParentReality.Get().(*Reality).GetId()] = loadedParentReality
+		parentRealities[loadedParentReality.Get().(*Reality).id] = loadedParentReality
 	}
 
-	reality.parentRealitiesMutex.RUnlock()
+	reality.parentRealityIdsMutex.RUnlock()
 
 	return parentRealities
 }
@@ -115,10 +144,10 @@ func (reality *Reality) GetAncestorRealities() (result map[RealityId]*objectstor
 }
 
 // [DONE] Registers the conflict set in the Reality.
-func (reality *Reality) AddConflictSet(conflictSetId ConflictSetId) {
-	reality.conflictSetsMutex.Lock()
-	reality.conflictSets[conflictSetId] = void
-	reality.conflictSetsMutex.Unlock()
+func (reality *Reality) AddConflictSet(conflictSetId ConflictId) {
+	reality.conflictIdsMutex.Lock()
+	reality.conflictIds[conflictSetId] = void
+	reality.conflictIdsMutex.Unlock()
 }
 
 // [DONE] Creates a new sub Reality and "stores" it. It has to manually be "released" when it is not needed anymore.
@@ -130,11 +159,7 @@ func (reality *Reality) CreateReality(id RealityId) *objectstorage.CachedObject 
 }
 
 func (reality *Reality) BookTransfer(transfer *Transfer) (err error) {
-	reality.bookingMutex.RLock()
-
 	err = reality.bookTransfer(transfer.GetHash(), reality.ledgerState.getTransferInputs(transfer), transfer.GetOutputs())
-
-	reality.bookingMutex.RUnlock()
 
 	return
 }
@@ -153,15 +178,24 @@ func (reality *Reality) bookTransfer(transferHash TransferHash, inputs objectsto
 		var targetRealityId RealityId
 		copy(targetRealityId[:], transferHash[:])
 
-		for _, conflictSet := range conflictSets {
-			conflictSet.Get().(*ConflictSet).AddReality(targetRealityId)
-		}
-
 		reality.CreateReality(targetRealityId).Consume(func(object objectstorage.StorableObject) {
-			object.(*Reality).persistTransfer(transferHash, outputs)
+			targetReality := object.(*Reality)
+
+			for _, cachedConflictSet := range conflictSets {
+				conflictSet := cachedConflictSet.Get().(*Conflict)
+
+				conflictSet.AddReality(targetRealityId)
+				targetReality.AddConflictSet(conflictSet.GetId())
+			}
+
+			for addressHash, coloredBalances := range outputs {
+				targetReality.bookTransferOutput(NewTransferOutput(reality.ledgerState, emptyRealityId, transferHash, addressHash, coloredBalances...))
+			}
 		})
 	} else {
-		reality.persistTransfer(transferHash, outputs)
+		for addressHash, coloredBalances := range outputs {
+			reality.bookTransferOutput(NewTransferOutput(reality.ledgerState, emptyRealityId, transferHash, addressHash, coloredBalances...))
+		}
 	}
 
 	conflictSets.Release()
@@ -180,7 +214,7 @@ func (reality *Reality) verifyTransfer(inputs []*objectstorage.CachedObject, out
 		}
 
 		transferOutput := cachedInput.Get().(*TransferOutput)
-		if !reality.DescendsFromReality(transferOutput.GetRealityId()) {
+		if !reality.DescendsFrom(transferOutput.GetRealityId()) {
 			return errors.New("the referenced funds do not exist in this reality")
 		}
 
@@ -245,7 +279,7 @@ func (reality *Reality) retrieveConflictSetForConflictingInput(input *TransferOu
 
 		conflictSet = reality.ledgerState.conflictSets.Store(newConflictSet)
 
-		err = reality.elevateTransferOutputs(consumersToElevate, conflictSet.Get().(*ConflictSet))
+		err = reality.createRealityForConflictingConsumers(consumersToElevate, conflictSet.Get().(*Conflict))
 		if err != nil {
 			return
 		}
@@ -254,14 +288,14 @@ func (reality *Reality) retrieveConflictSetForConflictingInput(input *TransferOu
 		if err != nil {
 			return
 		}
-		conflictSet.Get().(*ConflictSet).ledgerState = reality.ledgerState
+		conflictSet.Get().(*Conflict).ledgerState = reality.ledgerState
 	}
 
 	return
 }
 
-func (reality *Reality) elevateTransferOutputs(transferOutputs map[TransferHash][]AddressHash, conflictSet *ConflictSet) (err error) {
-	for transferHash, addressHashes := range transferOutputs {
+func (reality *Reality) createRealityForConflictingConsumers(conflictingConsumers map[TransferHash][]AddressHash, conflictSet *Conflict) (err error) {
+	for transferHash, addressHashes := range conflictingConsumers {
 		// determine RealityId
 		elevatedRealityId := transferHash.ToRealityId()
 
@@ -269,11 +303,11 @@ func (reality *Reality) elevateTransferOutputs(transferOutputs map[TransferHash]
 		reality.CreateReality(elevatedRealityId).Consume(func(object objectstorage.StorableObject) {
 			elevatedReality := object.(*Reality)
 
-			// register Reality <-> ConflictSet
+			// register Reality <-> Conflict
 			conflictSet.AddReality(elevatedRealityId)
 			elevatedReality.AddConflictSet(conflictSet.GetId())
 
-			// elevate TransferOutputs
+			// elevate TransferOutputs to the new Reality
 			for _, addressHash := range addressHashes {
 				if err = reality.elevateTransferOutput(NewTransferOutputReference(transferHash, addressHash), elevatedReality); err != nil {
 					return
@@ -286,68 +320,65 @@ func (reality *Reality) elevateTransferOutputs(transferOutputs map[TransferHash]
 }
 
 func (reality *Reality) elevateTransferOutput(transferOutputReference *TransferOutputReference, newReality *Reality) (err error) {
-	if cachedTransferOutputToElevate := reality.ledgerState.GetTransferOutput(transferOutputReference); !cachedTransferOutputToElevate.Exists() {
+	cachedTransferOutputToElevate := reality.ledgerState.GetTransferOutput(transferOutputReference)
+	if !cachedTransferOutputToElevate.Exists() {
 		return errors.New("could not find TransferOutput to elevate")
-	} else {
-		cachedTransferOutputToElevate.Consume(func(object objectstorage.StorableObject) {
-			transferOutputToElevate := object.(*TransferOutput)
+	}
 
-			if transferOutputToElevate.GetRealityId() == reality.id {
-				if moveErr := newReality.bookTransferOutput(transferOutputToElevate); moveErr != nil {
-					err = moveErr
+	cachedTransferOutputToElevate.Consume(func(object objectstorage.StorableObject) {
+		transferOutputToElevate := object.(*TransferOutput)
 
-					return
-				}
+		if transferOutputToElevate.GetRealityId() == reality.id {
+			err = reality.elevateTransferOutputOfCurrentReality(transferOutputToElevate, newReality)
+		} else {
+			reality.ledgerState.GetReality(transferOutputToElevate.GetRealityId()).Consume(func(nestedReality objectstorage.StorableObject) {
+				err = nestedReality.(*Reality).elevateTransferOutputOfNestedReality(transferOutputToElevate, reality.id, newReality.id)
+			})
+		}
+	})
 
-				for transferHash, addresses := range transferOutputToElevate.GetConsumers() {
-					for _, addressHash := range addresses {
-						if elevateErr := reality.elevateTransferOutput(NewTransferOutputReference(transferHash, addressHash), newReality); elevateErr != nil {
-							err = elevateErr
+	return
+}
 
-							return
-						}
-					}
-				}
-			} else {
-				reality.ledgerState.GetReality(transferOutputToElevate.GetRealityId()).Consume(func(nestedReality objectstorage.StorableObject) {
-					nestedReality.(*Reality).elevateReality(reality.id, newReality.GetId())
-				})
+func (reality *Reality) elevateTransferOutputOfCurrentReality(transferOutput *TransferOutput, newReality *Reality) (err error) {
+	if err = newReality.bookTransferOutput(transferOutput); err != nil {
+		return
+	}
+
+	for transferHash, addresses := range transferOutput.GetConsumers() {
+		for _, addressHash := range addresses {
+			if elevateErr := reality.elevateTransferOutput(NewTransferOutputReference(transferHash, addressHash), newReality); elevateErr != nil {
+				err = elevateErr
+
+				return
 			}
-		})
+		}
 	}
 
 	return
 }
 
-func (reality *Reality) elevateReality(oldParentRealityId RealityId, newParentRealityId RealityId) {
-	reality.bookingMutex.Lock()
-	reality.parentRealitiesMutex.Lock()
+func (reality *Reality) elevateTransferOutputOfNestedReality(transferOutput *TransferOutput, oldParentRealityId RealityId, newParentRealityId RealityId) (err error) {
+	if !reality.IsAggregated() {
+		reality.parentRealityIdsMutex.Lock()
+		reality.parentRealityIds.Remove(oldParentRealityId).Add(newParentRealityId)
+		reality.parentRealityIdsMutex.Unlock()
 
-	fmt.Println(reality.id)
-
-	if len(reality.parentRealities) > 1 {
-		// aggregated reality
-		fmt.Println("AGGREGATED REALITY")
-		delete(reality.parentRealities, oldParentRealityId)
-		reality.parentRealities[newParentRealityId] = void
-	} else {
-		delete(reality.parentRealities, oldParentRealityId)
-		reality.parentRealities[newParentRealityId] = void
+		return
 	}
 
-	reality.parentRealitiesMutex.Unlock()
-	reality.bookingMutex.Unlock()
-}
+	newParentRealities := reality.GetParentRealityIds().Remove(oldParentRealityId).Add(newParentRealityId).ToList()
 
-func (reality *Reality) persistTransfer(transferHash TransferHash, transferOutputs map[AddressHash][]*ColoredBalance) {
-	for addressHash, coloredBalances := range transferOutputs {
-		reality.bookTransferOutput(NewTransferOutput(reality.ledgerState, emptyRealityId, transferHash, addressHash, coloredBalances...))
-	}
+	reality.ledgerState.AggregateRealities(newParentRealities...).Store().Consume(func(object objectstorage.StorableObject) {
+		err = reality.elevateTransferOutputOfCurrentReality(transferOutput, object.(*Reality))
+	})
+
+	return
 }
 
 func (reality *Reality) bookTransferOutput(transferOutput *TransferOutput) (err error) {
 	// retrieve required variables
-	realityId := reality.GetId()
+	realityId := reality.id
 	transferOutputRealityId := transferOutput.GetRealityId()
 	transferOutputAddressHash := transferOutput.GetAddressHash()
 	transferOutputSpent := len(transferOutput.consumers) >= 1
@@ -368,11 +399,10 @@ func (reality *Reality) bookTransferOutput(transferOutput *TransferOutput) (err 
 			transferOutput.SetRealityId(realityId)
 
 			reality.ledgerState.GetReality(transferOutputRealityId).Consume(func(object objectstorage.StorableObject) {
-				oldReality := object.(*Reality)
-
-				oldReality.transferOutputCountMutex.Lock()
-				oldReality.transferOutputCount--
-				oldReality.transferOutputCountMutex.Unlock()
+				// decrease transferOutputCount and remove reality if it is empty
+				if object.(*Reality).DecreaseTransferOutputCount() == 0 {
+					reality.ledgerState.realities.Delete(transferOutputRealityId[:])
+				}
 			})
 
 			oldTransferOutputBooking.Delete().Release()
@@ -383,21 +413,18 @@ func (reality *Reality) bookTransferOutput(transferOutput *TransferOutput) (err 
 	if transferOutputRealityId != realityId {
 		reality.ledgerState.storeTransferOutputBooking(newTransferOutputBooking(realityId, transferOutputAddressHash, transferOutputSpent, transferOutputTransferHash)).Release()
 
-		reality.transferOutputCountMutex.Lock()
-		reality.transferOutputCount++
-		reality.transferOutputCountMutex.Unlock()
+		reality.IncreaseTransferOutputCount()
 	}
 
 	return
 }
 
 func (reality *Reality) String() (result string) {
-	reality.parentRealitiesMutex.RLock()
+	reality.parentRealityIdsMutex.RLock()
 
-	parentRealities := make([]string, len(reality.parentRealities))
-
+	parentRealities := make([]string, len(reality.parentRealityIds))
 	i := 0
-	for parentRealityId := range reality.parentRealities {
+	for parentRealityId := range reality.parentRealityIds {
 		parentRealities[i] = parentRealityId.String()
 
 		i++
@@ -408,7 +435,7 @@ func (reality *Reality) String() (result string) {
 		stringify.StructField("parentRealities", parentRealities),
 	)
 
-	reality.parentRealitiesMutex.RUnlock()
+	reality.parentRealityIdsMutex.RUnlock()
 
 	return
 }

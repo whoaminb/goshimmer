@@ -11,37 +11,33 @@ func (reality *Reality) GetStorageKey() []byte {
 }
 
 func (reality *Reality) Update(other objectstorage.StorableObject) {
-	reality.bookingMutex.Lock()
-
 	if otherReality, ok := other.(*Reality); !ok {
-		reality.bookingMutex.Unlock()
-
 		panic("Update method expects a *TransferOutputBooking")
 	} else {
-		reality.parentRealities = otherReality.parentRealities
+		reality.parentRealityIdsMutex.Lock()
+		reality.parentRealityIds = otherReality.parentRealityIds
+		reality.parentRealityIdsMutex.Unlock()
 	}
-
-	reality.bookingMutex.Unlock()
 }
 
 func (reality *Reality) MarshalBinary() ([]byte, error) {
-	reality.parentRealitiesMutex.RLock()
+	reality.parentRealityIdsMutex.RLock()
 
-	parentRealityCount := len(reality.parentRealities)
+	parentRealityCount := len(reality.parentRealityIds)
 
 	marshaledReality := make([]byte, 4+4+parentRealityCount*realityIdLength)
 
-	binary.LittleEndian.PutUint32(marshaledReality, uint32(reality.transferOutputCount))
+	binary.LittleEndian.PutUint32(marshaledReality, uint32(reality.GetTransferOutputCount()))
 
 	binary.LittleEndian.PutUint32(marshaledReality[4:], uint32(parentRealityCount))
 	i := 0
-	for parentRealityId := range reality.parentRealities {
+	for parentRealityId := range reality.parentRealityIds {
 		copy(marshaledReality[4+4+i*realityIdLength:], parentRealityId[:])
 
 		i++
 	}
 
-	reality.parentRealitiesMutex.RUnlock()
+	reality.parentRealityIdsMutex.RUnlock()
 
 	return marshaledReality, nil
 }
@@ -51,9 +47,9 @@ func (reality *Reality) UnmarshalBinary(serializedObject []byte) error {
 		return err
 	}
 
-	reality.parentRealities = make(map[RealityId]empty)
+	reality.parentRealityIds = NewRealityIdSet()
 
-	reality.transferOutputCount = int(binary.LittleEndian.Uint32(serializedObject))
+	reality.transferOutputCount = binary.LittleEndian.Uint32(serializedObject)
 
 	parentRealityCount := int(binary.LittleEndian.Uint32(serializedObject[4:]))
 	for i := 0; i < parentRealityCount; i++ {
@@ -62,7 +58,7 @@ func (reality *Reality) UnmarshalBinary(serializedObject []byte) error {
 			return err
 		}
 
-		reality.parentRealities[restoredRealityId] = void
+		reality.parentRealityIds[restoredRealityId] = void
 	}
 
 	return nil
