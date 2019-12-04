@@ -127,6 +127,33 @@ func (reality *Reality) GetParentRealities() map[RealityId]*objectstorage.Cached
 	return parentRealities
 }
 
+// Returns
+func (reality *Reality) GetParentConflictRealities() map[RealityId]*objectstorage.CachedObject {
+	if !reality.IsAggregated() {
+		return reality.GetParentRealities()
+	} else {
+		parentConflictRealities := make(map[RealityId]*objectstorage.CachedObject)
+
+		reality.collectParentConflictRealities(parentConflictRealities)
+
+		return parentConflictRealities
+	}
+}
+
+func (reality *Reality) collectParentConflictRealities(parentConflictRealities map[RealityId]*objectstorage.CachedObject) {
+	for realityId, cachedParentReality := range reality.GetParentRealities() {
+		parentReality := cachedParentReality.Get().(*Reality)
+
+		if !parentReality.IsAggregated() {
+			parentConflictRealities[realityId] = cachedParentReality
+		} else {
+			parentReality.collectParentConflictRealities(parentConflictRealities)
+
+			cachedParentReality.Release()
+		}
+	}
+}
+
 // [DONE] Returns a map of all ancestor realities (up till the MAIN_REALITY). They have to manually be "released" when
 // they are not needed anymore.
 func (reality *Reality) GetAncestorRealities() (result map[RealityId]*objectstorage.CachedObject) {

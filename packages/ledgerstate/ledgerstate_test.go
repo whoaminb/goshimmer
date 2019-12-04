@@ -152,32 +152,23 @@ func spend(ledgerState *LedgerState, transferOutputReferences ...*TransferOutput
 	transferHash := generateRandomTransferHash()
 	addressHash := generateRandomAddressHash()
 
-	transfer := NewTransfer(transferHash).AddOutput(
-		addressHash, NewColoredBalance(iota_, uint64(len(transferOutputReferences))*1337),
-	)
+	totalInputBalance := uint64(0)
+
+	transfer := NewTransfer(transferHash)
 	for _, transferOutputReference := range transferOutputReferences {
+		ledgerState.GetTransferOutput(transferOutputReference).Consume(func(object objectstorage.StorableObject) {
+			transferOutput := object.(*TransferOutput)
+
+			for _, coloredBalance := range transferOutput.GetBalances() {
+				totalInputBalance += coloredBalance.GetValue()
+			}
+		})
+
 		transfer.AddInput(transferOutputReference)
 	}
-
-	if err := ledgerState.BookTransfer(transfer); err != nil {
-		panic(err)
-	}
-
-	result = NewTransferOutputReference(transferHash, addressHash)
-
-	return
-}
-
-func spend2(ledgerState *LedgerState, transferOutputReferences ...*TransferOutputReference) (result *TransferOutputReference) {
-	transferHash := generateRandomTransferHash()
-	addressHash := generateRandomAddressHash()
-
-	transfer := NewTransfer(transferHash).AddOutput(
-		addressHash, NewColoredBalance(iota_, uint64(len(transferOutputReferences))*2*1337),
+	transfer.AddOutput(
+		addressHash, NewColoredBalance(iota_, totalInputBalance),
 	)
-	for _, transferOutputReference := range transferOutputReferences {
-		transfer.AddInput(transferOutputReference)
-	}
 
 	if err := ledgerState.BookTransfer(transfer); err != nil {
 		panic(err)
@@ -195,7 +186,7 @@ func TestElevateAggregatedReality(t *testing.T) {
 	doubleSpentOutputs1 := doubleSpend(ledgerState, transferOutputs[0])
 	doubleSpentOutputs2 := doubleSpend(ledgerState, transferOutputs[1])
 	normalSpend := spend(ledgerState, transferOutputs[2])
-	_ = doubleSpend(ledgerState, normalSpend)
+	doubleSpentOutputs3 := doubleSpend(ledgerState, normalSpend)
 
 	// send funds from one of the double spends further
 	spentInput := spend(ledgerState, doubleSpentOutputs1[1])
@@ -207,10 +198,13 @@ func TestElevateAggregatedReality(t *testing.T) {
 	spend(ledgerState, doubleSpentOutputs1[1])
 
 	// double spend funds of aggregated reality
-	spend(ledgerState, spentInput, doubleSpentOutputs2[0])
+	//spend(ledgerState, spentInput, doubleSpentOutputs2[0])
 
 	// spend funds of conflict in aggregated reality further
-	spend2(ledgerState, outputOfAggregatedReality)
+	//lastOutputOfAggregatedReality := spend(ledgerState, outputOfAggregatedReality)
+
+	//spend(ledgerState, lastOutputOfAggregatedReality, doubleSpentOutputs3[1])
+	spend(ledgerState, spend(ledgerState, spend(ledgerState, outputOfAggregatedReality, spend(ledgerState, doubleSpentOutputs3[1]))))
 
 	time.Sleep(1000 * time.Millisecond)
 

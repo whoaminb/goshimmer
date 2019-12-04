@@ -100,7 +100,7 @@ func (visualizer *Visualizer) getRealitySubGraph(realityId RealityId) *dot.Graph
 			parentRealities := reality.GetParentRealityIds()
 			switch true {
 			case len(parentRealities) > 1:
-				realityGraph = visualizer.getRealitySubGraph(MAIN_REALITY_ID).Subgraph(visualizer.generateRealityName(parentRealities.ToList()...), dot.ClusterOption{})
+				realityGraph = visualizer.getRealitySubGraph(MAIN_REALITY_ID).Subgraph("AGGREGATED REALITY [ "+visualizer.generateRealityName(realityId)+" ]", dot.ClusterOption{})
 
 				visualizer.styleRealitySubGraph(realityGraph, realityTypeAggregated)
 
@@ -112,7 +112,7 @@ func (visualizer *Visualizer) getRealitySubGraph(realityId RealityId) *dot.Graph
 				//dummyNode.Attr("width", "0")
 			case len(parentRealities) == 1:
 				for parentRealityId := range parentRealities {
-					realityGraph = visualizer.getRealitySubGraph(parentRealityId).Subgraph(visualizer.generateRealityName(realityId), dot.ClusterOption{})
+					realityGraph = visualizer.getRealitySubGraph(parentRealityId).Subgraph("REALITY [ "+visualizer.generateRealityName(realityId)+" ]", dot.ClusterOption{})
 
 					visualizer.styleRealitySubGraph(realityGraph, realityTypeDefault)
 				}
@@ -148,29 +148,31 @@ func (visualizer *Visualizer) styleRealitySubGraph(realitySubGraph *dot.Graph, r
 	}
 }
 
-func (visualizer *Visualizer) generateRealityName(realityIds ...RealityId) string {
-	if len(realityIds) > 1 {
-		result := "AGGREGATED REALITY [ "
+func (visualizer *Visualizer) generateRealityName(realityId RealityId) (result string) {
+	visualizer.ledgerState.GetReality(realityId).Consume(func(object objectstorage.StorableObject) {
+		reality := object.(*Reality)
 
-		realityIdCount := len(realityIds)
-		for id, realityId := range realityIds {
-			if id == realityIdCount-1 {
-				result += strings.Trim(realityId.String(), "\x00")
-			} else {
-				result += strings.Trim(realityId.String(), "\x00") + " + "
+		if reality.IsAggregated() {
+			parentConflictRealities := reality.GetParentConflictRealities()
+			realityIdCount := len(parentConflictRealities)
+			counter := 1
+			for realityId, parentConflictReality := range parentConflictRealities {
+				result += visualizer.generateRealityName(realityId)
+
+				if counter != realityIdCount {
+					result += " + "
+				}
+
+				counter++
+
+				parentConflictReality.Release()
 			}
+		} else {
+			result = strings.Trim(realityId.String(), "\x00")
 		}
+	})
 
-		result += " ]"
-
-		return result
-	} else {
-		if realityIds[0] == MAIN_REALITY_ID {
-			return strings.Trim(realityIds[0].String(), "\x00")
-		}
-
-		return "REALITY [ " + strings.Trim(realityIds[0].String(), "\x00") + " ]"
-	}
+	return
 }
 
 type realityType int
