@@ -144,7 +144,7 @@ func (reality *Reality) GetAncestorRealities() (result map[RealityId]*objectstor
 }
 
 // [DONE] Registers the conflict set in the Reality.
-func (reality *Reality) AddConflictSet(conflictSetId ConflictId) {
+func (reality *Reality) AddConflict(conflictSetId ConflictId) {
 	reality.conflictIdsMutex.Lock()
 	reality.conflictIds[conflictSetId] = void
 	reality.conflictIdsMutex.Unlock()
@@ -164,44 +164,47 @@ func (reality *Reality) BookTransfer(transfer *Transfer) (err error) {
 	return
 }
 
-func (reality *Reality) bookTransfer(transferHash TransferHash, inputs objectstorage.CachedObjects, outputs map[AddressHash][]*ColoredBalance) error {
-	if err := reality.verifyTransfer(inputs, outputs); err != nil {
-		return err
+func (reality *Reality) bookTransfer(transferHash TransferHash, inputs objectstorage.CachedObjects, outputs map[AddressHash][]*ColoredBalance) (err error) {
+	if err = reality.verifyTransfer(inputs, outputs); err != nil {
+		return
 	}
 
-	conflictSets, err := reality.consumeInputs(inputs, transferHash, outputs)
+	conflicts, err := reality.consumeInputs(inputs, transferHash, outputs)
 	if err != nil {
-		return err
+		return
 	}
 
-	if len(conflictSets) >= 1 {
-		var targetRealityId RealityId
-		copy(targetRealityId[:], transferHash[:])
+	if len(conflicts) >= 1 {
+		targetRealityId := transferHash.ToRealityId()
 
 		reality.CreateReality(targetRealityId).Consume(func(object objectstorage.StorableObject) {
 			targetReality := object.(*Reality)
 
-			for _, cachedConflictSet := range conflictSets {
+			for _, cachedConflictSet := range conflicts {
 				conflictSet := cachedConflictSet.Get().(*Conflict)
 
 				conflictSet.AddReality(targetRealityId)
-				targetReality.AddConflictSet(conflictSet.GetId())
+				targetReality.AddConflict(conflictSet.GetId())
 			}
 
 			for addressHash, coloredBalances := range outputs {
-				targetReality.bookTransferOutput(NewTransferOutput(reality.ledgerState, emptyRealityId, transferHash, addressHash, coloredBalances...))
+				if err = targetReality.bookTransferOutput(NewTransferOutput(reality.ledgerState, emptyRealityId, transferHash, addressHash, coloredBalances...)); err != nil {
+					return
+				}
 			}
 		})
 	} else {
 		for addressHash, coloredBalances := range outputs {
-			reality.bookTransferOutput(NewTransferOutput(reality.ledgerState, emptyRealityId, transferHash, addressHash, coloredBalances...))
+			if err = reality.bookTransferOutput(NewTransferOutput(reality.ledgerState, emptyRealityId, transferHash, addressHash, coloredBalances...)); err != nil {
+				return
+			}
 		}
 	}
 
-	conflictSets.Release()
+	conflicts.Release()
 	inputs.Release()
 
-	return nil
+	return
 }
 
 // Verifies the transfer and checks if it is valid (spends existing funds + the net balance is 0).
@@ -213,12 +216,12 @@ func (reality *Reality) verifyTransfer(inputs []*objectstorage.CachedObject, out
 			return errors.New("missing input in transfer")
 		}
 
-		transferOutput := cachedInput.Get().(*TransferOutput)
-		if !reality.DescendsFrom(transferOutput.GetRealityId()) {
+		input := cachedInput.Get().(*TransferOutput)
+		if !reality.DescendsFrom(input.GetRealityId()) {
 			return errors.New("the referenced funds do not exist in this reality")
 		}
 
-		for _, balance := range transferOutput.GetBalances() {
+		for _, balance := range input.GetBalances() {
 			totalColoredBalances[balance.GetColor()] += balance.GetValue()
 		}
 	}
@@ -243,24 +246,24 @@ func (reality *Reality) verifyTransfer(inputs []*objectstorage.CachedObject, out
 	return nil
 }
 
-// Marks the consumed inputs as spent and returns the corresponding ConflictSets if the inputs have been consumed before.
-func (reality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transferHash TransferHash, outputs map[AddressHash][]*ColoredBalance) (conflictSets objectstorage.CachedObjects, err error) {
-	conflictSets = make(objectstorage.CachedObjects, 0)
+// Marks the consumed inputs as spent and returns the corresponding Conflict if the inputs have been consumed before.
+func (reality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transferHash TransferHash, outputs map[AddressHash][]*ColoredBalance) (conflicts objectstorage.CachedObjects, err error) {
+	conflicts = make(objectstorage.CachedObjects, 0)
 
 	for _, input := range inputs {
-		consumedTransferOutput := input.Get().(*TransferOutput)
+		consumedInput := input.Get().(*TransferOutput)
 
-		if consumersToElevate, consumeErr := consumedTransferOutput.addConsumer(transferHash, outputs); consumeErr != nil {
+		if consumersToElevate, consumeErr := consumedInput.addConsumer(transferHash, outputs); consumeErr != nil {
 			err = consumeErr
 
 			return
 		} else if consumersToElevate != nil {
-			if conflictSet, conflictErr := reality.retrieveConflictSetForConflictingInput(consumedTransferOutput, consumersToElevate); conflictErr != nil {
+			if conflict, conflictErr := reality.retrieveConflictForConflictingInput(consumedInput, consumersToElevate); conflictErr != nil {
 				err = conflictErr
 
 				return
 			} else {
-				conflictSets = append(conflictSets, conflictSet)
+				conflicts = append(conflicts, conflict)
 			}
 		}
 
@@ -270,50 +273,61 @@ func (reality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transf
 	return
 }
 
-func (reality *Reality) retrieveConflictSetForConflictingInput(input *TransferOutput, consumersToElevate map[TransferHash][]AddressHash) (conflictSet *objectstorage.CachedObject, err error) {
+func (reality *Reality) retrieveConflictForConflictingInput(input *TransferOutput, consumersToElevate map[TransferHash][]AddressHash) (conflict *objectstorage.CachedObject, err error) {
 	conflictSetId := NewConflictSetId(input.GetTransferHash(), input.GetAddressHash())
 
 	if len(consumersToElevate) >= 1 {
-		newConflictSet := newConflictSet(conflictSetId)
-		newConflictSet.ledgerState = reality.ledgerState
+		newConflict := newConflictSet(conflictSetId)
+		newConflict.ledgerState = reality.ledgerState
 
-		conflictSet = reality.ledgerState.conflictSets.Store(newConflictSet)
+		conflict = reality.ledgerState.conflictSets.Store(newConflict)
 
-		err = reality.createRealityForConflictingConsumers(consumersToElevate, conflictSet.Get().(*Conflict))
-		if err != nil {
-			return
-		}
+		err = reality.createRealityForConsumerOfConflictingInput(consumersToElevate, conflict.Get().(*Conflict))
 	} else {
-		conflictSet, err = reality.ledgerState.conflictSets.Load(conflictSetId[:])
-		if err != nil {
-			return
+		if conflict, err = reality.ledgerState.conflictSets.Load(conflictSetId[:]); err == nil {
+			conflict.Get().(*Conflict).ledgerState = reality.ledgerState
 		}
-		conflictSet.Get().(*Conflict).ledgerState = reality.ledgerState
 	}
 
 	return
 }
 
-func (reality *Reality) createRealityForConflictingConsumers(conflictingConsumers map[TransferHash][]AddressHash, conflictSet *Conflict) (err error) {
-	for transferHash, addressHashes := range conflictingConsumers {
-		// determine RealityId
-		elevatedRealityId := transferHash.ToRealityId()
+// Creates a Reality for the consumers of the conflicting inputs and registers it as part of the corresponding Conflict.
+func (reality *Reality) createRealityForConsumerOfConflictingInput(consumersOfConflictingInput map[TransferHash][]AddressHash, conflict *Conflict) (err error) {
+	for transferHash, addressHashes := range consumersOfConflictingInput {
+		var elevatedRealityId = transferHash.ToRealityId()
+		var realityIsNew bool
+		var cachedElevatedReality *objectstorage.CachedObject
 
-		// create new reality for every Transfer
-		reality.CreateReality(elevatedRealityId).Consume(func(object objectstorage.StorableObject) {
-			elevatedReality := object.(*Reality)
+		// Retrieve the Reality for this Transfer or create one if no Reality exists, yet.
+		if cachedElevatedReality, err = reality.ledgerState.realities.ComputeIfAbsent(elevatedRealityId[:], func(key []byte) (object objectstorage.StorableObject, e error) {
+			newReality := newReality(elevatedRealityId, reality.id)
+			newReality.ledgerState = reality.ledgerState
 
-			// register Reality <-> Conflict
-			conflictSet.AddReality(elevatedRealityId)
-			elevatedReality.AddConflictSet(conflictSet.GetId())
+			realityIsNew = true
 
-			// elevate TransferOutputs to the new Reality
-			for _, addressHash := range addressHashes {
-				if err = reality.elevateTransferOutput(NewTransferOutputReference(transferHash, addressHash), elevatedReality); err != nil {
-					return
+			return newReality, nil
+		}); err == nil {
+			cachedElevatedReality.Store().Consume(func(object objectstorage.StorableObject) {
+				elevatedReality := object.(*Reality)
+
+				// We register every Conflict with the Reality (independent if it is "new" or not), to reflect its
+				// association to all corresponding Conflicts. (Note: A Reality can be part of multiple Conflicts if the
+				// Transfer that is associated to this Reality consumes multiple inputs.
+				conflict.AddReality(elevatedRealityId)
+				elevatedReality.AddConflict(conflict.GetId())
+
+				// A transaction can consume multiple inputs. We only elevate the consumers of a Reality once (when the
+				// Reality is created the first time).
+				if realityIsNew {
+					for _, addressHash := range addressHashes {
+						if err = reality.elevateTransferOutput(NewTransferOutputReference(transferHash, addressHash), elevatedReality); err != nil {
+							return
+						}
+					}
 				}
-			}
-		})
+			})
+		}
 	}
 
 	return

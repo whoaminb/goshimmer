@@ -1,9 +1,6 @@
 package ledgerstate
 
 import (
-	"io/ioutil"
-	"os"
-	"os/exec"
 	"reflect"
 	"sort"
 	"strconv"
@@ -232,68 +229,6 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 	})
 
 	return graphviz.RenderPNG(graph, pngFilename)
-}
-
-func (ledgerState *LedgerState) GenerateVisualization() error {
-	di := dot.NewGraph(dot.Directed)
-
-	realityGraphs := make(map[RealityId]*dot.Graph)
-
-	getRealityGraph := func(realityId RealityId) *dot.Graph {
-		realityGraph, exists := realityGraphs[realityId]
-		if !exists {
-			realityGraph = di.Subgraph("REALITY: "+strings.Trim(realityId.String(), "\x00"), dot.ClusterOption{})
-			realityGraph.Attr("style", "filled")
-			realityGraph.Attr("color", "lightgrey")
-			realityGraph.Attr("fillcolor", "lightgrey")
-
-			realityGraphs[realityId] = realityGraph
-		}
-
-		return realityGraph
-	}
-
-	var drawTransferOutput func(transferOutput *TransferOutput) dot.Node
-	drawTransferOutput = func(transferOutput *TransferOutput) dot.Node {
-		transferOutputNode := getRealityGraph(transferOutput.GetRealityId()).Node(transferOutput.GetTransferHash().String() + "\n" + transferOutput.GetAddressHash().String())
-		transferOutputNode.Attr("style", "filled")
-		transferOutputNode.Attr("color", "white")
-		transferOutputNode.Attr("fillcolor", "white")
-
-		for transferHash, addresses := range transferOutput.GetConsumers() {
-			for _, addressHash := range addresses {
-				ledgerState.GetTransferOutput(NewTransferOutputReference(transferHash, addressHash)).Consume(func(object objectstorage.StorableObject) {
-					transferOutputNode.Edge(drawTransferOutput(object.(*TransferOutput)))
-				})
-			}
-		}
-
-		return transferOutputNode
-	}
-
-	ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
-		object.Consume(func(object objectstorage.StorableObject) {
-			drawTransferOutput(object.(*TransferOutput))
-		})
-
-		return true
-	}, MAIN_REALITY_ID)
-
-	d1 := []byte(di.String())
-	if err := ioutil.WriteFile("_tmp.dot", d1, 0755); err != nil {
-		return err
-	}
-
-	_, err := exec.Command("dot", "-Tpng", "_tmp.dot", "-o", "viz.png").Output()
-	if err != nil {
-		return err
-	}
-
-	if err := os.Remove("_tmp.dot"); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (ledgerState *LedgerState) AggregateRealities(realityIds ...RealityId) *objectstorage.CachedObject {
