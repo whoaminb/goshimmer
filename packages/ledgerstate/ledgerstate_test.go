@@ -37,7 +37,7 @@ func init() {
 
 func Benchmark(b *testing.B) {
 	ledgerState := NewLedgerState("testLedger").Prune().AddTransferOutput(
-		transferHash1, addressHash1, NewColoredBalance(eth, 1337),
+		transferHash1, addressHash1, NewColoredBalance(eth, 1024),
 	)
 
 	b.ResetTimer()
@@ -50,7 +50,7 @@ func Benchmark(b *testing.B) {
 		if err := ledgerState.BookTransfer(NewTransfer(newTransferHash).AddInput(
 			NewTransferOutputReference(lastTransferHash, addressHash1),
 		).AddOutput(
-			addressHash1, NewColoredBalance(eth, 1337),
+			addressHash1, NewColoredBalance(eth, 1024),
 		)); err != nil {
 			b.Error(err)
 		}
@@ -61,7 +61,7 @@ func Benchmark(b *testing.B) {
 
 func Test(t *testing.T) {
 	ledgerState := NewLedgerState("testLedger").Prune().AddTransferOutput(
-		transferHash1, addressHash1, NewColoredBalance(eth, 1337), NewColoredBalance(iota_, 1338),
+		transferHash1, addressHash1, NewColoredBalance(eth, 1024), NewColoredBalance(iota_, 1338),
 	)
 
 	ledgerState.CreateReality(pendingReality)
@@ -132,7 +132,7 @@ func initializeLedgerStateWithBalances(numberOfBalances int) (ledgerState *Ledge
 		transferHash := generateRandomTransferHash()
 		addressHash := generateRandomAddressHash()
 
-		ledgerState.AddTransferOutput(transferHash, addressHash, NewColoredBalance(iota_, 1337))
+		ledgerState.AddTransferOutput(transferHash, addressHash, NewColoredBalance(iota_, 1024))
 
 		result = append(result, NewTransferOutputReference(transferHash, addressHash))
 	}
@@ -179,6 +179,87 @@ func spend(ledgerState *LedgerState, transferOutputReferences ...*TransferOutput
 	return
 }
 
+func multiSpend(ledgerState *LedgerState, outputCount int, transferOutputReferences ...*TransferOutputReference) (result []*TransferOutputReference) {
+	transferHash := generateRandomTransferHash()
+
+	transfer := NewTransfer(transferHash)
+
+	totalInputBalance := uint64(0)
+	for _, transferOutputReference := range transferOutputReferences {
+		ledgerState.GetTransferOutput(transferOutputReference).Consume(func(object objectstorage.StorableObject) {
+			transferOutput := object.(*TransferOutput)
+
+			for _, coloredBalance := range transferOutput.GetBalances() {
+				totalInputBalance += coloredBalance.GetValue()
+			}
+		})
+
+		transfer.AddInput(transferOutputReference)
+	}
+
+	for i := 0; i < outputCount; i++ {
+		addressHash := generateRandomAddressHash()
+
+		transfer.AddOutput(
+			addressHash, NewColoredBalance(iota_, totalInputBalance/uint64(outputCount)),
+		)
+
+		result = append(result, NewTransferOutputReference(transferHash, addressHash))
+	}
+
+	if err := ledgerState.BookTransfer(transfer); err != nil {
+		panic(err)
+	}
+
+	return
+}
+
+func TestAggregateAggregatedRealities(t *testing.T) {
+	ledgerState, transferOutputs := initializeLedgerStateWithBalances(3)
+
+	multiSpend(ledgerState, 1, transferOutputs[0])
+	outputs0 := multiSpend(ledgerState, 2, multiSpend(ledgerState, 1, transferOutputs[0])[0])
+
+	multiSpend(ledgerState, 1, transferOutputs[1])
+	outputs1 := multiSpend(ledgerState, 2, multiSpend(ledgerState, 1, transferOutputs[1])[0])
+
+	multiSpend(ledgerState, 1, transferOutputs[2])
+	outputs2 := multiSpend(ledgerState, 2, multiSpend(ledgerState, 1, transferOutputs[2])[0])
+
+	aggregatedOutputs0 := multiSpend(ledgerState, 2, outputs0[0], outputs1[0])
+	aggregatedOutputs1 := multiSpend(ledgerState, 2, outputs1[1], outputs2[1])
+	aggregatedOutputs2 := multiSpend(ledgerState, 2, outputs0[1], outputs2[0])
+
+	multiSpend(ledgerState, 1, aggregatedOutputs0[0], aggregatedOutputs1[0])
+	multiSpend(ledgerState, 1, aggregatedOutputs0[1], aggregatedOutputs2[0])
+
+	time.Sleep(1000 * time.Millisecond)
+
+	objectstorage.WaitForWritesToFlush()
+
+	if err := ledgerState.GenerateRealityVisualization("realities1.png"); err != nil {
+		t.Error(err)
+	}
+
+	if err := NewVisualizer(ledgerState).RenderTransferOutputs("outputs1.png"); err != nil {
+		t.Error(err)
+	}
+
+	multiSpend(ledgerState, 2, outputs0[0], outputs1[0])
+
+	time.Sleep(1000 * time.Millisecond)
+
+	objectstorage.WaitForWritesToFlush()
+
+	if err := ledgerState.GenerateRealityVisualization("realities2.png"); err != nil {
+		t.Error(err)
+	}
+
+	if err := NewVisualizer(ledgerState).RenderTransferOutputs("outputs2.png"); err != nil {
+		t.Error(err)
+	}
+}
+
 func TestElevateAggregatedReality(t *testing.T) {
 	ledgerState, transferOutputs := initializeLedgerStateWithBalances(3)
 
@@ -221,7 +302,7 @@ func TestElevateAggregatedReality(t *testing.T) {
 
 func TestElevate(t *testing.T) {
 	ledgerState := NewLedgerState("testLedger").Prune().AddTransferOutput(
-		transferHash1, addressHash1, NewColoredBalance(eth, 1337), NewColoredBalance(iota_, 1338),
+		transferHash1, addressHash1, NewColoredBalance(eth, 1024), NewColoredBalance(iota_, 1338),
 	)
 
 	// create first legit spend
@@ -230,7 +311,7 @@ func TestElevate(t *testing.T) {
 	).AddOutput(
 		addressHash2, NewColoredBalance(iota_, 1338),
 	).AddOutput(
-		addressHash2, NewColoredBalance(eth, 1337),
+		addressHash2, NewColoredBalance(eth, 1024),
 	)); err != nil {
 		t.Error(err)
 	}
@@ -241,7 +322,7 @@ func TestElevate(t *testing.T) {
 	).AddOutput(
 		addressHash4, NewColoredBalance(iota_, 1338),
 	).AddOutput(
-		addressHash4, NewColoredBalance(eth, 1337),
+		addressHash4, NewColoredBalance(eth, 1024),
 	)); err != nil {
 		t.Error(err)
 	}
@@ -251,7 +332,7 @@ func TestElevate(t *testing.T) {
 	).AddOutput(
 		addressHash4, NewColoredBalance(iota_, 1338),
 	).AddOutput(
-		addressHash4, NewColoredBalance(eth, 1337),
+		addressHash4, NewColoredBalance(eth, 1024),
 	)); err != nil {
 		t.Error(err)
 	}
@@ -275,7 +356,7 @@ func TestElevate(t *testing.T) {
 	).AddOutput(
 		addressHash5, NewColoredBalance(iota_, 1338),
 	).AddOutput(
-		addressHash5, NewColoredBalance(eth, 1337),
+		addressHash5, NewColoredBalance(eth, 1024),
 	)); err != nil {
 		t.Error(err)
 	}

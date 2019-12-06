@@ -9,6 +9,8 @@ import (
 )
 
 type TransferOutput struct {
+	objectstorage.StorableObjectFlags
+
 	transferHash TransferHash
 	addressHash  AddressHash
 	balances     []*ColoredBalance
@@ -109,6 +111,8 @@ func (transferOutput *TransferOutput) addConsumer(consumer TransferHash, outputs
 
 		transferOutput.consumers[consumer] = consumers
 		transferOutput.consumersMutex.Unlock()
+
+		transferOutput.SetModified()
 	}
 
 	return
@@ -125,7 +129,9 @@ func (transferOutput *TransferOutput) markAsSpent() error {
 	} else {
 		transferOutput.ledgerState.storeTransferOutputBooking(newTransferOutputBooking(transferOutput.GetRealityId(), transferOutput.addressHash, true, transferOutput.transferHash)).Release()
 
-		oldTransferOutputBooking.Delete().Release()
+		oldTransferOutputBooking.Consume(func(transferOutputBooking objectstorage.StorableObject) {
+			transferOutputBooking.Delete()
+		})
 	}
 
 	transferOutput.bookingMutex.Unlock()

@@ -142,21 +142,22 @@ func (ledgerState *LedgerState) GetReality(id RealityId) *objectstorage.CachedOb
 	}
 }
 
-func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) error {
+func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) (err error) {
 	inputs := ledgerState.getTransferInputs(transfer)
 
-	targetReality := ledgerState.getTargetReality(inputs)
-	defer targetReality.Release()
+	ledgerState.getTargetReality(inputs).Consume(func(object objectstorage.StorableObject) {
+		targetReality := object.(*Reality)
 
-	if bookingErr := targetReality.Get().(*Reality).bookTransfer(transfer.GetHash(), inputs, transfer.GetOutputs()); bookingErr != nil {
-		return bookingErr
-	}
+		if err = targetReality.bookTransfer(transfer.GetHash(), inputs, transfer.GetOutputs()); err != nil {
+			return
+		}
 
-	if !targetReality.IsStored() {
-		targetReality.Store()
-	}
+		if !targetReality.PersistenceEnabled() {
+			targetReality.Persist()
+		}
+	})
 
-	return nil
+	return
 }
 
 func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string) error {
@@ -299,12 +300,49 @@ func (ledgerState *LedgerState) AggregateRealities(realityIds ...RealityId) *obj
 			}
 		}
 
-		sortedRealityIds := ledgerState.sortRealityIds(aggregatedRealities)
+		parentConflictRealities := make(map[RealityId]*objectstorage.CachedObject)
+		aggregatedRealityParentIds := make([]RealityId, len(aggregatedRealities))
 
-		aggregatedReality := newReality(ledgerState.generateAggregatedRealityId(sortedRealityIds), sortedRealityIds...)
-		aggregatedReality.ledgerState = ledgerState
+		counter := 0
+		for aggregatedRealityId, cachedAggregatedReality := range aggregatedRealities {
+			aggregatedRealityParentIds[counter] = aggregatedRealityId
+			counter++
 
-		return ledgerState.realities.Prepare(aggregatedReality)
+			aggregatedReality := cachedAggregatedReality.Get().(*Reality)
+			if !aggregatedReality.IsAggregated() {
+				parentConflictRealities[aggregatedRealityId] = cachedAggregatedReality
+			} else {
+				aggregatedReality.collectParentConflictRealities(parentConflictRealities)
+
+				cachedAggregatedReality.Release()
+			}
+		}
+
+		aggregatedRealityId := ledgerState.generateAggregatedRealityId(ledgerState.sortRealityIds(parentConflictRealities))
+
+		newAggregatedRealityCreated := false
+		if cachedAggregatedReality, err := ledgerState.realities.ComputeIfAbsent(aggregatedRealityId[:], func(key []byte) (object objectstorage.StorableObject, e error) {
+			aggregatedReality := newReality(aggregatedRealityId, aggregatedRealityParentIds...)
+			aggregatedReality.ledgerState = ledgerState
+
+			aggregatedReality.SetModified()
+
+			newAggregatedRealityCreated = true
+
+			return aggregatedReality, nil
+		}); err != nil {
+			panic(err)
+		} else {
+			if !newAggregatedRealityCreated {
+				aggregatedReality := cachedAggregatedReality.Get().(*Reality)
+
+				for _, realityId := range aggregatedRealityParentIds {
+					aggregatedReality.AddParentReality(realityId)
+				}
+			}
+
+			return cachedAggregatedReality
+		}
 	}
 }
 

@@ -11,6 +11,8 @@ import (
 )
 
 type Conflict struct {
+	objectstorage.StorableObjectFlags
+
 	id      ConflictId
 	members map[RealityId]empty
 

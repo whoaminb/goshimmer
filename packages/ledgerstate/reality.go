@@ -11,6 +11,8 @@ import (
 )
 
 type Reality struct {
+	objectstorage.StorableObjectFlags
+
 	id                    RealityId
 	parentRealityIds      RealityIdSet
 	parentRealityIdsMutex sync.RWMutex
@@ -52,11 +54,22 @@ func (reality *Reality) GetParentRealityIds() (realityIdSet RealityIdSet) {
 	return
 }
 
-// Sets the set of RealityIds that are the parents of this Reality.
-func (reality *Reality) SetParentRealityIds(parentRealityIds RealityIdSet) {
-	reality.parentRealityIdsMutex.Lock()
-	reality.parentRealityIds = parentRealityIds
-	reality.parentRealityIdsMutex.Unlock()
+// Adds a new parent Reality to this Reality (it is used for aggregating aggregated Realities).
+func (reality *Reality) AddParentReality(realityId RealityId) {
+	reality.parentRealityIdsMutex.RLock()
+	if _, exists := reality.parentRealityIds[realityId]; !exists {
+		reality.parentRealityIdsMutex.RUnlock()
+
+		reality.parentRealityIdsMutex.Lock()
+		if _, exists := reality.parentRealityIds[realityId]; !exists {
+			reality.parentRealityIds[realityId] = void
+
+			reality.SetModified()
+		}
+		reality.parentRealityIdsMutex.Unlock()
+	} else {
+		reality.parentRealityIdsMutex.RUnlock()
+	}
 }
 
 // Returns the amount of TransferOutputs in this Reality.
@@ -102,15 +115,12 @@ func (reality *Reality) DescendsFrom(realityId RealityId) bool {
 	}
 }
 
-// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// [DONE] Returns a map of all parent realities (one level). They have to manually be "released" when they are not
-// needed anymore.
-func (reality *Reality) GetParentRealities() map[RealityId]*objectstorage.CachedObject {
-	parentRealities := make(map[RealityId]*objectstorage.CachedObject)
+// Returns a map of all parent realities (one level). They have to be "released" manually when they are not needed
+// anymore.
+func (reality *Reality) GetParentRealities() (parentRealities map[RealityId]*objectstorage.CachedObject) {
+	parentRealities = make(map[RealityId]*objectstorage.CachedObject)
 
 	reality.parentRealityIdsMutex.RLock()
-
 	for parentRealityId := range reality.parentRealityIds {
 		loadedParentReality := reality.ledgerState.GetReality(parentRealityId)
 		if !loadedParentReality.Exists() {
@@ -121,13 +131,13 @@ func (reality *Reality) GetParentRealities() map[RealityId]*objectstorage.Cached
 
 		parentRealities[loadedParentReality.Get().(*Reality).id] = loadedParentReality
 	}
-
 	reality.parentRealityIdsMutex.RUnlock()
 
-	return parentRealities
+	return
 }
 
-// Returns
+// Returns a map of all parent realities that are conflicting. Aggregated realities are "transparent". They have to be
+// "released" manually when they are not needed anymore.
 func (reality *Reality) GetParentConflictRealities() map[RealityId]*objectstorage.CachedObject {
 	if !reality.IsAggregated() {
 		return reality.GetParentRealities()
@@ -139,6 +149,8 @@ func (reality *Reality) GetParentConflictRealities() map[RealityId]*objectstorag
 		return parentConflictRealities
 	}
 }
+
+// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 func (reality *Reality) collectParentConflictRealities(parentConflictRealities map[RealityId]*objectstorage.CachedObject) {
 	for realityId, cachedParentReality := range reality.GetParentRealities() {
@@ -173,7 +185,11 @@ func (reality *Reality) GetAncestorRealities() (result map[RealityId]*objectstor
 // [DONE] Registers the conflict set in the Reality.
 func (reality *Reality) AddConflict(conflictSetId ConflictId) {
 	reality.conflictIdsMutex.Lock()
-	reality.conflictIds[conflictSetId] = void
+	if _, exists := reality.conflictIds[conflictSetId]; !exists {
+		reality.conflictIds[conflictSetId] = void
+
+		reality.SetModified()
+	}
 	reality.conflictIdsMutex.Unlock()
 }
 
@@ -293,8 +309,6 @@ func (reality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transf
 				conflicts = append(conflicts, conflict)
 			}
 		}
-
-		input.Store()
 	}
 
 	return
@@ -331,11 +345,14 @@ func (reality *Reality) createRealityForConsumerOfConflictingInput(consumersOfCo
 			newReality := newReality(elevatedRealityId, reality.id)
 			newReality.ledgerState = reality.ledgerState
 
+			newReality.Persist()
+			newReality.SetModified()
+
 			realityIsNew = true
 
 			return newReality, nil
 		}); err == nil {
-			cachedElevatedReality.Store().Consume(func(object objectstorage.StorableObject) {
+			cachedElevatedReality.Consume(func(object objectstorage.StorableObject) {
 				elevatedReality := object.(*Reality)
 
 				// We register every Conflict with the Reality (independent if it is "new" or not), to reflect its
@@ -368,6 +385,8 @@ func (reality *Reality) elevateTransferOutput(transferOutputReference *TransferO
 
 	cachedTransferOutputToElevate.Consume(func(object objectstorage.StorableObject) {
 		transferOutputToElevate := object.(*TransferOutput)
+
+		transferOutputToElevate.SetModified()
 
 		if transferOutputToElevate.GetRealityId() == reality.id {
 			err = reality.elevateTransferOutputOfCurrentReality(transferOutputToElevate, newReality)
@@ -410,7 +429,10 @@ func (reality *Reality) elevateTransferOutputOfNestedReality(transferOutput *Tra
 
 	newParentRealities := reality.GetParentRealityIds().Remove(oldParentRealityId).Add(newParentRealityId).ToList()
 
-	reality.ledgerState.AggregateRealities(newParentRealities...).Store().Consume(func(object objectstorage.StorableObject) {
+	reality.ledgerState.AggregateRealities(newParentRealities...).Consume(func(object objectstorage.StorableObject) {
+		object.Persist()
+		object.SetModified()
+
 		err = reality.elevateTransferOutputOfCurrentReality(transferOutput, object.(*Reality))
 	})
 
@@ -442,11 +464,13 @@ func (reality *Reality) bookTransferOutput(transferOutput *TransferOutput) (err 
 			reality.ledgerState.GetReality(transferOutputRealityId).Consume(func(object objectstorage.StorableObject) {
 				// decrease transferOutputCount and remove reality if it is empty
 				if object.(*Reality).DecreaseTransferOutputCount() == 0 {
-					reality.ledgerState.realities.Delete(transferOutputRealityId[:])
+					//reality.ledgerState.realities.Delete(transferOutputRealityId[:])
 				}
 			})
 
-			oldTransferOutputBooking.Delete().Release()
+			oldTransferOutputBooking.Consume(func(transferOutputBooking objectstorage.StorableObject) {
+				transferOutputBooking.Delete()
+			})
 		}
 	}
 

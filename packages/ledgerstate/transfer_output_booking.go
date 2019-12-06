@@ -9,6 +9,8 @@ import (
 // region struct + constructor + public api ////////////////////////////////////////////////////////////////////////////
 
 type TransferOutputBooking struct {
+	objectstorage.StorableObjectFlags
+
 	realityId    RealityId
 	addressHash  AddressHash
 	spent        bool
