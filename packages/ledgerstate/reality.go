@@ -16,6 +16,8 @@ type Reality struct {
 	id                    RealityId
 	parentRealityIds      RealityIdSet
 	parentRealityIdsMutex sync.RWMutex
+	subRealityIds         RealityIdSet
+	subRealityIdsMutex    sync.RWMutex
 	conflictIds           ConflictIdSet
 	conflictIdsMutex      sync.RWMutex
 	transferOutputCount   uint32
@@ -499,22 +501,39 @@ func (reality *Reality) elevateTransferOutput(transferOutputReference *TransferO
 
 // Private utility function that elevates the transfer output from the current reality to the new reality.
 func (reality *Reality) elevateTransferOutputOfCurrentReality(transferOutput *TransferOutput, newReality *Reality) (err error) {
-	if err = newReality.bookTransferOutput(transferOutput); err == nil {
-		for transferHash, addresses := range transferOutput.GetConsumers() {
-			for _, addressHash := range addresses {
-				if elevateErr := reality.elevateTransferOutput(NewTransferOutputReference(transferHash, addressHash), newReality); elevateErr != nil {
-					err = elevateErr
+	for transferHash, addresses := range transferOutput.GetConsumers() {
+		for _, addressHash := range addresses {
+			if elevateErr := reality.elevateTransferOutput(NewTransferOutputReference(transferHash, addressHash), newReality); elevateErr != nil {
+				err = elevateErr
 
-					return
-				}
+				return
 			}
 		}
 	}
+
+	err = newReality.bookTransferOutput(transferOutput)
 
 	return
 }
 
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func (reality *Reality) RegisterSubReality(realityId RealityId) {
+	reality.subRealityIdsMutex.RLock()
+	if _, subRealityIdExists := reality.subRealityIds[realityId]; !subRealityIdExists {
+		reality.subRealityIdsMutex.RLock()
+
+		reality.subRealityIdsMutex.Lock()
+		if _, subRealityIdExists := reality.subRealityIds[realityId]; !subRealityIdExists {
+			reality.subRealityIds[realityId] = void
+
+			reality.SetModified()
+		}
+		reality.subRealityIdsMutex.Unlock()
+	} else {
+		reality.subRealityIdsMutex.RUnlock()
+	}
+}
 
 func (reality *Reality) elevateTransferOutputOfNestedReality(transferOutput *TransferOutput, oldParentRealityId RealityId, newParentRealityId RealityId) (err error) {
 	if !reality.IsAggregated() {

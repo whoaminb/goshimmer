@@ -237,13 +237,8 @@ func TestAggregateAggregatedRealities(t *testing.T) {
 
 	objectstorage.WaitForWritesToFlush()
 
-	if err := ledgerState.GenerateRealityVisualization("realities1.png"); err != nil {
-		t.Error(err)
-	}
-
-	if err := NewVisualizer(ledgerState).RenderTransferOutputs("outputs1.png"); err != nil {
-		t.Error(err)
-	}
+	ledgerState.GenerateRealityVisualization("realities1.png")
+	NewVisualizer(ledgerState).RenderTransferOutputs("outputs1.png")
 
 	multiSpend(ledgerState, 2, outputs0[0], outputs1[0])
 
@@ -251,13 +246,8 @@ func TestAggregateAggregatedRealities(t *testing.T) {
 
 	objectstorage.WaitForWritesToFlush()
 
-	if err := ledgerState.GenerateRealityVisualization("realities2.png"); err != nil {
-		t.Error(err)
-	}
-
-	if err := NewVisualizer(ledgerState).RenderTransferOutputs("outputs2.png"); err != nil {
-		t.Error(err)
-	}
+	ledgerState.GenerateRealityVisualization("realities2.png")
+	NewVisualizer(ledgerState).RenderTransferOutputs("outputs2.png")
 }
 
 func TestElevateAggregatedReality(t *testing.T) {
@@ -291,13 +281,8 @@ func TestElevateAggregatedReality(t *testing.T) {
 
 	objectstorage.WaitForWritesToFlush()
 
-	if err := ledgerState.GenerateRealityVisualization("realities.png"); err != nil {
-		t.Error(err)
-	}
-
-	if err := NewVisualizer(ledgerState).RenderTransferOutputs("outputs.png"); err != nil {
-		t.Error(err)
-	}
+	ledgerState.GenerateRealityVisualization("realities.png")
+	NewVisualizer(ledgerState).RenderTransferOutputs("outputs.png")
 }
 
 func TestElevate(t *testing.T) {
