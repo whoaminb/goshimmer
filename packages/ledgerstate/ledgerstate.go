@@ -152,9 +152,7 @@ func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) (err error) {
 			return
 		}
 
-		if !targetReality.PersistenceEnabled() {
-			targetReality.Persist()
-		}
+		targetReality.Persist()
 	})
 
 	return

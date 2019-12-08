@@ -9,17 +9,17 @@ import (
 
 type ConflictId [conflictSetIdLength]byte
 
-func NewConflictSetId(conflictBytes ...interface{}) (result ConflictId) {
+func NewConflictId(conflictBytes ...interface{}) (result ConflictId) {
 	switch len(conflictBytes) {
 	case 2:
 		transferHash, ok := conflictBytes[0].(TransferHash)
 		if !ok {
-			panic("expected first parameter of NewConflictSetId to be a TransferHash")
+			panic("expected first parameter of NewConflictId to be a TransferHash")
 		}
 
 		addressHash, ok := conflictBytes[0].(TransferHash)
 		if !ok {
-			panic("expected second parameter of NewConflictSetId to be a AddressHash")
+			panic("expected second parameter of NewConflictId to be a AddressHash")
 		}
 
 		fullConflictSetIdentifier := make([]byte, transferHashLength+addressHashLength)
@@ -29,7 +29,7 @@ func NewConflictSetId(conflictBytes ...interface{}) (result ConflictId) {
 		result = blake2b.Sum256(fullConflictSetIdentifier)
 	case 1:
 	default:
-		panic("invalid parameter count when calling NewConflictSetId")
+		panic("invalid parameter count when calling NewConflictId")
 	}
 
 	return

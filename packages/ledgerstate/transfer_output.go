@@ -57,9 +57,20 @@ func (transferOutput *TransferOutput) GetAddressHash() (addressHash AddressHash)
 }
 
 func (transferOutput *TransferOutput) SetRealityId(realityId RealityId) {
-	transferOutput.realityIdMutex.Lock()
-	transferOutput.realityId = realityId
-	transferOutput.realityIdMutex.Unlock()
+	transferOutput.realityIdMutex.RLock()
+	if transferOutput.realityId != realityId {
+		transferOutput.realityIdMutex.RUnlock()
+
+		transferOutput.realityIdMutex.Lock()
+		if transferOutput.realityId != realityId {
+			transferOutput.realityId = realityId
+
+			transferOutput.SetModified()
+		}
+		transferOutput.realityIdMutex.Unlock()
+	} else {
+		transferOutput.realityIdMutex.RUnlock()
+	}
 }
 
 func (transferOutput *TransferOutput) GetBalances() []*ColoredBalance {

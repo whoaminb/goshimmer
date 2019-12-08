@@ -233,7 +233,7 @@ func TestAggregateAggregatedRealities(t *testing.T) {
 	multiSpend(ledgerState, 1, aggregatedOutputs0[0], aggregatedOutputs1[0])
 	multiSpend(ledgerState, 1, aggregatedOutputs0[1], aggregatedOutputs2[0])
 
-	time.Sleep(1000 * time.Millisecond)
+	time.Sleep(2000 * time.Millisecond)
 
 	objectstorage.WaitForWritesToFlush()
 
@@ -247,7 +247,7 @@ func TestAggregateAggregatedRealities(t *testing.T) {
 
 	multiSpend(ledgerState, 2, outputs0[0], outputs1[0])
 
-	time.Sleep(1000 * time.Millisecond)
+	time.Sleep(2000 * time.Millisecond)
 
 	objectstorage.WaitForWritesToFlush()
 
