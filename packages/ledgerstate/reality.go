@@ -33,6 +33,7 @@ func newReality(id RealityId, parentRealities ...RealityId) *Reality {
 	result := &Reality{
 		id:               id,
 		parentRealityIds: NewRealityIdSet(parentRealities...),
+		subRealityIds:    NewRealityIdSet(),
 		conflictIds:      NewConflictIdSet(),
 
 		storageKey: make([]byte, len(id)),
@@ -57,7 +58,7 @@ func (reality *Reality) GetParentRealityIds() (realityIdSet RealityIdSet) {
 }
 
 // Adds a new parent Reality to this Reality (it is used for aggregating aggregated Realities).
-func (reality *Reality) AddParentReality(realityId RealityId) {
+func (reality *Reality) AddParentReality(realityId RealityId) (realityAdded bool) {
 	reality.parentRealityIdsMutex.RLock()
 	if _, exists := reality.parentRealityIds[realityId]; !exists {
 		reality.parentRealityIdsMutex.RUnlock()
@@ -67,11 +68,15 @@ func (reality *Reality) AddParentReality(realityId RealityId) {
 			reality.parentRealityIds[realityId] = void
 
 			reality.SetModified()
+
+			realityAdded = true
 		}
 		reality.parentRealityIdsMutex.Unlock()
 	} else {
 		reality.parentRealityIdsMutex.RUnlock()
 	}
+
+	return
 }
 
 // Utility function that replaces the parent of a reality.
@@ -240,6 +245,8 @@ func (reality *Reality) AddConflict(conflictSetId ConflictId) {
 func (reality *Reality) CreateReality(id RealityId) *objectstorage.CachedObject {
 	newReality := newReality(id, reality.id)
 	newReality.ledgerState = reality.ledgerState
+
+	reality.RegisterSubReality(id)
 
 	return reality.ledgerState.realities.Store(newReality)
 }
@@ -442,6 +449,8 @@ func (reality *Reality) createRealityForPreviouslyUnconflictingConsumers(consume
 			newReality := newReality(elevatedRealityId, reality.id)
 			newReality.ledgerState = reality.ledgerState
 
+			reality.RegisterSubReality(elevatedRealityId)
+
 			newReality.Persist()
 			newReality.SetModified()
 
@@ -518,10 +527,27 @@ func (reality *Reality) elevateTransferOutputOfCurrentReality(transferOutput *Tr
 
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+func (reality *Reality) UnregisterSubReality(realityId RealityId) {
+	reality.subRealityIdsMutex.RLock()
+	if _, subRealityIdExists := reality.subRealityIds[realityId]; subRealityIdExists {
+		reality.subRealityIdsMutex.RUnlock()
+
+		reality.subRealityIdsMutex.Lock()
+		if _, subRealityIdExists := reality.subRealityIds[realityId]; subRealityIdExists {
+			delete(reality.subRealityIds, realityId)
+
+			reality.SetModified()
+		}
+		reality.subRealityIdsMutex.Unlock()
+	} else {
+		reality.subRealityIdsMutex.RUnlock()
+	}
+}
+
 func (reality *Reality) RegisterSubReality(realityId RealityId) {
 	reality.subRealityIdsMutex.RLock()
 	if _, subRealityIdExists := reality.subRealityIds[realityId]; !subRealityIdExists {
-		reality.subRealityIdsMutex.RLock()
+		reality.subRealityIdsMutex.RUnlock()
 
 		reality.subRealityIdsMutex.Lock()
 		if _, subRealityIdExists := reality.subRealityIds[realityId]; !subRealityIdExists {
@@ -572,9 +598,16 @@ func (reality *Reality) bookTransferOutput(transferOutput *TransferOutput) (err 
 			transferOutput.SetRealityId(realityId)
 
 			reality.ledgerState.GetReality(transferOutputRealityId).Consume(func(object objectstorage.StorableObject) {
+				transferOutputReality := object.(*Reality)
+
 				// decrease transferOutputCount and remove reality if it is empty
-				if object.(*Reality).DecreaseTransferOutputCount() == 0 {
-					// delete reality if empty
+				if transferOutputReality.DecreaseTransferOutputCount() == 0 && len(transferOutputReality.subRealityIds) == 0 {
+					for parentRealityId := range transferOutputReality.parentRealityIds {
+						reality.ledgerState.GetReality(parentRealityId).Consume(func(obj objectstorage.StorableObject) {
+							obj.(*Reality).UnregisterSubReality(transferOutputRealityId)
+						})
+					}
+					transferOutputReality.Delete()
 				}
 			})
 

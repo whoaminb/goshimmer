@@ -4,7 +4,6 @@ go 1.13
 
 require (
 	github.com/AndreasBriese/bbloom v0.0.0-20190825152654-46b345b51c96 // indirect
-	github.com/apsdehal/go-logger v0.0.0-20190506062552-f85330a4b532 // indirect
 	github.com/dgraph-io/badger v1.6.0
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/emicklei/dot v0.10.1
@@ -25,8 +24,6 @@ require (
 	github.com/rivo/tview v0.0.0-20190829161255-f8bc69b90341
 	github.com/rivo/uniseg v0.1.0 // indirect
 	github.com/sasha-s/go-deadlock v0.2.0 // indirect
-	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/objx v0.2.0 // indirect
 	golang.org/x/crypto v0.0.0-20191029031824-8986dd9e96cf
 	golang.org/x/net v0.0.0-20190827160401-ba9fcec4b297
 	golang.org/x/sys v0.0.0-20190904154756-749cb33beabd // indirect

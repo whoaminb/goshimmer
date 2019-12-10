@@ -24,17 +24,29 @@ func (reality *Reality) MarshalBinary() ([]byte, error) {
 	reality.parentRealityIdsMutex.RLock()
 
 	parentRealityCount := len(reality.parentRealityIds)
+	subRealityCount := len(reality.subRealityIds)
 
-	marshaledReality := make([]byte, 4+4+parentRealityCount*realityIdLength)
+	marshaledReality := make([]byte, 4+4+4+parentRealityCount*realityIdLength+subRealityCount*realityIdLength)
+
+	offset := 0
 
 	binary.LittleEndian.PutUint32(marshaledReality, uint32(reality.GetTransferOutputCount()))
+	offset += 4
 
-	binary.LittleEndian.PutUint32(marshaledReality[4:], uint32(parentRealityCount))
-	i := 0
+	binary.LittleEndian.PutUint32(marshaledReality[offset:], uint32(parentRealityCount))
+	offset += 4
 	for parentRealityId := range reality.parentRealityIds {
-		copy(marshaledReality[4+4+i*realityIdLength:], parentRealityId[:])
+		copy(marshaledReality[offset:], parentRealityId[:])
 
-		i++
+		offset += realityIdLength
+	}
+
+	binary.LittleEndian.PutUint32(marshaledReality[offset:], uint32(subRealityCount))
+	offset += 4
+	for subRealityId := range reality.subRealityIds {
+		copy(marshaledReality[offset:], subRealityId[:])
+
+		offset += realityIdLength
 	}
 
 	reality.parentRealityIdsMutex.RUnlock()
@@ -48,17 +60,37 @@ func (reality *Reality) UnmarshalBinary(serializedObject []byte) error {
 	}
 
 	reality.parentRealityIds = NewRealityIdSet()
+	reality.subRealityIds = NewRealityIdSet()
+
+	offset := 0
 
 	reality.transferOutputCount = binary.LittleEndian.Uint32(serializedObject)
+	offset += 4
 
-	parentRealityCount := int(binary.LittleEndian.Uint32(serializedObject[4:]))
+	parentRealityCount := int(binary.LittleEndian.Uint32(serializedObject[offset:]))
+	offset += 4
+
 	for i := 0; i < parentRealityCount; i++ {
 		var restoredRealityId RealityId
-		if err := restoredRealityId.UnmarshalBinary(serializedObject[4+4+i*realityIdLength:]); err != nil {
+		if err := restoredRealityId.UnmarshalBinary(serializedObject[offset:]); err != nil {
 			return err
 		}
+		offset += realityIdLength
 
 		reality.parentRealityIds[restoredRealityId] = void
+	}
+
+	subRealityCount := int(binary.LittleEndian.Uint32(serializedObject[offset:]))
+	offset += 4
+
+	for i := 0; i < subRealityCount; i++ {
+		var restoredRealityId RealityId
+		if err := restoredRealityId.UnmarshalBinary(serializedObject[offset:]); err != nil {
+			return err
+		}
+		offset += realityIdLength
+
+		reality.subRealityIds[restoredRealityId] = void
 	}
 
 	return nil

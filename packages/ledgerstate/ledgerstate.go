@@ -125,6 +125,14 @@ func (ledgerState *LedgerState) CreateReality(id RealityId) {
 	newReality := newReality(id, MAIN_REALITY_ID)
 	newReality.ledgerState = ledgerState
 
+	if mainReality, mainRealityErr := ledgerState.realities.Load(MAIN_REALITY_ID[:]); mainRealityErr != nil {
+		panic(mainRealityErr)
+	} else {
+		mainReality.Consume(func(object objectstorage.StorableObject) {
+			object.(*Reality).RegisterSubReality(id)
+		})
+	}
+
 	ledgerState.realities.Store(newReality).Release()
 }
 
@@ -182,14 +190,14 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 		realityNode, exists := realityNodes[reality.id]
 		if !exists {
 			if reality.IsAggregated() {
-				realityNode = graph.Node("AGGREGATED REALITY\n\n" + strings.Trim(reality.id.String(), "\x00") + " (" + strconv.Itoa(int(reality.GetTransferOutputCount())) + ")")
+				realityNode = graph.Node("AGGREGATED REALITY\n\n" + strings.Trim(reality.id.String(), "\x00") + " (" + strconv.Itoa(int(reality.GetTransferOutputCount())) + " / " + strconv.Itoa(len(reality.subRealityIds)) + ")")
 				realityNode.Attr("style", "filled")
 				realityNode.Attr("shape", "rect")
 				realityNode.Attr("color", "#9673A6")
 				realityNode.Attr("fillcolor", "#DAE8FC")
 				realityNode.Attr("penwidth", "2.0")
 			} else {
-				realityNode = graph.Node("REALITY\n\n" + strings.Trim(reality.id.String(), "\x00") + " (" + strconv.Itoa(int(reality.GetTransferOutputCount())) + ")")
+				realityNode = graph.Node("REALITY\n\n" + strings.Trim(reality.id.String(), "\x00") + " (" + strconv.Itoa(int(reality.GetTransferOutputCount())) + " / " + strconv.Itoa(len(reality.subRealityIds)) + ")")
 				realityNode.Attr("style", "filled")
 				realityNode.Attr("shape", "rect")
 				realityNode.Attr("color", "#6C8EBF")
@@ -319,9 +327,15 @@ func (ledgerState *LedgerState) AggregateRealities(realityIds ...RealityId) *obj
 		aggregatedRealityId := ledgerState.generateAggregatedRealityId(ledgerState.sortRealityIds(parentConflictRealities))
 
 		newAggregatedRealityCreated := false
-		if cachedAggregatedReality, err := ledgerState.realities.ComputeIfAbsent(aggregatedRealityId[:], func(key []byte) (object objectstorage.StorableObject, e error) {
+		if newCachedAggregatedReality, err := ledgerState.realities.ComputeIfAbsent(aggregatedRealityId[:], func(key []byte) (object objectstorage.StorableObject, e error) {
 			aggregatedReality := newReality(aggregatedRealityId, aggregatedRealityParentIds...)
 			aggregatedReality.ledgerState = ledgerState
+
+			for _, parentRealityId := range aggregatedRealityParentIds {
+				ledgerState.GetReality(parentRealityId).Consume(func(object objectstorage.StorableObject) {
+					object.(*Reality).RegisterSubReality(aggregatedRealityId)
+				})
+			}
 
 			aggregatedReality.SetModified()
 
@@ -332,14 +346,18 @@ func (ledgerState *LedgerState) AggregateRealities(realityIds ...RealityId) *obj
 			panic(err)
 		} else {
 			if !newAggregatedRealityCreated {
-				aggregatedReality := cachedAggregatedReality.Get().(*Reality)
+				aggregatedReality := newCachedAggregatedReality.Get().(*Reality)
 
 				for _, realityId := range aggregatedRealityParentIds {
-					aggregatedReality.AddParentReality(realityId)
+					if aggregatedReality.AddParentReality(realityId) {
+						ledgerState.GetReality(realityId).Consume(func(object objectstorage.StorableObject) {
+							object.(*Reality).RegisterSubReality(aggregatedRealityId)
+						})
+					}
 				}
 			}
 
-			return cachedAggregatedReality
+			return newCachedAggregatedReality
 		}
 	}
 }

@@ -6,9 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iotaledger/hive.go/parameter"
-
 	"github.com/iotaledger/hive.go/objectstorage"
+	"github.com/iotaledger/hive.go/parameter"
 )
 
 var (
@@ -237,7 +236,7 @@ func TestAggregateAggregatedRealities(t *testing.T) {
 
 	objectstorage.WaitForWritesToFlush()
 
-	ledgerState.GenerateRealityVisualization("realities1.png")
+	fmt.Println(ledgerState.GenerateRealityVisualization("realities1.png"))
 	NewVisualizer(ledgerState).RenderTransferOutputs("outputs1.png")
 
 	multiSpend(ledgerState, 2, outputs0[0], outputs1[0])
