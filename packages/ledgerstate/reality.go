@@ -21,6 +21,8 @@ type Reality struct {
 	conflictIds           ConflictIdSet
 	conflictIdsMutex      sync.RWMutex
 	transferOutputCount   uint32
+	liked                 bool
+	likedMutex            sync.RWMutex
 
 	storageKey  []byte
 	ledgerState *LedgerState
@@ -41,6 +43,35 @@ func newReality(id RealityId, parentRealities ...RealityId) *Reality {
 	copy(result.storageKey, id[:])
 
 	return result
+}
+
+func (reality *Reality) GetLiked() (liked bool) {
+	reality.likedMutex.RLock()
+	liked = reality.liked
+	reality.likedMutex.RUnlock()
+
+	return
+}
+
+func (reality *Reality) SetLiked(liked ...bool) (likedStatusChanged bool) {
+	newLikedStatus := len(liked) == 0 || liked[0]
+
+	reality.likedMutex.RLock()
+	if reality.liked != newLikedStatus {
+		reality.likedMutex.RUnlock()
+
+		reality.likedMutex.Lock()
+		if reality.liked != newLikedStatus {
+			reality.liked = newLikedStatus
+
+			reality.SetModified()
+		}
+		reality.likedMutex.Unlock()
+	} else {
+		reality.likedMutex.RUnlock()
+	}
+
+	return
 }
 
 // Returns the id of this Reality. Since the id never changes, we do not need a mutex to protect this property.
@@ -448,6 +479,7 @@ func (reality *Reality) createRealityForPreviouslyUnconflictingConsumers(consume
 		if cachedElevatedReality, realityErr := reality.ledgerState.realities.ComputeIfAbsent(elevatedRealityId[:], func(key []byte) (object objectstorage.StorableObject, e error) {
 			newReality := newReality(elevatedRealityId, reality.id)
 			newReality.ledgerState = reality.ledgerState
+			newReality.SetLiked()
 
 			reality.RegisterSubReality(elevatedRealityId)
 
@@ -527,6 +559,14 @@ func (reality *Reality) elevateTransferOutputOfCurrentReality(transferOutput *Tr
 
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+func (reality *Reality) GetSubRealityIdCount() (subRealityIdCount int) {
+	reality.subRealityIdsMutex.RLock()
+	subRealityIdCount = len(reality.subRealityIds)
+	reality.subRealityIdsMutex.RUnlock()
+
+	return
+}
+
 func (reality *Reality) UnregisterSubReality(realityId RealityId) {
 	reality.subRealityIdsMutex.RLock()
 	if _, subRealityIdExists := reality.subRealityIds[realityId]; subRealityIdExists {
@@ -601,10 +641,10 @@ func (reality *Reality) bookTransferOutput(transferOutput *TransferOutput) (err 
 				transferOutputReality := object.(*Reality)
 
 				// decrease transferOutputCount and remove reality if it is empty
-				if transferOutputReality.DecreaseTransferOutputCount() == 0 && len(transferOutputReality.subRealityIds) == 0 {
-					for parentRealityId := range transferOutputReality.parentRealityIds {
-						reality.ledgerState.GetReality(parentRealityId).Consume(func(obj objectstorage.StorableObject) {
-							obj.(*Reality).UnregisterSubReality(transferOutputRealityId)
+				if transferOutputReality.DecreaseTransferOutputCount() == 0 && transferOutputReality.GetSubRealityIdCount() == 0 {
+					for _, cachedParentReality := range transferOutputReality.GetParentRealities() {
+						cachedParentReality.Consume(func(parentReality objectstorage.StorableObject) {
+							parentReality.(*Reality).UnregisterSubReality(transferOutputRealityId)
 						})
 					}
 					transferOutputReality.Delete()

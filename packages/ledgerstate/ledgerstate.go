@@ -204,6 +204,10 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 				realityNode.Attr("fillcolor", "#DAE8FC")
 			}
 
+			if reality.GetLiked() {
+				realityNode.Attr("penwidth", "3.0")
+			}
+
 			realityNodes[reality.id] = realityNode
 		}
 

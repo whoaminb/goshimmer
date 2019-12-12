@@ -26,7 +26,7 @@ func (reality *Reality) MarshalBinary() ([]byte, error) {
 	parentRealityCount := len(reality.parentRealityIds)
 	subRealityCount := len(reality.subRealityIds)
 
-	marshaledReality := make([]byte, 4+4+4+parentRealityCount*realityIdLength+subRealityCount*realityIdLength)
+	marshaledReality := make([]byte, 4+4+4+1+parentRealityCount*realityIdLength+subRealityCount*realityIdLength)
 
 	offset := 0
 
@@ -48,6 +48,13 @@ func (reality *Reality) MarshalBinary() ([]byte, error) {
 
 		offset += realityIdLength
 	}
+
+	if reality.liked {
+		marshaledReality[offset] = 1
+	} else {
+		marshaledReality[offset] = 0
+	}
+	//offset += 1
 
 	reality.parentRealityIdsMutex.RUnlock()
 
@@ -92,6 +99,9 @@ func (reality *Reality) UnmarshalBinary(serializedObject []byte) error {
 
 		reality.subRealityIds[restoredRealityId] = void
 	}
+
+	reality.liked = serializedObject[offset] == 1
+	//offset += 1
 
 	return nil
 }
