@@ -36,6 +36,7 @@ func NewLedgerState(storageId string) *LedgerState {
 
 	mainReality := newReality(MAIN_REALITY_ID)
 	mainReality.ledgerState = result
+	mainReality.SetPreferred()
 	result.realities.Store(mainReality).Release()
 
 	return result
@@ -194,8 +195,7 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 				realityNode.Attr("style", "filled")
 				realityNode.Attr("shape", "rect")
 				realityNode.Attr("color", "#9673A6")
-				realityNode.Attr("fillcolor", "#DAE8FC")
-				realityNode.Attr("penwidth", "2.0")
+				realityNode.Attr("fillcolor", "#E1D5E7")
 			} else {
 				realityNode = graph.Node("REALITY\n\n" + strings.Trim(reality.id.String(), "\x00") + " (" + strconv.Itoa(int(reality.GetTransferOutputCount())) + " / " + strconv.Itoa(len(reality.subRealityIds)) + ")")
 				realityNode.Attr("style", "filled")
@@ -204,7 +204,7 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 				realityNode.Attr("fillcolor", "#DAE8FC")
 			}
 
-			if reality.GetLiked() {
+			if reality.IsLiked() {
 				realityNode.Attr("penwidth", "3.0")
 			}
 
@@ -313,12 +313,17 @@ func (ledgerState *LedgerState) AggregateRealities(realityIds ...RealityId) *obj
 		parentConflictRealities := make(map[RealityId]*objectstorage.CachedObject)
 		aggregatedRealityParentIds := make([]RealityId, len(aggregatedRealities))
 
+		aggregatedRealityIsPreferred := true
+
 		counter := 0
 		for aggregatedRealityId, cachedAggregatedReality := range aggregatedRealities {
 			aggregatedRealityParentIds[counter] = aggregatedRealityId
 			counter++
 
 			aggregatedReality := cachedAggregatedReality.Get().(*Reality)
+
+			aggregatedRealityIsPreferred = aggregatedRealityIsPreferred && aggregatedReality.IsPreferred()
+
 			if !aggregatedReality.IsAggregated() {
 				parentConflictRealities[aggregatedRealityId] = cachedAggregatedReality
 			} else {
@@ -334,6 +339,7 @@ func (ledgerState *LedgerState) AggregateRealities(realityIds ...RealityId) *obj
 		if newCachedAggregatedReality, err := ledgerState.realities.ComputeIfAbsent(aggregatedRealityId[:], func(key []byte) (object objectstorage.StorableObject, e error) {
 			aggregatedReality := newReality(aggregatedRealityId, aggregatedRealityParentIds...)
 			aggregatedReality.ledgerState = ledgerState
+			aggregatedReality.SetPreferred(aggregatedRealityIsPreferred)
 
 			for _, parentRealityId := range aggregatedRealityParentIds {
 				ledgerState.GetReality(parentRealityId).Consume(func(object objectstorage.StorableObject) {
@@ -387,6 +393,7 @@ func (ledgerState *LedgerState) Prune() *LedgerState {
 
 	mainReality := newReality(MAIN_REALITY_ID)
 	mainReality.ledgerState = ledgerState
+	mainReality.SetPreferred()
 	ledgerState.realities.Store(mainReality).Release()
 
 	return ledgerState

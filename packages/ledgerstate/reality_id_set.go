@@ -12,6 +12,12 @@ func NewRealityIdSet(realityIds ...RealityId) (realityIdSet RealityIdSet) {
 	return
 }
 
+func (realityIdSet RealityIdSet) Contains(realityId RealityId) bool {
+	_, exists := realityIdSet[realityId]
+
+	return exists
+}
+
 func (realityIdSet RealityIdSet) Add(realityId RealityId) RealityIdSet {
 	realityIdSet[realityId] = void
 

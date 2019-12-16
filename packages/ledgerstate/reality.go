@@ -21,11 +21,142 @@ type Reality struct {
 	conflictIds           ConflictIdSet
 	conflictIdsMutex      sync.RWMutex
 	transferOutputCount   uint32
+	preferred             bool
+	preferredMutex        sync.RWMutex
 	liked                 bool
 	likedMutex            sync.RWMutex
 
 	storageKey  []byte
 	ledgerState *LedgerState
+}
+
+func (reality *Reality) areParentsLiked() (parentsLiked bool) {
+	parentsLiked = true
+	for _, cachedParentReality := range reality.GetParentRealities() {
+		if parentsLiked {
+			cachedParentReality.Consume(func(object objectstorage.StorableObject) {
+				parentsLiked = parentsLiked && object.(*Reality).IsLiked()
+			})
+		} else {
+			cachedParentReality.Release()
+		}
+	}
+
+	return
+}
+
+func (reality *Reality) propagateLiked() {
+	reality.likedMutex.Lock()
+	reality.liked = true
+	reality.likedMutex.Unlock()
+
+	reality.SetModified()
+
+	for _, cachedSubReality := range reality.GetSubRealities() {
+		if !cachedSubReality.Exists() {
+			cachedSubReality.Release()
+
+			// TODO: SWITCH TO ERR INSTEAD OF PANIC
+			panic("could not load sub reality")
+		}
+
+		cachedSubReality.Consume(func(object objectstorage.StorableObject) {
+			subReality := object.(*Reality)
+
+			subReality.parentRealityIdsMutex.RLock()
+			if len(subReality.parentRealityIds) == 1 && subReality.parentRealityIds.Contains(reality.id) {
+				subReality.parentRealityIdsMutex.RUnlock()
+
+				subReality.propagateLiked()
+			} else {
+				subReality.parentRealityIdsMutex.RUnlock()
+
+				if subReality.areParentsLiked() {
+					subReality.propagateLiked()
+				}
+			}
+		})
+	}
+}
+
+func (reality *Reality) propagateDisliked() {
+	reality.likedMutex.Lock()
+	reality.liked = false
+	reality.likedMutex.Unlock()
+
+	reality.SetModified()
+
+	for _, cachedSubReality := range reality.GetSubRealities() {
+		if !cachedSubReality.Exists() {
+			cachedSubReality.Release()
+
+			// TODO: SWITCH TO ERR INSTEAD OF PANIC
+			panic("could not load sub reality")
+		}
+
+		cachedSubReality.Consume(func(object objectstorage.StorableObject) {
+			subReality := object.(*Reality)
+
+			if subReality.IsLiked() {
+				subReality.propagateDisliked()
+			}
+		})
+	}
+}
+
+func (reality *Reality) GetSubRealities() (subRealities objectstorage.CachedObjects) {
+	reality.subRealityIdsMutex.RLock()
+	subRealities = make(objectstorage.CachedObjects, len(reality.subRealityIds))
+	i := 0
+	for subRealityId := range reality.subRealityIds {
+		subRealities[i] = reality.ledgerState.GetReality(subRealityId)
+
+		i++
+	}
+	reality.subRealityIdsMutex.RUnlock()
+
+	return
+}
+
+func (reality *Reality) SetPreferred(preferred ...bool) (updated bool) {
+	newPreferredValue := len(preferred) == 0 || preferred[0]
+
+	reality.preferredMutex.RLock()
+	if reality.preferred != newPreferredValue {
+		reality.preferredMutex.RUnlock()
+
+		reality.preferredMutex.Lock()
+		if reality.preferred != newPreferredValue {
+			reality.preferred = newPreferredValue
+
+			if newPreferredValue {
+				if reality.areParentsLiked() {
+					reality.propagateLiked()
+				}
+			} else {
+				if reality.IsLiked() {
+					reality.propagateDisliked()
+				}
+			}
+
+			updated = true
+
+			reality.SetModified()
+		}
+		reality.preferredMutex.Unlock()
+	} else {
+		reality.preferredMutex.RUnlock()
+	}
+
+	return
+}
+
+func (reality *Reality) IsPreferred() (preferred bool) {
+	reality.preferredMutex.RLock()
+	preferred = reality.preferred
+	reality.preferredMutex.RUnlock()
+
+	return
 }
 
 // region DONE REVIEWING ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -45,7 +176,7 @@ func newReality(id RealityId, parentRealities ...RealityId) *Reality {
 	return result
 }
 
-func (reality *Reality) GetLiked() (liked bool) {
+func (reality *Reality) IsLiked() (liked bool) {
 	reality.likedMutex.RLock()
 	liked = reality.liked
 	reality.likedMutex.RUnlock()
@@ -63,6 +194,8 @@ func (reality *Reality) SetLiked(liked ...bool) (likedStatusChanged bool) {
 		reality.likedMutex.Lock()
 		if reality.liked != newLikedStatus {
 			reality.liked = newLikedStatus
+
+			likedStatusChanged = true
 
 			reality.SetModified()
 		}
@@ -479,7 +612,7 @@ func (reality *Reality) createRealityForPreviouslyUnconflictingConsumers(consume
 		if cachedElevatedReality, realityErr := reality.ledgerState.realities.ComputeIfAbsent(elevatedRealityId[:], func(key []byte) (object objectstorage.StorableObject, e error) {
 			newReality := newReality(elevatedRealityId, reality.id)
 			newReality.ledgerState = reality.ledgerState
-			newReality.SetLiked()
+			newReality.SetPreferred()
 
 			reality.RegisterSubReality(elevatedRealityId)
 

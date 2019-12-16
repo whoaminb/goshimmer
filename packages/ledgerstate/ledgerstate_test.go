@@ -216,11 +216,11 @@ func multiSpend(ledgerState *LedgerState, outputCount int, transferOutputReferen
 func TestAggregateAggregatedRealities(t *testing.T) {
 	ledgerState, transferOutputs := initializeLedgerStateWithBalances(3)
 
-	multiSpend(ledgerState, 1, transferOutputs[0])
 	outputs0 := multiSpend(ledgerState, 2, multiSpend(ledgerState, 1, transferOutputs[0])[0])
+	multiSpend(ledgerState, 1, transferOutputs[0])
 
-	multiSpend(ledgerState, 1, transferOutputs[1])
 	outputs1 := multiSpend(ledgerState, 2, multiSpend(ledgerState, 1, transferOutputs[1])[0])
+	multiSpend(ledgerState, 1, transferOutputs[1])
 
 	multiSpend(ledgerState, 1, transferOutputs[2])
 	outputs2 := multiSpend(ledgerState, 2, multiSpend(ledgerState, 1, transferOutputs[2])[0])
@@ -236,8 +236,8 @@ func TestAggregateAggregatedRealities(t *testing.T) {
 
 	objectstorage.WaitForWritesToFlush()
 
-	fmt.Println(ledgerState.GenerateRealityVisualization("realities1.png"))
-	NewVisualizer(ledgerState).RenderTransferOutputs("outputs1.png")
+	_ = ledgerState.GenerateRealityVisualization("realities1.png")
+	_ = NewVisualizer(ledgerState).RenderTransferOutputs("outputs1.png")
 
 	multiSpend(ledgerState, 2, outputs0[0], outputs1[0])
 
@@ -245,8 +245,8 @@ func TestAggregateAggregatedRealities(t *testing.T) {
 
 	objectstorage.WaitForWritesToFlush()
 
-	ledgerState.GenerateRealityVisualization("realities2.png")
-	NewVisualizer(ledgerState).RenderTransferOutputs("outputs2.png")
+	_ = ledgerState.GenerateRealityVisualization("realities2.png")
+	_ = NewVisualizer(ledgerState).RenderTransferOutputs("outputs2.png")
 }
 
 func TestElevateAggregatedReality(t *testing.T) {
@@ -268,20 +268,20 @@ func TestElevateAggregatedReality(t *testing.T) {
 	spend(ledgerState, doubleSpentOutputs1[1])
 
 	// double spend funds of aggregated reality
-	//spend(ledgerState, spentInput, doubleSpentOutputs2[0])
+	// spend(ledgerState, spentInput, doubleSpentOutputs2[0])
 
 	// spend funds of conflict in aggregated reality further
-	//lastOutputOfAggregatedReality := spend(ledgerState, outputOfAggregatedReality)
+	// lastOutputOfAggregatedReality := spend(ledgerState, outputOfAggregatedReality)
 
-	//spend(ledgerState, lastOutputOfAggregatedReality, doubleSpentOutputs3[1])
+	// spend(ledgerState, lastOutputOfAggregatedReality, doubleSpentOutputs3[1])
 	spend(ledgerState, spend(ledgerState, spend(ledgerState, outputOfAggregatedReality, spend(ledgerState, doubleSpentOutputs3[1]))))
 
 	time.Sleep(1000 * time.Millisecond)
 
 	objectstorage.WaitForWritesToFlush()
 
-	ledgerState.GenerateRealityVisualization("realities.png")
-	NewVisualizer(ledgerState).RenderTransferOutputs("outputs.png")
+	_ = ledgerState.GenerateRealityVisualization("realities.png")
+	_ = NewVisualizer(ledgerState).RenderTransferOutputs("outputs.png")
 }
 
 func TestElevate(t *testing.T) {
