@@ -222,8 +222,8 @@ func TestAggregateAggregatedRealities(t *testing.T) {
 	outputs1 := multiSpend(ledgerState, 2, multiSpend(ledgerState, 1, transferOutputs[1])[0])
 	multiSpend(ledgerState, 1, transferOutputs[1])
 
-	multiSpend(ledgerState, 1, transferOutputs[2])
 	outputs2 := multiSpend(ledgerState, 2, multiSpend(ledgerState, 1, transferOutputs[2])[0])
+	multiSpend(ledgerState, 1, transferOutputs[2])
 
 	aggregatedOutputs0 := multiSpend(ledgerState, 2, outputs0[0], outputs1[0])
 	aggregatedOutputs1 := multiSpend(ledgerState, 2, outputs1[1], outputs2[1])
