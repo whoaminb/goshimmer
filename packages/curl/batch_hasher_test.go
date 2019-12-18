@@ -2,6 +2,7 @@ package curl
 
 import (
 	"crypto/ed25519"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -21,6 +22,8 @@ func (zeroReader) Read(buf []byte) (int, error) {
 func BenchmarkEd25519(b *testing.B) {
 	var zero zeroReader
 	public, private, _ := ed25519.GenerateKey(zero)
+
+	fmt.Println(len(public))
 
 	message := make([]byte, 75)
 	sig := ed25519.Sign(private, message)

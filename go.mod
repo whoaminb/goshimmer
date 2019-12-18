@@ -19,12 +19,16 @@ require (
 	github.com/labstack/echo v3.3.10+incompatible
 	github.com/labstack/gommon v0.3.0 // indirect
 	github.com/magiconair/properties v1.8.1
+	github.com/mr-tron/base58 v1.1.3
+	github.com/oasislabs/ed25519 v0.0.0-20191122104632-9d9ffc15f526
+	github.com/panjf2000/ants/v2 v2.2.2
 	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/rivo/tview v0.0.0-20190829161255-f8bc69b90341
 	github.com/rivo/uniseg v0.1.0 // indirect
 	github.com/sasha-s/go-deadlock v0.2.0 // indirect
-	golang.org/x/crypto v0.0.0-20191029031824-8986dd9e96cf
+	github.com/stretchr/testify v1.4.0
+	golang.org/x/crypto v0.0.0-20191119213627-4f8c1d86b1ba
 	golang.org/x/net v0.0.0-20190827160401-ba9fcec4b297
 	golang.org/x/sys v0.0.0-20190904154756-749cb33beabd // indirect
 	golang.org/x/text v0.3.2 // indirect
