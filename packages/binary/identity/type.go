@@ -3,6 +3,6 @@ package identity
 type Type int
 
 const (
-	PRIVATE_TYPE = Type(0)
-	PUBLIC_TYPE  = Type(1)
+	Private = Type(0)
+	Public  = Type(1)
 )

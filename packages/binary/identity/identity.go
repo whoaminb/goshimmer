@@ -20,9 +20,9 @@ func New(publicKey []byte, optionalPrivateKey ...[]byte) *Identity {
 	copy(this.PublicKey, publicKey)
 
 	if len(optionalPrivateKey) == 0 {
-		this.Type = PUBLIC_TYPE
+		this.Type = Public
 	} else {
-		this.Type = PRIVATE_TYPE
+		this.Type = Private
 		this.PrivateKey = optionalPrivateKey[0]
 	}
 

@@ -1,7 +1,6 @@
 package identity
 
 import (
-	"fmt"
 	"sync"
 	"testing"
 
@@ -36,8 +35,6 @@ func Test(t *testing.T) {
 	identity := Generate()
 
 	signature := identity.Sign([]byte("TESTDATA1"))
-
-	fmt.Println(len(signature))
 
 	assert.Equal(t, true, identity.VerifySignature([]byte("TESTDATA1"), signature))
 	assert.Equal(t, false, identity.VerifySignature([]byte("TESTDATA2"), signature))
