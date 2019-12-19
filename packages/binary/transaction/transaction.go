@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"encoding/binary"
 	"sync"
 
 	"github.com/iotaledger/goshimmer/packages/binary/identity"
@@ -22,16 +23,16 @@ type Transaction struct {
 	branchTransactionId Id
 	issuer              *identity.Identity
 	payload             Payload
+	bytes               []byte
+	bytesMutex          sync.RWMutex
+	signature           [identity.SignatureSize]byte
+	signatureMutex      sync.RWMutex
 
 	// derived properties
 	id             *Id
 	idMutex        sync.RWMutex
 	payloadId      *PayloadId
 	payloadIdMutex sync.RWMutex
-	bytes          []byte
-	bytesMutex     sync.RWMutex
-	signature      [identity.SignatureSize]byte
-	signatureMutex sync.RWMutex
 }
 
 // Allows us to "issue" a transaction.
@@ -95,6 +96,10 @@ func (transaction *Transaction) GetId() (result Id) {
 	}
 
 	return
+}
+
+func (transaction *Transaction) GetPayload() Payload {
+	return transaction.payload
 }
 
 func (transaction *Transaction) GetPayloadId() (result PayloadId) {
@@ -168,7 +173,7 @@ func (transaction *Transaction) MarshalBinary() (result []byte, err error) {
 			}
 			serializedPayloadLength := len(serializedPayload)
 
-			result = make([]byte, transactionIdLength+transactionIdLength+identity.PublicKeySize+serializedPayloadLength+identity.SignatureSize)
+			result = make([]byte, transactionIdLength+transactionIdLength+identity.PublicKeySize+4+serializedPayloadLength+identity.SignatureSize)
 			offset := 0
 
 			copy(result[offset:], transaction.trunkTransactionId[:])
@@ -180,7 +185,8 @@ func (transaction *Transaction) MarshalBinary() (result []byte, err error) {
 			copy(result[offset:], transaction.issuer.PublicKey)
 			offset += identity.PublicKeySize
 
-			// TODO: MARSHAL PAYLOAD LENGTH
+			binary.LittleEndian.PutUint32(result[offset:], transaction.payload.GetType())
+			offset += 4
 
 			if serializedPayloadLength != 0 {
 				copy(result[offset:], serializedPayload)
@@ -219,7 +225,13 @@ func (transaction *Transaction) UnmarshalBinary(data []byte) (err error) {
 	transaction.issuer = identity.New(data[offset : offset+identity.PublicKeySize])
 	offset += identity.PublicKeySize
 
-	// TODO: UNMARSHAL PAYLOAD LENGTH + CONTENT
+	payloadType := binary.LittleEndian.Uint32(data[offset:])
+	offset += 4
+
+	if transaction.payload, err = GetPayloadUnmarshaler(payloadType)(data[offset : len(data)-identity.SignatureSize]); err != nil {
+		return
+	}
+	offset += len(data) - identity.SignatureSize - offset
 
 	copy(transaction.signature[:], data[offset:])
 	// offset += identity.SignatureSize

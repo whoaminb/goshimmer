@@ -8,5 +8,5 @@ type Payload interface {
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 
-	GetType() int
+	GetType() PayloadType
 }

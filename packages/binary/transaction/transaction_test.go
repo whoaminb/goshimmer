@@ -10,10 +10,10 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	newTransaction1 := New(Id{}, Id{}, identity.Generate(), nil)
+	newTransaction1 := New(Id{}, Id{}, identity.Generate(), NewDataPayload([]byte("test")))
 	assert.Equal(t, newTransaction1.VerifySignature(), true)
 
-	newTransaction2 := New(newTransaction1.GetId(), Id{}, identity.Generate(), nil)
+	newTransaction2 := New(newTransaction1.GetId(), Id{}, identity.Generate(), NewDataPayload([]byte("test1")))
 	assert.Equal(t, newTransaction2.VerifySignature(), true)
 
 	newTransaction3, _ := FromBytes(newTransaction2.GetBytes())
