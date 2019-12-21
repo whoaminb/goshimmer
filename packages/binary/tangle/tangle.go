@@ -1,7 +1,7 @@
 package tangle
 
 import (
-	"github.com/iotaledger/goshimmer/packages/binary/approvers"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/approvers"
 	"github.com/iotaledger/goshimmer/packages/binary/transaction"
 	"github.com/iotaledger/hive.go/objectstorage"
 )

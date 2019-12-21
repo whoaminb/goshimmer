@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"sync"
 
+	"github.com/iotaledger/goshimmer/packages/binary/address"
+
 	"github.com/iotaledger/goshimmer/packages/stringify"
 	"github.com/iotaledger/hive.go/objectstorage"
 )
@@ -12,10 +14,10 @@ type TransferOutput struct {
 	objectstorage.StorableObjectFlags
 
 	transferHash TransferHash
-	addressHash  AddressHash
+	addressHash  address.Address
 	balances     []*ColoredBalance
 	realityId    RealityId
-	consumers    map[TransferHash][]AddressHash
+	consumers    map[TransferHash][]address.Address
 
 	storageKey  []byte
 	ledgerState *LedgerState
@@ -25,13 +27,13 @@ type TransferOutput struct {
 	bookingMutex   sync.Mutex
 }
 
-func NewTransferOutput(ledgerState *LedgerState, realityId RealityId, transferHash TransferHash, addressHash AddressHash, balances ...*ColoredBalance) *TransferOutput {
+func NewTransferOutput(ledgerState *LedgerState, realityId RealityId, transferHash TransferHash, addressHash address.Address, balances ...*ColoredBalance) *TransferOutput {
 	return &TransferOutput{
 		transferHash: transferHash,
 		addressHash:  addressHash,
 		balances:     balances,
 		realityId:    realityId,
-		consumers:    make(map[TransferHash][]AddressHash),
+		consumers:    make(map[TransferHash][]address.Address),
 
 		storageKey:  append(transferHash[:], addressHash[:]...),
 		ledgerState: ledgerState,
@@ -52,7 +54,7 @@ func (transferOutput *TransferOutput) GetRealityId() (realityId RealityId) {
 	return
 }
 
-func (transferOutput *TransferOutput) GetAddressHash() (addressHash AddressHash) {
+func (transferOutput *TransferOutput) GetAddressHash() (addressHash address.Address) {
 	return transferOutput.addressHash
 }
 
@@ -77,12 +79,12 @@ func (transferOutput *TransferOutput) GetBalances() []*ColoredBalance {
 	return transferOutput.balances
 }
 
-func (transferOutput *TransferOutput) GetConsumers() (consumers map[TransferHash][]AddressHash) {
-	consumers = make(map[TransferHash][]AddressHash)
+func (transferOutput *TransferOutput) GetConsumers() (consumers map[TransferHash][]address.Address) {
+	consumers = make(map[TransferHash][]address.Address)
 
 	transferOutput.consumersMutex.RLock()
 	for transferHash, addresses := range transferOutput.consumers {
-		consumers[transferHash] = make([]AddressHash, len(addresses))
+		consumers[transferHash] = make([]address.Address, len(addresses))
 		copy(consumers[transferHash], addresses)
 	}
 	transferOutput.consumersMutex.RUnlock()
@@ -90,7 +92,7 @@ func (transferOutput *TransferOutput) GetConsumers() (consumers map[TransferHash
 	return
 }
 
-func (transferOutput *TransferOutput) addConsumer(consumer TransferHash, outputs map[AddressHash][]*ColoredBalance) (consumersToElevate map[TransferHash][]AddressHash, err error) {
+func (transferOutput *TransferOutput) addConsumer(consumer TransferHash, outputs map[address.Address][]*ColoredBalance) (consumersToElevate map[TransferHash][]address.Address, err error) {
 	transferOutput.consumersMutex.RLock()
 	if _, exist := transferOutput.consumers[consumer]; exist {
 		transferOutput.consumersMutex.RUnlock()
@@ -103,16 +105,16 @@ func (transferOutput *TransferOutput) addConsumer(consumer TransferHash, outputs
 			consumersToElevate = nil
 			err = transferOutput.markAsSpent()
 		case 1:
-			consumersToElevate = make(map[TransferHash][]AddressHash, 1)
+			consumersToElevate = make(map[TransferHash][]address.Address, 1)
 			for transferHash, addresses := range transferOutput.consumers {
 				consumersToElevate[transferHash] = addresses
 			}
 			err = nil
 		default:
-			consumersToElevate = make(map[TransferHash][]AddressHash)
+			consumersToElevate = make(map[TransferHash][]address.Address)
 			err = nil
 		}
-		consumers := make([]AddressHash, len(outputs))
+		consumers := make([]address.Address, len(outputs))
 		i := 0
 		for addressHash := range outputs {
 			consumers[i] = addressHash
@@ -179,7 +181,7 @@ func (transferOutput *TransferOutput) MarshalBinary() ([]byte, error) {
 	for _, addresses := range transferOutput.consumers {
 		serializedLength += 4
 		for range addresses {
-			serializedLength += addressHashLength
+			serializedLength += address.Length
 		}
 	}
 
@@ -204,9 +206,8 @@ func (transferOutput *TransferOutput) MarshalBinary() ([]byte, error) {
 		offset += 4
 
 		for _, addressHash := range addresses {
-			copy(result[offset:], addressHash[:addressHashLength])
-			offset += addressHashLength
-
+			copy(result[offset:], addressHash[:address.Length])
+			offset += address.Length
 		}
 	}
 
@@ -260,13 +261,13 @@ func (transferOutput *TransferOutput) unmarshalBalances(serializedBalances []byt
 	return balances, nil
 }
 
-func (transferOutput *TransferOutput) unmarshalConsumers(serializedConsumers []byte) (map[TransferHash][]AddressHash, error) {
+func (transferOutput *TransferOutput) unmarshalConsumers(serializedConsumers []byte) (map[TransferHash][]address.Address, error) {
 	offset := 0
 
 	consumerCount := int(binary.LittleEndian.Uint32(serializedConsumers[offset:]))
 	offset += 4
 
-	consumers := make(map[TransferHash][]AddressHash, consumerCount)
+	consumers := make(map[TransferHash][]address.Address, consumerCount)
 	for i := 0; i < consumerCount; i++ {
 		transferHash := TransferHash{}
 		if err := transferHash.UnmarshalBinary(serializedConsumers[offset:]); err != nil {
@@ -277,13 +278,13 @@ func (transferOutput *TransferOutput) unmarshalConsumers(serializedConsumers []b
 		addressHashCount := int(binary.LittleEndian.Uint32(serializedConsumers[offset:]))
 		offset += 4
 
-		consumers[transferHash] = make([]AddressHash, addressHashCount)
+		consumers[transferHash] = make([]address.Address, addressHashCount)
 		for i := 0; i < addressHashCount; i++ {
-			addressHash := AddressHash{}
+			addressHash := address.Address{}
 			if err := addressHash.UnmarshalBinary(serializedConsumers[offset:]); err != nil {
 				return nil, err
 			}
-			offset += addressHashLength
+			offset += address.Length
 
 			consumers[transferHash][i] = addressHash
 		}

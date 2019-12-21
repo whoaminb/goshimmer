@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iotaledger/goshimmer/packages/binary/address"
+
 	"github.com/iotaledger/goshimmer/packages/graphviz"
 
 	"golang.org/x/crypto/blake2b"
@@ -42,7 +44,7 @@ func NewLedgerState(storageId string) *LedgerState {
 	return result
 }
 
-func (ledgerState *LedgerState) AddTransferOutput(transferHash TransferHash, addressHash AddressHash, balances ...*ColoredBalance) *LedgerState {
+func (ledgerState *LedgerState) AddTransferOutput(transferHash TransferHash, addressHash address.Address, balances ...*ColoredBalance) *LedgerState {
 	ledgerState.GetReality(MAIN_REALITY_ID).Consume(func(object objectstorage.StorableObject) {
 		mainReality := object.(*Reality)
 
@@ -401,7 +403,7 @@ func (ledgerState *LedgerState) Prune() *LedgerState {
 
 func (ledgerState *LedgerState) generateFilterPrefixes(filters []interface{}) ([][]byte, bool) {
 	filteredRealities := make([]RealityId, 0)
-	filteredAddresses := make([]AddressHash, 0)
+	filteredAddresses := make([]address.Address, 0)
 	filteredTransfers := make([]TransferHash, 0)
 	filterSpent := false
 	filterUnspent := false
@@ -410,7 +412,7 @@ func (ledgerState *LedgerState) generateFilterPrefixes(filters []interface{}) ([
 		switch typeCastedValue := filter.(type) {
 		case RealityId:
 			filteredRealities = append(filteredRealities, typeCastedValue)
-		case AddressHash:
+		case address.Address:
 			filteredAddresses = append(filteredAddresses, typeCastedValue)
 		case TransferHash:
 			filteredTransfers = append(filteredTransfers, typeCastedValue)

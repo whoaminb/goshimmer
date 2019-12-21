@@ -1,6 +1,7 @@
 package ledgerstate
 
 import (
+	"github.com/iotaledger/goshimmer/packages/binary/address"
 	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/stringify"
 	"github.com/iotaledger/hive.go/objectstorage"
@@ -12,14 +13,14 @@ type TransferOutputBooking struct {
 	objectstorage.StorableObjectFlags
 
 	realityId    RealityId
-	addressHash  AddressHash
+	addressHash  address.Address
 	spent        bool
 	transferHash TransferHash
 
 	storageKey []byte
 }
 
-func newTransferOutputBooking(realityId RealityId, addressHash AddressHash, spent bool, transferHash TransferHash) (result *TransferOutputBooking) {
+func newTransferOutputBooking(realityId RealityId, addressHash address.Address, spent bool, transferHash TransferHash) (result *TransferOutputBooking) {
 	result = &TransferOutputBooking{
 		realityId:    realityId,
 		addressHash:  addressHash,
@@ -36,7 +37,7 @@ func (booking *TransferOutputBooking) GetRealityId() RealityId {
 	return booking.realityId
 }
 
-func (booking *TransferOutputBooking) GetAddressHash() AddressHash {
+func (booking *TransferOutputBooking) GetAddressHash() address.Address {
 	return booking.addressHash
 }
 
@@ -113,11 +114,11 @@ func (booking *TransferOutputBooking) UnmarshalBinary(data []byte) error {
 
 // region private utility methods //////////////////////////////////////////////////////////////////////////////////////
 
-func generateTransferOutputBookingStorageKey(realityId RealityId, addressHash AddressHash, spent bool, transferHash TransferHash) (storageKey []byte) {
-	storageKey = make([]byte, realityIdLength+addressHashLength+1+transferHashLength)
+func generateTransferOutputBookingStorageKey(realityId RealityId, addressHash address.Address, spent bool, transferHash TransferHash) (storageKey []byte) {
+	storageKey = make([]byte, realityIdLength+address.Length+1+transferHashLength)
 
 	copy(storageKey[marshalTransferOutputBookingRealityIdStart:marshalTransferOutputBookingRealityIdEnd], realityId[:realityIdLength])
-	copy(storageKey[marshalTransferOutputBookingAddressHashStart:marshalTransferOutputBookingAddressHashEnd], addressHash[:addressHashLength])
+	copy(storageKey[marshalTransferOutputBookingAddressHashStart:marshalTransferOutputBookingAddressHashEnd], addressHash[:address.Length])
 	if spent {
 		storageKey[marshalTransferOutputBookingSpentStart] = byte(SPENT)
 	} else {

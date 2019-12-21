@@ -1,5 +1,9 @@
 package ledgerstate
 
+import (
+	"github.com/iotaledger/goshimmer/packages/binary/address"
+)
+
 const (
 	UNSPENT = SpentIndicator(0)
 	SPENT   = SpentIndicator(1)
@@ -7,7 +11,7 @@ const (
 	marshalTransferOutputBookingRealityIdStart    = 0
 	marshalTransferOutputBookingRealityIdEnd      = marshalTransferOutputBookingRealityIdStart + realityIdLength
 	marshalTransferOutputBookingAddressHashStart  = marshalTransferOutputBookingRealityIdEnd
-	marshalTransferOutputBookingAddressHashEnd    = marshalTransferOutputBookingAddressHashStart + addressHashLength
+	marshalTransferOutputBookingAddressHashEnd    = marshalTransferOutputBookingAddressHashStart + address.Length
 	marshalTransferOutputBookingSpentStart        = marshalTransferOutputBookingAddressHashEnd
 	marshalTransferOutputBookingSpentEnd          = marshalTransferOutputBookingSpentStart + 1
 	marshalTransferOutputBookingTransferHashStart = marshalTransferOutputBookingSpentEnd

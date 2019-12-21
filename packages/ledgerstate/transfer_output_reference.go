@@ -1,16 +1,17 @@
 package ledgerstate
 
 import (
+	"github.com/iotaledger/goshimmer/packages/binary/address"
 	"github.com/iotaledger/goshimmer/packages/stringify"
 )
 
 type TransferOutputReference struct {
 	storageKey   []byte
 	transferHash TransferHash
-	addressHash  AddressHash
+	addressHash  address.Address
 }
 
-func NewTransferOutputReference(transferHash TransferHash, addressHash AddressHash) *TransferOutputReference {
+func NewTransferOutputReference(transferHash TransferHash, addressHash address.Address) *TransferOutputReference {
 	return &TransferOutputReference{
 		storageKey:   append(transferHash[:], addressHash[:]...),
 		transferHash: transferHash,

@@ -3,17 +3,19 @@ package ledgerstate
 import (
 	"testing"
 
+	"github.com/iotaledger/goshimmer/packages/binary/address"
+
 	"github.com/magiconair/properties/assert"
 )
 
 func TestTransferOutput_MarshalUnmarshal(t *testing.T) {
-	transferOutput := NewTransferOutput(nil, NewRealityId("REALITY"), NewTransferHash("RECEIVE"), NewAddressHash("ADDRESS1"), NewColoredBalance(NewColor("IOTA"), 44), NewColoredBalance(NewColor("BTC"), 88))
-	transferOutput.consumers = make(map[TransferHash][]AddressHash)
+	transferOutput := NewTransferOutput(nil, NewRealityId("REALITY"), NewTransferHash("RECEIVE"), address.New([]byte("ADDRESS1")), NewColoredBalance(NewColor("IOTA"), 44), NewColoredBalance(NewColor("BTC"), 88))
+	transferOutput.consumers = make(map[TransferHash][]address.Address)
 
 	spendTransferHash := NewTransferHash("SPEND")
-	transferOutput.consumers[spendTransferHash] = make([]AddressHash, 2)
-	transferOutput.consumers[spendTransferHash][0] = NewAddressHash("ADDRESS2")
-	transferOutput.consumers[spendTransferHash][1] = NewAddressHash("ADDRESS3")
+	transferOutput.consumers[spendTransferHash] = make([]address.Address, 2)
+	transferOutput.consumers[spendTransferHash][0] = address.New([]byte("ADDRESS2"))
+	transferOutput.consumers[spendTransferHash][1] = address.New([]byte("ADDRESS3"))
 
 	marshaledData, err := transferOutput.MarshalBinary()
 	if err != nil {

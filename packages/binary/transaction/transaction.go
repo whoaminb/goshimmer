@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/iotaledger/goshimmer/packages/binary/identity"
+	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload"
 	"github.com/iotaledger/goshimmer/packages/stringify"
 
 	"github.com/iotaledger/hive.go/objectstorage"
@@ -22,7 +23,7 @@ type Transaction struct {
 	trunkTransactionId  Id
 	branchTransactionId Id
 	issuer              *identity.Identity
-	payload             Payload
+	payload             payload.Payload
 	bytes               []byte
 	bytesMutex          sync.RWMutex
 	signature           [identity.SignatureSize]byte
@@ -31,12 +32,12 @@ type Transaction struct {
 	// derived properties
 	id             *Id
 	idMutex        sync.RWMutex
-	payloadId      *PayloadId
+	payloadId      *payload.Id
 	payloadIdMutex sync.RWMutex
 }
 
 // Allows us to "issue" a transaction.
-func New(trunkTransactionId Id, branchTransactionId Id, issuer *identity.Identity, payload Payload) (result *Transaction) {
+func New(trunkTransactionId Id, branchTransactionId Id, issuer *identity.Identity, payload payload.Payload) (result *Transaction) {
 	return &Transaction{
 		trunkTransactionId:  trunkTransactionId,
 		branchTransactionId: branchTransactionId,
@@ -98,11 +99,11 @@ func (transaction *Transaction) GetId() (result Id) {
 	return
 }
 
-func (transaction *Transaction) GetPayload() Payload {
+func (transaction *Transaction) GetPayload() payload.Payload {
 	return transaction.payload
 }
 
-func (transaction *Transaction) GetPayloadId() (result PayloadId) {
+func (transaction *Transaction) GetPayloadId() (result payload.Id) {
 	transaction.payloadIdMutex.RLock()
 	if transaction.payloadId == nil {
 		transaction.payloadIdMutex.RUnlock()
@@ -136,14 +137,14 @@ func (transaction *Transaction) GetBytes() []byte {
 func (transaction *Transaction) calculateTransactionId() Id {
 	payloadId := transaction.GetPayloadId()
 
-	hashBase := make([]byte, transactionIdLength+transactionIdLength+payloadIdLength)
+	hashBase := make([]byte, IdLength+IdLength+payload.IdLength)
 	offset := 0
 
 	copy(hashBase[offset:], transaction.trunkTransactionId[:])
-	offset += transactionIdLength
+	offset += IdLength
 
 	copy(hashBase[offset:], transaction.branchTransactionId[:])
-	offset += transactionIdLength
+	offset += IdLength
 
 	copy(hashBase[offset:], payloadId[:])
 	// offset += payloadIdLength
@@ -151,10 +152,10 @@ func (transaction *Transaction) calculateTransactionId() Id {
 	return blake2b.Sum512(hashBase)
 }
 
-func (transaction *Transaction) calculatePayloadId() PayloadId {
+func (transaction *Transaction) calculatePayloadId() payload.Id {
 	bytes := transaction.GetBytes()
 
-	return blake2b.Sum512(bytes[2*transactionIdLength:])
+	return blake2b.Sum512(bytes[2*IdLength:])
 }
 
 // Since transactions are immutable and do not get changed after being created, we cache the result of the marshaling.
@@ -173,14 +174,14 @@ func (transaction *Transaction) MarshalBinary() (result []byte, err error) {
 			}
 			serializedPayloadLength := len(serializedPayload)
 
-			result = make([]byte, transactionIdLength+transactionIdLength+identity.PublicKeySize+4+serializedPayloadLength+identity.SignatureSize)
+			result = make([]byte, IdLength+IdLength+identity.PublicKeySize+4+serializedPayloadLength+identity.SignatureSize)
 			offset := 0
 
 			copy(result[offset:], transaction.trunkTransactionId[:])
-			offset += transactionIdLength
+			offset += IdLength
 
 			copy(result[offset:], transaction.branchTransactionId[:])
-			offset += transactionIdLength
+			offset += IdLength
 
 			copy(result[offset:], transaction.issuer.PublicKey)
 			offset += identity.PublicKeySize
@@ -217,10 +218,10 @@ func (transaction *Transaction) UnmarshalBinary(data []byte) (err error) {
 	offset := 0
 
 	copy(transaction.trunkTransactionId[:], data[offset:])
-	offset += transactionIdLength
+	offset += IdLength
 
 	copy(transaction.branchTransactionId[:], data[offset:])
-	offset += transactionIdLength
+	offset += IdLength
 
 	transaction.issuer = identity.New(data[offset : offset+identity.PublicKeySize])
 	offset += identity.PublicKeySize
@@ -228,7 +229,7 @@ func (transaction *Transaction) UnmarshalBinary(data []byte) (err error) {
 	payloadType := binary.LittleEndian.Uint32(data[offset:])
 	offset += 4
 
-	if transaction.payload, err = GetPayloadUnmarshaler(payloadType)(data[offset : len(data)-identity.SignatureSize]); err != nil {
+	if transaction.payload, err = payload.GetUnmarshaler(payloadType)(data[offset : len(data)-identity.SignatureSize]); err != nil {
 		return
 	}
 	offset += len(data) - identity.SignatureSize - offset

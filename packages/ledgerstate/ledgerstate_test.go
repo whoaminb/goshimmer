@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/iotaledger/goshimmer/packages/binary/address"
+
 	"github.com/iotaledger/hive.go/objectstorage"
 	"github.com/iotaledger/hive.go/parameter"
 )
@@ -19,12 +21,12 @@ var (
 	transferHash4  = NewTransferHash("TRANSFER4")
 	transferHash5  = NewTransferHash("TRANSFER5")
 	transferHash6  = NewTransferHash("TRANSFER6")
-	addressHash1   = NewAddressHash("ADDRESS1")
-	addressHash2   = NewAddressHash("ADDRESS2")
-	addressHash3   = NewAddressHash("ADDRESS3")
-	addressHash4   = NewAddressHash("ADDRESS4")
-	addressHash5   = NewAddressHash("ADDRESS5")
-	addressHash6   = NewAddressHash("ADDRESS6")
+	addressHash1   = address.New([]byte("ADDRESS1"))
+	addressHash2   = address.New([]byte("ADDRESS2"))
+	addressHash3   = address.New([]byte("ADDRESS3"))
+	addressHash4   = address.New([]byte("ADDRESS4"))
+	addressHash5   = address.New([]byte("ADDRESS5"))
+	addressHash6   = address.New([]byte("ADDRESS6"))
 	pendingReality = NewRealityId("PENDING")
 )
 
@@ -60,7 +62,7 @@ func Benchmark(b *testing.B) {
 
 func Test(t *testing.T) {
 	ledgerState := NewLedgerState("testLedger").Prune().AddTransferOutput(
-		transferHash1, addressHash1, NewColoredBalance(eth, 1024), NewColoredBalance(iota_, 1338),
+		transferHash1, addressHash1, NewColoredBalance(eth, 1337), NewColoredBalance(iota_, 1338),
 	)
 
 	ledgerState.CreateReality(pendingReality)
@@ -118,10 +120,10 @@ func generateRandomTransferHash() TransferHash {
 
 var addressHashCounter = 0
 
-func generateRandomAddressHash() AddressHash {
+func generateRandomAddressHash() address.Address {
 	addressHashCounter++
 
-	return NewAddressHash("ADDRESS" + strconv.Itoa(addressHashCounter))
+	return address.New([]byte("ADDRESS" + strconv.Itoa(addressHashCounter)))
 }
 
 func initializeLedgerStateWithBalances(numberOfBalances int) (ledgerState *LedgerState, result []*TransferOutputReference) {

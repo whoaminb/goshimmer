@@ -3,6 +3,8 @@ package ledgerstate
 import (
 	"unicode/utf8"
 
+	"github.com/iotaledger/goshimmer/packages/binary/address"
+
 	"github.com/iotaledger/goshimmer/packages/stringify"
 	"golang.org/x/crypto/blake2b"
 )
@@ -22,7 +24,7 @@ func NewConflictId(conflictBytes ...interface{}) (result ConflictId) {
 			panic("expected second parameter of NewConflictId to be a AddressHash")
 		}
 
-		fullConflictSetIdentifier := make([]byte, transferHashLength+addressHashLength)
+		fullConflictSetIdentifier := make([]byte, transferHashLength+address.Length)
 		copy(fullConflictSetIdentifier, transferHash[:])
 		copy(fullConflictSetIdentifier[transferHashLength:], addressHash[:])
 

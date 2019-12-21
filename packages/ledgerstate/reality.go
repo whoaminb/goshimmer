@@ -4,6 +4,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/iotaledger/goshimmer/packages/binary/address"
+
 	"github.com/iotaledger/goshimmer/packages/stringify"
 
 	"github.com/iotaledger/goshimmer/packages/errors"
@@ -443,7 +445,7 @@ func (reality *Reality) String() (result string) {
 }
 
 // Books a transfer into this reality (contains the dispatcher for the actual tasks).
-func (reality *Reality) bookTransfer(transferHash TransferHash, inputs objectstorage.CachedObjects, outputs map[AddressHash][]*ColoredBalance) (err error) {
+func (reality *Reality) bookTransfer(transferHash TransferHash, inputs objectstorage.CachedObjects, outputs map[address.Address][]*ColoredBalance) (err error) {
 	if err = reality.verifyTransfer(inputs, outputs); err != nil {
 		return
 	}
@@ -464,7 +466,7 @@ func (reality *Reality) bookTransfer(transferHash TransferHash, inputs objectsto
 }
 
 // Internal utility function that verifies the transfer and checks if it is valid (inputs exist + the net balance is 0).
-func (reality *Reality) verifyTransfer(inputs []*objectstorage.CachedObject, outputs map[AddressHash][]*ColoredBalance) error {
+func (reality *Reality) verifyTransfer(inputs []*objectstorage.CachedObject, outputs map[address.Address][]*ColoredBalance) error {
 	totalColoredBalances := make(map[Color]uint64)
 
 	for _, cachedInput := range inputs {
@@ -504,7 +506,7 @@ func (reality *Reality) verifyTransfer(inputs []*objectstorage.CachedObject, out
 
 // Internal utility function that marks the consumed inputs as spent and returns the corresponding conflicts if the
 // inputs have been consumed before.
-func (reality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transferHash TransferHash, outputs map[AddressHash][]*ColoredBalance) (conflicts objectstorage.CachedObjects, err error) {
+func (reality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transferHash TransferHash, outputs map[address.Address][]*ColoredBalance) (conflicts objectstorage.CachedObjects, err error) {
 	conflicts = make(objectstorage.CachedObjects, 0)
 
 	for _, input := range inputs {
@@ -532,7 +534,7 @@ func (reality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transf
 //
 // If the inputs have been used before and we consequently have a non-empty list of conflicts, we first create a new
 // reality for the inputs and then book the transfer outputs into the correct reality.
-func (reality *Reality) createTransferOutputs(transferHash TransferHash, outputs map[AddressHash][]*ColoredBalance, conflicts objectstorage.CachedObjects) (err error) {
+func (reality *Reality) createTransferOutputs(transferHash TransferHash, outputs map[address.Address][]*ColoredBalance, conflicts objectstorage.CachedObjects) (err error) {
 	if len(conflicts) >= 1 {
 		targetRealityId := transferHash.ToRealityId()
 
@@ -581,7 +583,7 @@ func (reality *Reality) collectParentConflictRealities(parentConflictRealities m
 
 // Utility function that processes a conflicting input by retrieving the corresponding conflict.
 // If there is a non-empty list of consumers to elevate, we elevate them.
-func (reality *Reality) processConflictingInput(input *TransferOutput, consumersToElevate map[TransferHash][]AddressHash) (conflict *objectstorage.CachedObject, err error) {
+func (reality *Reality) processConflictingInput(input *TransferOutput, consumersToElevate map[TransferHash][]address.Address) (conflict *objectstorage.CachedObject, err error) {
 	conflictId := NewConflictId(input.GetTransferHash(), input.GetAddressHash())
 
 	if len(consumersToElevate) >= 1 {
@@ -603,7 +605,7 @@ func (reality *Reality) processConflictingInput(input *TransferOutput, consumers
 }
 
 // Creates a Reality for the consumers of the conflicting inputs and registers it as part of the corresponding Conflict.
-func (reality *Reality) createRealityForPreviouslyUnconflictingConsumers(consumersOfConflictingInput map[TransferHash][]AddressHash, conflict *Conflict) (err error) {
+func (reality *Reality) createRealityForPreviouslyUnconflictingConsumers(consumersOfConflictingInput map[TransferHash][]address.Address, conflict *Conflict) (err error) {
 	for transferHash, addressHashes := range consumersOfConflictingInput {
 		elevatedRealityId := transferHash.ToRealityId()
 

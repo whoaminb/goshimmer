@@ -3,13 +3,15 @@ package ledgerstate
 import (
 	"strings"
 
+	"github.com/iotaledger/goshimmer/packages/binary/address"
+
 	"github.com/iotaledger/goshimmer/packages/graphviz"
 
 	"github.com/emicklei/dot"
 	"github.com/iotaledger/hive.go/objectstorage"
 )
 
-type transferOutputId [transferHashLength + addressHashLength]byte
+type transferOutputId [transferHashLength + address.Length]byte
 
 type Visualizer struct {
 	ledgerState         *LedgerState
