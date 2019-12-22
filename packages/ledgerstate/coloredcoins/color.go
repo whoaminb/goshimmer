@@ -1,4 +1,4 @@
-package ledgerstate
+package coloredcoins
 
 import (
 	"unicode/utf8"
@@ -6,7 +6,7 @@ import (
 	"github.com/iotaledger/goshimmer/packages/stringify"
 )
 
-type Color [colorLength]byte
+type Color [ColorLength]byte
 
 func NewColor(color string) (result Color) {
 	copy(result[:], color)
@@ -15,7 +15,7 @@ func NewColor(color string) (result Color) {
 }
 
 func (color *Color) UnmarshalBinary(data []byte) error {
-	copy(color[:], data[:colorLength])
+	copy(color[:], data[:ColorLength])
 
 	return nil
 }
@@ -28,4 +28,4 @@ func (color Color) String() string {
 	}
 }
 
-const colorLength = 32
+const ColorLength = 32

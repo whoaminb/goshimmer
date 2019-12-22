@@ -4,13 +4,14 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
+
 	"github.com/iotaledger/goshimmer/packages/binary/address"
 	"github.com/iotaledger/goshimmer/packages/binary/types"
 	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/conflict"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/transferoutput"
 	"github.com/iotaledger/goshimmer/packages/stringify"
 
 	"github.com/iotaledger/hive.go/objectstorage"
@@ -422,7 +423,7 @@ func (mreality *Reality) CreateReality(id reality.Id) *objectstorage.CachedObjec
 }
 
 // Books a transfer into this reality (wrapper for the private bookTransfer function).
-func (mreality *Reality) BookTransfer(transfer *Transfer) (err error) {
+func (mreality *Reality) BookTransfer(transfer *transfer.Transfer) (err error) {
 	err = mreality.bookTransfer(transfer.GetHash(), mreality.ledgerState.getTransferInputs(transfer), transfer.GetOutputs())
 
 	return
@@ -449,7 +450,7 @@ func (mreality *Reality) String() (result string) {
 }
 
 // Books a transfer into this reality (contains the dispatcher for the actual tasks).
-func (mreality *Reality) bookTransfer(transferHash transfer.Hash, inputs objectstorage.CachedObjects, outputs map[address.Address][]*ColoredBalance) (err error) {
+func (mreality *Reality) bookTransfer(transferHash transfer.Hash, inputs objectstorage.CachedObjects, outputs map[address.Address][]*coloredcoins.ColoredBalance) (err error) {
 	if err = mreality.verifyTransfer(inputs, outputs); err != nil {
 		return
 	}
@@ -470,8 +471,8 @@ func (mreality *Reality) bookTransfer(transferHash transfer.Hash, inputs objects
 }
 
 // Internal utility function that verifies the transfer and checks if it is valid (inputs exist + the net balance is 0).
-func (mreality *Reality) verifyTransfer(inputs []*objectstorage.CachedObject, outputs map[address.Address][]*ColoredBalance) error {
-	totalColoredBalances := make(map[Color]uint64)
+func (mreality *Reality) verifyTransfer(inputs []*objectstorage.CachedObject, outputs map[address.Address][]*coloredcoins.ColoredBalance) error {
+	totalColoredBalances := make(map[coloredcoins.Color]uint64)
 
 	for _, cachedInput := range inputs {
 		if !cachedInput.Exists() {
@@ -484,7 +485,7 @@ func (mreality *Reality) verifyTransfer(inputs []*objectstorage.CachedObject, ou
 		}
 
 		for _, balance := range input.GetBalances() {
-			totalColoredBalances[balance.GetColor()] += balance.GetValue()
+			totalColoredBalances[balance.GetColor()] += balance.GetBalance()
 		}
 	}
 
@@ -492,7 +493,7 @@ func (mreality *Reality) verifyTransfer(inputs []*objectstorage.CachedObject, ou
 		for _, balance := range transferOutput {
 			color := balance.GetColor()
 
-			totalColoredBalances[color] -= balance.GetValue()
+			totalColoredBalances[color] -= balance.GetBalance()
 
 			if totalColoredBalances[color] == 0 {
 				delete(totalColoredBalances, color)
@@ -510,7 +511,7 @@ func (mreality *Reality) verifyTransfer(inputs []*objectstorage.CachedObject, ou
 
 // Internal utility function that marks the consumed inputs as spent and returns the corresponding conflicts if the
 // inputs have been consumed before.
-func (mreality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transferHash transfer.Hash, outputs map[address.Address][]*ColoredBalance) (conflicts objectstorage.CachedObjects, err error) {
+func (mreality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transferHash transfer.Hash, outputs map[address.Address][]*coloredcoins.ColoredBalance) (conflicts objectstorage.CachedObjects, err error) {
 	conflicts = make(objectstorage.CachedObjects, 0)
 
 	for _, input := range inputs {
@@ -538,7 +539,7 @@ func (mreality *Reality) consumeInputs(inputs objectstorage.CachedObjects, trans
 //
 // If the inputs have been used before and we consequently have a non-empty list of conflicts, we first create a new
 // reality for the inputs and then book the transfer outputs into the correct reality.
-func (mreality *Reality) createTransferOutputs(transferHash transfer.Hash, outputs map[address.Address][]*ColoredBalance, conflicts objectstorage.CachedObjects) (err error) {
+func (mreality *Reality) createTransferOutputs(transferHash transfer.Hash, outputs map[address.Address][]*coloredcoins.ColoredBalance, conflicts objectstorage.CachedObjects) (err error) {
 	if len(conflicts) >= 1 {
 		targetRealityId := transferHash.ToRealityId()
 
@@ -639,7 +640,7 @@ func (mreality *Reality) createRealityForPreviouslyUnconflictingConsumers(consum
 				// Reality is created the first time).
 				if realityIsNew {
 					for _, addressHash := range addressHashes {
-						if err = mreality.elevateTransferOutput(transferoutput.NewTransferOutputReference(transferHash, addressHash), elevatedReality); err != nil {
+						if err = mreality.elevateTransferOutput(transfer.NewOutputReference(transferHash, addressHash), elevatedReality); err != nil {
 							return
 						}
 					}
@@ -652,7 +653,7 @@ func (mreality *Reality) createRealityForPreviouslyUnconflictingConsumers(consum
 }
 
 // Private utility function that elevates a transfer output to the given reality.
-func (mreality *Reality) elevateTransferOutput(transferOutputReference *transferoutput.Reference, newReality *Reality) (err error) {
+func (mreality *Reality) elevateTransferOutput(transferOutputReference *transfer.OutputReference, newReality *Reality) (err error) {
 	if cachedTransferOutputToElevate := mreality.ledgerState.GetTransferOutput(transferOutputReference); !cachedTransferOutputToElevate.Exists() {
 		err = errors.New("could not find TransferOutput to elevate")
 	} else {
@@ -678,7 +679,7 @@ func (mreality *Reality) elevateTransferOutput(transferOutputReference *transfer
 func (mreality *Reality) elevateTransferOutputOfCurrentReality(transferOutput *TransferOutput, newReality *Reality) (err error) {
 	for transferHash, addresses := range transferOutput.GetConsumers() {
 		for _, addressHash := range addresses {
-			if elevateErr := mreality.elevateTransferOutput(transferoutput.NewTransferOutputReference(transferHash, addressHash), newReality); elevateErr != nil {
+			if elevateErr := mreality.elevateTransferOutput(transfer.NewOutputReference(transferHash, addressHash), newReality); elevateErr != nil {
 				err = elevateErr
 
 				return

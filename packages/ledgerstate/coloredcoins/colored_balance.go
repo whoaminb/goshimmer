@@ -1,4 +1,4 @@
-package ledgerstate
+package coloredcoins
 
 import (
 	"encoding/binary"
@@ -21,7 +21,7 @@ func (balance *ColoredBalance) GetColor() Color {
 	return balance.color
 }
 
-func (balance *ColoredBalance) GetValue() uint64 {
+func (balance *ColoredBalance) GetBalance() uint64 {
 	return balance.balance
 }
 
@@ -31,7 +31,7 @@ func (balance *ColoredBalance) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
-	balance.balance = binary.LittleEndian.Uint64(data[colorLength:])
+	balance.balance = binary.LittleEndian.Uint64(data[ColorLength:])
 
 	return nil
 }
@@ -41,5 +41,5 @@ func (coloredBalance *ColoredBalance) String() string {
 }
 
 const (
-	coloredBalanceLength = colorLength + 8 // color + 64 Bit / 8 Byte value
+	BalanceLength = ColorLength + 8 // color + 64 Bit / 8 Byte value
 )

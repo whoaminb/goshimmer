@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
+
 	"github.com/iotaledger/goshimmer/packages/binary/address"
+	"github.com/iotaledger/goshimmer/packages/graphviz"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/conflict"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/transferoutput"
-
-	"github.com/iotaledger/goshimmer/packages/graphviz"
 
 	"golang.org/x/crypto/blake2b"
 
@@ -48,7 +48,7 @@ func NewLedgerState(storageId string) *LedgerState {
 	return result
 }
 
-func (ledgerState *LedgerState) AddTransferOutput(transferHash transfer.Hash, addressHash address.Address, balances ...*ColoredBalance) *LedgerState {
+func (ledgerState *LedgerState) AddTransferOutput(transferHash transfer.Hash, addressHash address.Address, balances ...*coloredcoins.ColoredBalance) *LedgerState {
 	ledgerState.GetReality(MAIN_REALITY_ID).Consume(func(object objectstorage.StorableObject) {
 		mainReality := object.(*Reality)
 
@@ -58,7 +58,7 @@ func (ledgerState *LedgerState) AddTransferOutput(transferHash transfer.Hash, ad
 	return ledgerState
 }
 
-func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *transferoutput.Reference) *objectstorage.CachedObject {
+func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *transfer.OutputReference) *objectstorage.CachedObject {
 	if cachedTransferOutput, err := ledgerState.transferOutputs.Load(transferOutputReference.GetStorageKey()); err != nil {
 		panic(err)
 	} else {
@@ -98,7 +98,7 @@ func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *obje
 				booking := cachedObject.Get().(*TransferOutputBooking)
 				cachedObject.Release()
 
-				return callback(ledgerState.GetTransferOutput(transferoutput.NewTransferOutputReference(booking.GetTransferHash(), booking.GetAddressHash())))
+				return callback(ledgerState.GetTransferOutput(transfer.NewOutputReference(booking.GetTransferHash(), booking.GetAddressHash())))
 			}, prefix); err != nil {
 				panic(err)
 			}
@@ -155,7 +155,7 @@ func (ledgerState *LedgerState) GetReality(id reality.Id) *objectstorage.CachedO
 	}
 }
 
-func (ledgerState *LedgerState) BookTransfer(transfer *Transfer) (err error) {
+func (ledgerState *LedgerState) BookTransfer(transfer *transfer.Transfer) (err error) {
 	inputs := ledgerState.getTransferInputs(transfer)
 
 	ledgerState.getTargetReality(inputs).Consume(func(object objectstorage.StorableObject) {
@@ -534,7 +534,7 @@ func (ledgerState *LedgerState) getTargetReality(inputs []*objectstorage.CachedO
 	return ledgerState.AggregateRealities(realityIds...)
 }
 
-func (ledgerState *LedgerState) getTransferInputs(transfer *Transfer) []*objectstorage.CachedObject {
+func (ledgerState *LedgerState) getTransferInputs(transfer *transfer.Transfer) []*objectstorage.CachedObject {
 	inputs := transfer.GetInputs()
 	result := make([]*objectstorage.CachedObject, len(inputs))
 

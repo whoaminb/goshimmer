@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"sync"
 
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
+
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
 
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
@@ -19,7 +21,7 @@ type TransferOutput struct {
 
 	transferHash transfer.Hash
 	addressHash  address.Address
-	balances     []*ColoredBalance
+	balances     []*coloredcoins.ColoredBalance
 	realityId    reality.Id
 	consumers    map[transfer.Hash][]address.Address
 
@@ -31,7 +33,7 @@ type TransferOutput struct {
 	bookingMutex   sync.Mutex
 }
 
-func NewTransferOutput(ledgerState *LedgerState, realityId reality.Id, transferHash transfer.Hash, addressHash address.Address, balances ...*ColoredBalance) *TransferOutput {
+func NewTransferOutput(ledgerState *LedgerState, realityId reality.Id, transferHash transfer.Hash, addressHash address.Address, balances ...*coloredcoins.ColoredBalance) *TransferOutput {
 	return &TransferOutput{
 		transferHash: transferHash,
 		addressHash:  addressHash,
@@ -79,7 +81,7 @@ func (transferOutput *TransferOutput) SetRealityId(realityId reality.Id) {
 	}
 }
 
-func (transferOutput *TransferOutput) GetBalances() []*ColoredBalance {
+func (transferOutput *TransferOutput) GetBalances() []*coloredcoins.ColoredBalance {
 	return transferOutput.balances
 }
 
@@ -96,7 +98,7 @@ func (transferOutput *TransferOutput) GetConsumers() (consumers map[transfer.Has
 	return
 }
 
-func (transferOutput *TransferOutput) addConsumer(consumer transfer.Hash, outputs map[address.Address][]*ColoredBalance) (consumersToElevate map[transfer.Hash][]address.Address, err error) {
+func (transferOutput *TransferOutput) addConsumer(consumer transfer.Hash, outputs map[address.Address][]*coloredcoins.ColoredBalance) (consumersToElevate map[transfer.Hash][]address.Address, err error) {
 	transferOutput.consumersMutex.RLock()
 	if _, exist := transferOutput.consumers[consumer]; exist {
 		transferOutput.consumersMutex.RUnlock()
@@ -181,7 +183,7 @@ func (transferOutput *TransferOutput) MarshalBinary() ([]byte, error) {
 	balanceCount := len(transferOutput.balances)
 	consumerCount := len(transferOutput.consumers)
 
-	serializedLength := reality.IdLength + 4 + balanceCount*coloredBalanceLength + 4 + consumerCount*transfer.HashLength
+	serializedLength := reality.IdLength + 4 + balanceCount*coloredcoins.BalanceLength + 4 + consumerCount*transfer.HashLength
 	for _, addresses := range transferOutput.consumers {
 		serializedLength += 4
 		for range addresses {
@@ -195,10 +197,12 @@ func (transferOutput *TransferOutput) MarshalBinary() ([]byte, error) {
 
 	binary.LittleEndian.PutUint32(result[reality.IdLength:], uint32(balanceCount))
 	for i := 0; i < balanceCount; i++ {
-		copy(result[reality.IdLength+4+i*coloredBalanceLength:], transferOutput.balances[i].color[:colorLength])
-		binary.LittleEndian.PutUint64(result[reality.IdLength+4+i*coloredBalanceLength+colorLength:], transferOutput.balances[i].balance)
+		color := transferOutput.balances[i].GetColor()
+
+		copy(result[reality.IdLength+4+i*coloredcoins.BalanceLength:], color[:coloredcoins.ColorLength])
+		binary.LittleEndian.PutUint64(result[reality.IdLength+4+i*coloredcoins.BalanceLength+coloredcoins.ColorLength:], transferOutput.balances[i].GetBalance())
 	}
-	offset := reality.IdLength + 4 + balanceCount*coloredBalanceLength
+	offset := reality.IdLength + 4 + balanceCount*coloredcoins.BalanceLength
 
 	binary.LittleEndian.PutUint32(result[offset:], uint32(consumerCount))
 	offset += 4
@@ -240,7 +244,7 @@ func (transferOutput *TransferOutput) UnmarshalBinary(serializedObject []byte) e
 		transferOutput.balances = balances
 	}
 
-	if consumers, err := transferOutput.unmarshalConsumers(serializedObject[reality.IdLength+4+len(transferOutput.balances)*coloredBalanceLength:]); err != nil {
+	if consumers, err := transferOutput.unmarshalConsumers(serializedObject[reality.IdLength+4+len(transferOutput.balances)*coloredcoins.BalanceLength:]); err != nil {
 		return err
 	} else {
 		transferOutput.consumers = consumers
@@ -249,13 +253,13 @@ func (transferOutput *TransferOutput) UnmarshalBinary(serializedObject []byte) e
 	return nil
 }
 
-func (transferOutput *TransferOutput) unmarshalBalances(serializedBalances []byte) ([]*ColoredBalance, error) {
+func (transferOutput *TransferOutput) unmarshalBalances(serializedBalances []byte) ([]*coloredcoins.ColoredBalance, error) {
 	balanceCount := int(binary.LittleEndian.Uint32(serializedBalances))
 
-	balances := make([]*ColoredBalance, balanceCount)
+	balances := make([]*coloredcoins.ColoredBalance, balanceCount)
 	for i := 0; i < balanceCount; i++ {
-		coloredBalance := ColoredBalance{}
-		if err := coloredBalance.UnmarshalBinary(serializedBalances[4+i*coloredBalanceLength:]); err != nil {
+		coloredBalance := coloredcoins.ColoredBalance{}
+		if err := coloredBalance.UnmarshalBinary(serializedBalances[4+i*coloredcoins.BalanceLength:]); err != nil {
 			return nil, err
 		}
 

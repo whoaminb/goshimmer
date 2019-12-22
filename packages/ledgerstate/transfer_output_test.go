@@ -3,6 +3,8 @@ package ledgerstate
 import (
 	"testing"
 
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
+
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
@@ -13,7 +15,7 @@ import (
 )
 
 func TestTransferOutput_MarshalUnmarshal(t *testing.T) {
-	transferOutput := NewTransferOutput(nil, reality.NewId("REALITY"), transfer.NewHash("RECEIVE"), address.New([]byte("ADDRESS1")), NewColoredBalance(NewColor("IOTA"), 44), NewColoredBalance(NewColor("BTC"), 88))
+	transferOutput := NewTransferOutput(nil, reality.NewId("REALITY"), transfer.NewHash("RECEIVE"), address.New([]byte("ADDRESS1")), coloredcoins.NewColoredBalance(coloredcoins.NewColor("IOTA"), 44), coloredcoins.NewColoredBalance(coloredcoins.NewColor("BTC"), 88))
 	transferOutput.consumers = make(map[transfer.Hash][]address.Address)
 
 	spendTransferHash := transfer.NewHash("SPEND")

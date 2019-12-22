@@ -3,13 +3,11 @@ package ledgerstate
 import (
 	"strings"
 
+	"github.com/emicklei/dot"
 	"github.com/iotaledger/goshimmer/packages/binary/address"
 	"github.com/iotaledger/goshimmer/packages/graphviz"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/transferoutput"
-
-	"github.com/emicklei/dot"
 	"github.com/iotaledger/hive.go/objectstorage"
 )
 
@@ -64,7 +62,7 @@ func (visualizer *Visualizer) drawTransferOutput(transferOutput *TransferOutput)
 
 		for transferHash, addresses := range transferOutput.GetConsumers() {
 			for _, addressHash := range addresses {
-				visualizer.ledgerState.GetTransferOutput(transferoutput.NewTransferOutputReference(transferHash, addressHash)).Consume(func(object objectstorage.StorableObject) {
+				visualizer.ledgerState.GetTransferOutput(transfer.NewOutputReference(transferHash, addressHash)).Consume(func(object objectstorage.StorableObject) {
 					transferOutputNode.Edge(visualizer.drawTransferOutput(object.(*TransferOutput)))
 				})
 			}
