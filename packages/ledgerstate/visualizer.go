@@ -3,7 +3,12 @@ package ledgerstate
 import (
 	"strings"
 
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
+
+	"github.com/iotaledger/goshimmer/packages/binary/transfer"
+
 	"github.com/iotaledger/goshimmer/packages/binary/address"
+	"github.com/iotaledger/goshimmer/packages/binary/transferoutput"
 
 	"github.com/iotaledger/goshimmer/packages/graphviz"
 
@@ -11,12 +16,12 @@ import (
 	"github.com/iotaledger/hive.go/objectstorage"
 )
 
-type transferOutputId [transferHashLength + address.Length]byte
+type transferOutputId [transfer.HashLength + address.Length]byte
 
 type Visualizer struct {
 	ledgerState         *LedgerState
 	graph               *dot.Graph
-	realitySubGraphs    map[RealityId]*dot.Graph
+	realitySubGraphs    map[reality.Id]*dot.Graph
 	transferOutputNodes map[transferOutputId]dot.Node
 }
 
@@ -45,7 +50,7 @@ func (visualizer *Visualizer) RenderTransferOutputs(pngFileName string) error {
 
 func (visualizer *Visualizer) reset() *Visualizer {
 	visualizer.graph = dot.NewGraph(dot.Directed)
-	visualizer.realitySubGraphs = make(map[RealityId]*dot.Graph)
+	visualizer.realitySubGraphs = make(map[reality.Id]*dot.Graph)
 	visualizer.transferOutputNodes = make(map[transferOutputId]dot.Node)
 
 	return visualizer
@@ -62,7 +67,7 @@ func (visualizer *Visualizer) drawTransferOutput(transferOutput *TransferOutput)
 
 		for transferHash, addresses := range transferOutput.GetConsumers() {
 			for _, addressHash := range addresses {
-				visualizer.ledgerState.GetTransferOutput(NewTransferOutputReference(transferHash, addressHash)).Consume(func(object objectstorage.StorableObject) {
+				visualizer.ledgerState.GetTransferOutput(transferoutput.NewTransferOutputReference(transferHash, addressHash)).Consume(func(object objectstorage.StorableObject) {
 					transferOutputNode.Edge(visualizer.drawTransferOutput(object.(*TransferOutput)))
 				})
 			}
@@ -79,7 +84,7 @@ func (visualizer *Visualizer) generateTransferOutputId(transferOutput *TransferO
 	addressHash := transferOutput.GetAddressHash()
 
 	copy(result[:], transferHash[:])
-	copy(result[transferHashLength:], addressHash[:])
+	copy(result[transfer.HashLength:], addressHash[:])
 
 	return
 }
@@ -93,7 +98,7 @@ func (Visualizer *Visualizer) styleTransferOutputNode(transferOutputNode dot.Nod
 	transferOutputNode.Attr("fillcolor", "white")
 }
 
-func (visualizer *Visualizer) getRealitySubGraph(realityId RealityId) *dot.Graph {
+func (visualizer *Visualizer) getRealitySubGraph(realityId reality.Id) *dot.Graph {
 	realityGraph, exists := visualizer.realitySubGraphs[realityId]
 	if !exists {
 		visualizer.ledgerState.GetReality(realityId).Consume(func(object objectstorage.StorableObject) {
@@ -150,7 +155,7 @@ func (visualizer *Visualizer) styleRealitySubGraph(realitySubGraph *dot.Graph, r
 	}
 }
 
-func (visualizer *Visualizer) generateRealityName(realityId RealityId) (result string) {
+func (visualizer *Visualizer) generateRealityName(realityId reality.Id) (result string) {
 	visualizer.ledgerState.GetReality(realityId).Consume(func(object objectstorage.StorableObject) {
 		reality := object.(*Reality)
 

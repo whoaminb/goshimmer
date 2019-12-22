@@ -3,16 +3,20 @@ package ledgerstate
 import (
 	"testing"
 
+	"github.com/iotaledger/goshimmer/packages/binary/transfer"
+
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
+
 	"github.com/iotaledger/goshimmer/packages/binary/address"
 
 	"github.com/magiconair/properties/assert"
 )
 
 func TestTransferOutput_MarshalUnmarshal(t *testing.T) {
-	transferOutput := NewTransferOutput(nil, NewRealityId("REALITY"), NewTransferHash("RECEIVE"), address.New([]byte("ADDRESS1")), NewColoredBalance(NewColor("IOTA"), 44), NewColoredBalance(NewColor("BTC"), 88))
-	transferOutput.consumers = make(map[TransferHash][]address.Address)
+	transferOutput := NewTransferOutput(nil, reality.NewId("REALITY"), transfer.NewHash("RECEIVE"), address.New([]byte("ADDRESS1")), NewColoredBalance(NewColor("IOTA"), 44), NewColoredBalance(NewColor("BTC"), 88))
+	transferOutput.consumers = make(map[transfer.Hash][]address.Address)
 
-	spendTransferHash := NewTransferHash("SPEND")
+	spendTransferHash := transfer.NewHash("SPEND")
 	transferOutput.consumers[spendTransferHash] = make([]address.Address, 2)
 	transferOutput.consumers[spendTransferHash][0] = address.New([]byte("ADDRESS2"))
 	transferOutput.consumers[spendTransferHash][1] = address.New([]byte("ADDRESS3"))

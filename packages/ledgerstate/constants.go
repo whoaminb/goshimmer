@@ -2,6 +2,8 @@ package ledgerstate
 
 import (
 	"github.com/iotaledger/goshimmer/packages/binary/address"
+	"github.com/iotaledger/goshimmer/packages/binary/transfer"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
 )
 
 const (
@@ -9,18 +11,18 @@ const (
 	SPENT   = SpentIndicator(1)
 
 	marshalTransferOutputBookingRealityIdStart    = 0
-	marshalTransferOutputBookingRealityIdEnd      = marshalTransferOutputBookingRealityIdStart + realityIdLength
+	marshalTransferOutputBookingRealityIdEnd      = marshalTransferOutputBookingRealityIdStart + reality.IdLength
 	marshalTransferOutputBookingAddressHashStart  = marshalTransferOutputBookingRealityIdEnd
 	marshalTransferOutputBookingAddressHashEnd    = marshalTransferOutputBookingAddressHashStart + address.Length
 	marshalTransferOutputBookingSpentStart        = marshalTransferOutputBookingAddressHashEnd
 	marshalTransferOutputBookingSpentEnd          = marshalTransferOutputBookingSpentStart + 1
 	marshalTransferOutputBookingTransferHashStart = marshalTransferOutputBookingSpentEnd
-	marshalTransferOutputBookingTransferHashEnd   = marshalTransferOutputBookingTransferHashStart + transferHashLength
+	marshalTransferOutputBookingTransferHashEnd   = marshalTransferOutputBookingTransferHashStart + transfer.HashLength
 	marshalTransferOutputBookingTotalLength       = marshalTransferOutputBookingTransferHashEnd
 )
 
 type SpentIndicator byte
 
 var (
-	MAIN_REALITY_ID = NewRealityId("MAIN_REALITY")
+	MAIN_REALITY_ID = reality.NewId("MAIN_REALITY")
 )

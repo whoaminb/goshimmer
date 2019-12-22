@@ -10,6 +10,7 @@ require (
 	github.com/ethereum/go-ethereum v1.9.3
 	github.com/gdamore/tcell v1.2.0
 	github.com/go-zeromq/zmq4 v0.5.0
+	github.com/gogo/protobuf v1.2.1
 	github.com/golang/protobuf v1.3.2 // indirect
 	github.com/google/open-location-code/go v0.0.0-20190903173953-119bc96a3a51
 	github.com/gorilla/websocket v1.4.1

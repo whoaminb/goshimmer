@@ -7,6 +7,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/conflict"
+
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
+
+	"github.com/iotaledger/goshimmer/packages/binary/transfer"
+
+	"github.com/iotaledger/goshimmer/packages/binary/transferoutput"
+
 	"github.com/iotaledger/goshimmer/packages/binary/address"
 
 	"github.com/iotaledger/goshimmer/packages/graphviz"
@@ -33,7 +41,7 @@ func NewLedgerState(storageId string) *LedgerState {
 		transferOutputs:        objectstorage.New(storageId+"TRANSFER_OUTPUTS", transferOutputFactory, objectstorage.CacheTime(1*time.Second)),
 		transferOutputBookings: objectstorage.New(storageId+"TRANSFER_OUTPUT_BOOKING", transferOutputBookingFactory, objectstorage.CacheTime(1*time.Second)),
 		realities:              objectstorage.New(storageId+"REALITIES", realityFactory, objectstorage.CacheTime(1*time.Second)),
-		conflictSets:           objectstorage.New(storageId+"CONFLICT_SETS", conflictSetFactory, objectstorage.CacheTime(1*time.Second)),
+		conflictSets:           objectstorage.New(storageId+"CONFLICT_SETS", conflict.Factory, objectstorage.CacheTime(1*time.Second)),
 	}
 
 	mainReality := newReality(MAIN_REALITY_ID)
@@ -44,17 +52,17 @@ func NewLedgerState(storageId string) *LedgerState {
 	return result
 }
 
-func (ledgerState *LedgerState) AddTransferOutput(transferHash TransferHash, addressHash address.Address, balances ...*ColoredBalance) *LedgerState {
+func (ledgerState *LedgerState) AddTransferOutput(transferHash transfer.Hash, addressHash address.Address, balances ...*ColoredBalance) *LedgerState {
 	ledgerState.GetReality(MAIN_REALITY_ID).Consume(func(object objectstorage.StorableObject) {
 		mainReality := object.(*Reality)
 
-		mainReality.bookTransferOutput(NewTransferOutput(ledgerState, emptyRealityId, transferHash, addressHash, balances...))
+		mainReality.bookTransferOutput(NewTransferOutput(ledgerState, reality.EmptyId, transferHash, addressHash, balances...))
 	})
 
 	return ledgerState
 }
 
-func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *TransferOutputReference) *objectstorage.CachedObject {
+func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *transferoutput.Reference) *objectstorage.CachedObject {
 	if cachedTransferOutput, err := ledgerState.transferOutputs.Load(transferOutputReference.GetStorageKey()); err != nil {
 		panic(err)
 	} else {
@@ -70,8 +78,6 @@ func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *Trans
 
 func (ledgerState *LedgerState) ForEachConflictSet(callback func(object *objectstorage.CachedObject) bool) {
 	if err := ledgerState.conflictSets.ForEach(func(key []byte, cachedObject *objectstorage.CachedObject) bool {
-		cachedObject.Get().(*Conflict).ledgerState = ledgerState
-
 		return callback(cachedObject)
 	}); err != nil {
 		panic(err)
@@ -96,7 +102,7 @@ func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *obje
 				booking := cachedObject.Get().(*TransferOutputBooking)
 				cachedObject.Release()
 
-				return callback(ledgerState.GetTransferOutput(NewTransferOutputReference(booking.GetTransferHash(), booking.GetAddressHash())))
+				return callback(ledgerState.GetTransferOutput(transferoutput.NewTransferOutputReference(booking.GetTransferHash(), booking.GetAddressHash())))
 			}, prefix); err != nil {
 				panic(err)
 			}
@@ -124,7 +130,7 @@ func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *obje
 	}
 }
 
-func (ledgerState *LedgerState) CreateReality(id RealityId) {
+func (ledgerState *LedgerState) CreateReality(id reality.Id) {
 	newReality := newReality(id, MAIN_REALITY_ID)
 	newReality.ledgerState = ledgerState
 
@@ -139,7 +145,7 @@ func (ledgerState *LedgerState) CreateReality(id RealityId) {
 	ledgerState.realities.Store(newReality).Release()
 }
 
-func (ledgerState *LedgerState) GetReality(id RealityId) *objectstorage.CachedObject {
+func (ledgerState *LedgerState) GetReality(id reality.Id) *objectstorage.CachedObject {
 	if cachedObject, err := ledgerState.realities.Load(id[:]); err != nil {
 		panic(err)
 	} else {
@@ -173,17 +179,17 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 	graph := dot.NewGraph(dot.Directed)
 	graph.Attr("ranksep", "1.0 equally")
 
-	realityNodes := make(map[RealityId]dot.Node)
+	realityNodes := make(map[reality.Id]dot.Node)
 
-	drawConflictSet := func(conflictSet *Conflict) {
-		conflictSetNode := graph.Node(strings.Trim(conflictSet.id.String(), "\x00"))
+	drawConflictSet := func(conflict *conflict.Conflict) {
+		conflictSetNode := graph.Node(strings.Trim(conflict.GetId().String(), "\x00"))
 		conflictSetNode.Attr("label", "")
 		conflictSetNode.Attr("shape", "Mdiamond")
 		conflictSetNode.Attr("style", "filled")
 		conflictSetNode.Attr("color", "#B85450")
 		conflictSetNode.Attr("fillcolor", "#F8CECC")
 
-		for realityId := range conflictSet.members {
+		for realityId := range conflict.Members {
 			conflictSetNode.Edge(realityNodes[realityId]).Attr("arrowhead", "none").Attr("arrowtail", "none").Attr("color", "#B85450")
 		}
 	}
@@ -235,7 +241,7 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 	})
 	ledgerState.ForEachConflictSet(func(object *objectstorage.CachedObject) bool {
 		object.Consume(func(object objectstorage.StorableObject) {
-			drawConflictSet(object.(*Conflict))
+			drawConflictSet(object.(*conflict.Conflict))
 		})
 
 		return true
@@ -244,7 +250,7 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 	return graphviz.RenderPNG(graph, pngFilename)
 }
 
-func (ledgerState *LedgerState) AggregateRealities(realityIds ...RealityId) *objectstorage.CachedObject {
+func (ledgerState *LedgerState) AggregateRealities(realityIds ...reality.Id) *objectstorage.CachedObject {
 	switch len(realityIds) {
 	case 0:
 		if loadedReality, loadedRealityErr := ledgerState.realities.Load(MAIN_REALITY_ID[:]); loadedRealityErr != nil {
@@ -263,7 +269,7 @@ func (ledgerState *LedgerState) AggregateRealities(realityIds ...RealityId) *obj
 			return loadedReality
 		}
 	default:
-		aggregatedRealities := make(map[RealityId]*objectstorage.CachedObject)
+		aggregatedRealities := make(map[reality.Id]*objectstorage.CachedObject)
 
 	AGGREGATE_REALITIES:
 		for _, realityId := range realityIds {
@@ -312,8 +318,8 @@ func (ledgerState *LedgerState) AggregateRealities(realityIds ...RealityId) *obj
 			}
 		}
 
-		parentConflictRealities := make(map[RealityId]*objectstorage.CachedObject)
-		aggregatedRealityParentIds := make([]RealityId, len(aggregatedRealities))
+		parentConflictRealities := make(map[reality.Id]*objectstorage.CachedObject)
+		aggregatedRealityParentIds := make([]reality.Id, len(aggregatedRealities))
 
 		aggregatedRealityIsPreferred := true
 
@@ -402,19 +408,19 @@ func (ledgerState *LedgerState) Prune() *LedgerState {
 }
 
 func (ledgerState *LedgerState) generateFilterPrefixes(filters []interface{}) ([][]byte, bool) {
-	filteredRealities := make([]RealityId, 0)
+	filteredRealities := make([]reality.Id, 0)
 	filteredAddresses := make([]address.Address, 0)
-	filteredTransfers := make([]TransferHash, 0)
+	filteredTransfers := make([]transfer.Hash, 0)
 	filterSpent := false
 	filterUnspent := false
 
 	for _, filter := range filters {
 		switch typeCastedValue := filter.(type) {
-		case RealityId:
+		case reality.Id:
 			filteredRealities = append(filteredRealities, typeCastedValue)
 		case address.Address:
 			filteredAddresses = append(filteredAddresses, typeCastedValue)
-		case TransferHash:
+		case transfer.Hash:
 			filteredTransfers = append(filteredTransfers, typeCastedValue)
 		case SpentIndicator:
 			switch typeCastedValue {
@@ -488,9 +494,9 @@ func (ledgerState *LedgerState) storeTransferOutputBooking(transferOutputBooking
 	return ledgerState.transferOutputBookings.Store(transferOutputBooking)
 }
 
-func (ledgerState *LedgerState) sortRealityIds(aggregatedRealities map[RealityId]*objectstorage.CachedObject) []RealityId {
+func (ledgerState *LedgerState) sortRealityIds(aggregatedRealities map[reality.Id]*objectstorage.CachedObject) []reality.Id {
 	counter := 0
-	sortedRealityIds := make([]RealityId, len(aggregatedRealities))
+	sortedRealityIds := make([]reality.Id, len(aggregatedRealities))
 	for realityId, aggregatedReality := range aggregatedRealities {
 		sortedRealityIds[counter] = realityId
 
@@ -514,7 +520,7 @@ func (ledgerState *LedgerState) sortRealityIds(aggregatedRealities map[RealityId
 	return sortedRealityIds
 }
 
-func (ledgerState *LedgerState) generateAggregatedRealityId(sortedRealityIds []RealityId) [32]byte {
+func (ledgerState *LedgerState) generateAggregatedRealityId(sortedRealityIds []reality.Id) [32]byte {
 	aggregatedRealityId := make([]byte, 0)
 	for _, realityId := range sortedRealityIds {
 		aggregatedRealityId = append(aggregatedRealityId, realityId[:]...)
@@ -524,7 +530,7 @@ func (ledgerState *LedgerState) generateAggregatedRealityId(sortedRealityIds []R
 }
 
 func (ledgerState *LedgerState) getTargetReality(inputs []*objectstorage.CachedObject) *objectstorage.CachedObject {
-	realityIds := make([]RealityId, len(inputs))
+	realityIds := make([]reality.Id, len(inputs))
 	for i, input := range inputs {
 		realityIds[i] = input.Get().(*TransferOutput).GetRealityId()
 	}
@@ -563,15 +569,6 @@ func transferOutputBookingFactory(key []byte) objectstorage.StorableObject {
 
 func realityFactory(key []byte) objectstorage.StorableObject {
 	result := &Reality{
-		storageKey: make([]byte, len(key)),
-	}
-	copy(result.storageKey, key)
-
-	return result
-}
-
-func conflictSetFactory(key []byte) objectstorage.StorableObject {
-	result := &Conflict{
 		storageKey: make([]byte, len(key)),
 	}
 	copy(result.storageKey, key)

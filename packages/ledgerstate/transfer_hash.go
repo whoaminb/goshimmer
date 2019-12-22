@@ -1,11 +1,6 @@
 package ledgerstate
 
-import (
-	"unicode/utf8"
-
-	"github.com/iotaledger/goshimmer/packages/stringify"
-)
-
+/*
 type TransferHash [transferHashLength]byte
 
 func NewTransferHash(transferHash string) (result TransferHash) {
@@ -35,3 +30,4 @@ func (transferHash TransferHash) String() string {
 }
 
 const transferHashLength = 32
+*/

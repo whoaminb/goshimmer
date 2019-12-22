@@ -2,31 +2,33 @@ package ledgerstate
 
 import (
 	"github.com/iotaledger/goshimmer/packages/binary/address"
+	"github.com/iotaledger/goshimmer/packages/binary/transfer"
+	"github.com/iotaledger/goshimmer/packages/binary/transferoutput"
 )
 
 type Transfer struct {
-	hash    TransferHash
-	inputs  []*TransferOutputReference
+	hash    transfer.Hash
+	inputs  []*transferoutput.Reference
 	outputs map[address.Address][]*ColoredBalance
 }
 
-func NewTransfer(transferHash TransferHash) *Transfer {
+func NewTransfer(transferHash transfer.Hash) *Transfer {
 	return &Transfer{
 		hash:    transferHash,
-		inputs:  make([]*TransferOutputReference, 0),
+		inputs:  make([]*transferoutput.Reference, 0),
 		outputs: make(map[address.Address][]*ColoredBalance),
 	}
 }
 
-func (transfer *Transfer) GetHash() TransferHash {
+func (transfer *Transfer) GetHash() transfer.Hash {
 	return transfer.hash
 }
 
-func (transfer *Transfer) GetInputs() []*TransferOutputReference {
+func (transfer *Transfer) GetInputs() []*transferoutput.Reference {
 	return transfer.inputs
 }
 
-func (transfer *Transfer) AddInput(input *TransferOutputReference) *Transfer {
+func (transfer *Transfer) AddInput(input *transferoutput.Reference) *Transfer {
 	transfer.inputs = append(transfer.inputs, input)
 
 	return transfer
