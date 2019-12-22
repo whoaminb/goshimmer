@@ -4,7 +4,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
-
 	"github.com/iotaledger/goshimmer/packages/stringify"
 )
 

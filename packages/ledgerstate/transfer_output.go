@@ -6,7 +6,7 @@ import (
 
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
 
-	"github.com/iotaledger/goshimmer/packages/binary/transfer"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 
 	"github.com/iotaledger/goshimmer/packages/binary/address"
 

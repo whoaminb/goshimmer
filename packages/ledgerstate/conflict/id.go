@@ -3,7 +3,7 @@ package conflict
 import (
 	"unicode/utf8"
 
-	"github.com/iotaledger/goshimmer/packages/binary/transfer"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 
 	"github.com/iotaledger/goshimmer/packages/binary/address"
 

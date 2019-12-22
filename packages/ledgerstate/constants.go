@@ -2,8 +2,8 @@ package ledgerstate
 
 import (
 	"github.com/iotaledger/goshimmer/packages/binary/address"
-	"github.com/iotaledger/goshimmer/packages/binary/transfer"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 )
 
 const (

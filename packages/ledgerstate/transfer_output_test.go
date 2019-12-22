@@ -3,7 +3,7 @@ package ledgerstate
 import (
 	"testing"
 
-	"github.com/iotaledger/goshimmer/packages/binary/transfer"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
 
