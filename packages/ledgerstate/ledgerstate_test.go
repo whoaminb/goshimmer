@@ -6,13 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iotaledger/goshimmer/packages/binary/transferoutput"
-
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
-
-	"github.com/iotaledger/goshimmer/packages/binary/transfer"
-
 	"github.com/iotaledger/goshimmer/packages/binary/address"
+	"github.com/iotaledger/goshimmer/packages/binary/transfer"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/transferoutput"
 
 	"github.com/iotaledger/hive.go/objectstorage"
 	"github.com/iotaledger/hive.go/parameter"

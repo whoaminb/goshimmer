@@ -4,20 +4,15 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/conflict"
-
-	"github.com/iotaledger/goshimmer/packages/binary/types"
-
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
-
-	"github.com/iotaledger/goshimmer/packages/binary/transfer"
-	"github.com/iotaledger/goshimmer/packages/binary/transferoutput"
-
 	"github.com/iotaledger/goshimmer/packages/binary/address"
-
+	"github.com/iotaledger/goshimmer/packages/binary/transfer"
+	"github.com/iotaledger/goshimmer/packages/binary/types"
+	"github.com/iotaledger/goshimmer/packages/errors"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/conflict"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/transferoutput"
 	"github.com/iotaledger/goshimmer/packages/stringify"
 
-	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/hive.go/objectstorage"
 )
 

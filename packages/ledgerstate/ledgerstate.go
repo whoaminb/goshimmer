@@ -7,15 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/conflict"
-
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
-
-	"github.com/iotaledger/goshimmer/packages/binary/transfer"
-
-	"github.com/iotaledger/goshimmer/packages/binary/transferoutput"
-
 	"github.com/iotaledger/goshimmer/packages/binary/address"
+	"github.com/iotaledger/goshimmer/packages/binary/transfer"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/conflict"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/transferoutput"
 
 	"github.com/iotaledger/goshimmer/packages/graphviz"
 
