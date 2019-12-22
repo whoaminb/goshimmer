@@ -34,8 +34,8 @@ type LedgerState struct {
 func NewLedgerState(storageId string) *LedgerState {
 	result := &LedgerState{
 		storageId:              []byte(storageId),
-		transferOutputs:        objectstorage.New(storageId+"TRANSFER_OUTPUTS", transferOutputFactory, objectstorage.CacheTime(1*time.Second)),
-		transferOutputBookings: objectstorage.New(storageId+"TRANSFER_OUTPUT_BOOKING", transferOutputBookingFactory, objectstorage.CacheTime(1*time.Second)),
+		transferOutputs:        objectstorage.New(storageId+"TRANSFER_OUTPUTS", transfer.OutputFactory, objectstorage.CacheTime(1*time.Second)),
+		transferOutputBookings: objectstorage.New(storageId+"TRANSFER_OUTPUT_BOOKING", transfer.OutputBookingFactory, objectstorage.CacheTime(1*time.Second)),
 		realities:              objectstorage.New(storageId+"REALITIES", realityFactory, objectstorage.CacheTime(1*time.Second)),
 		conflictSets:           objectstorage.New(storageId+"CONFLICT_SETS", conflict.Factory, objectstorage.CacheTime(1*time.Second)),
 	}
@@ -52,7 +52,7 @@ func (ledgerState *LedgerState) AddTransferOutput(transferHash transfer.Hash, ad
 	ledgerState.GetReality(MAIN_REALITY_ID).Consume(func(object objectstorage.StorableObject) {
 		mainReality := object.(*Reality)
 
-		mainReality.bookTransferOutput(NewTransferOutput(ledgerState, reality.EmptyId, transferHash, addressHash, balances...))
+		mainReality.bookTransferOutput(transfer.NewTransferOutput(ledgerState.transferOutputBookings, reality.EmptyId, transferHash, addressHash, balances...))
 	})
 
 	return ledgerState
@@ -63,8 +63,8 @@ func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *trans
 		panic(err)
 	} else {
 		if cachedTransferOutput.Exists() {
-			if transferOutput := cachedTransferOutput.Get().(*TransferOutput); transferOutput != nil {
-				transferOutput.ledgerState = ledgerState
+			if transferOutput := cachedTransferOutput.Get().(*transfer.Output); transferOutput != nil {
+				transferOutput.OutputBookings = ledgerState.transferOutputBookings
 			}
 		}
 
@@ -95,7 +95,7 @@ func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *obje
 	if searchBookings {
 		for _, prefix := range prefixes {
 			if err := ledgerState.transferOutputBookings.ForEach(func(key []byte, cachedObject *objectstorage.CachedObject) bool {
-				booking := cachedObject.Get().(*TransferOutputBooking)
+				booking := cachedObject.Get().(*transfer.OutputBooking)
 				cachedObject.Release()
 
 				return callback(ledgerState.GetTransferOutput(transfer.NewOutputReference(booking.GetTransferHash(), booking.GetAddressHash())))
@@ -107,7 +107,7 @@ func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *obje
 		if len(prefixes) >= 1 {
 			for _, prefix := range prefixes {
 				if err := ledgerState.transferOutputs.ForEach(func(key []byte, cachedObject *objectstorage.CachedObject) bool {
-					cachedObject.Get().(*TransferOutput).ledgerState = ledgerState
+					cachedObject.Get().(*transfer.Output).OutputBookings = ledgerState.transferOutputBookings
 
 					return callback(cachedObject)
 				}, prefix); err != nil {
@@ -116,7 +116,7 @@ func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *obje
 			}
 		} else {
 			if err := ledgerState.transferOutputs.ForEach(func(key []byte, cachedObject *objectstorage.CachedObject) bool {
-				cachedObject.Get().(*TransferOutput).ledgerState = ledgerState
+				cachedObject.Get().(*transfer.Output).OutputBookings = ledgerState.transferOutputBookings
 
 				return callback(cachedObject)
 			}); err != nil {
@@ -418,11 +418,11 @@ func (ledgerState *LedgerState) generateFilterPrefixes(filters []interface{}) ([
 			filteredAddresses = append(filteredAddresses, typeCastedValue)
 		case transfer.Hash:
 			filteredTransfers = append(filteredTransfers, typeCastedValue)
-		case SpentIndicator:
+		case transfer.SpentIndicator:
 			switch typeCastedValue {
-			case SPENT:
+			case transfer.SPENT:
 				filterSpent = true
-			case UNSPENT:
+			case transfer.UNSPENT:
 				filterUnspent = true
 			default:
 				panic("unknown SpentIndicator")
@@ -445,9 +445,9 @@ func (ledgerState *LedgerState) generateFilterPrefixes(filters []interface{}) ([
 					if filterSpent != filterUnspent {
 						spentPrefix := append([]byte{}, addressPrefix...)
 						if filterSpent {
-							spentPrefix = append(spentPrefix, byte(SPENT))
+							spentPrefix = append(spentPrefix, byte(transfer.SPENT))
 						} else {
-							spentPrefix = append(spentPrefix, byte(UNSPENT))
+							spentPrefix = append(spentPrefix, byte(transfer.UNSPENT))
 						}
 
 						// TODO: FILTER TRANSFER HASH
@@ -482,12 +482,8 @@ func (ledgerState *LedgerState) generateFilterPrefixes(filters []interface{}) ([
 	return prefixes, false
 }
 
-func (ledgerState *LedgerState) storeTransferOutput(transferOutput *TransferOutput) *objectstorage.CachedObject {
+func (ledgerState *LedgerState) storeTransferOutput(transferOutput *transfer.Output) *objectstorage.CachedObject {
 	return ledgerState.transferOutputs.Store(transferOutput)
-}
-
-func (ledgerState *LedgerState) storeTransferOutputBooking(transferOutputBooking *TransferOutputBooking) *objectstorage.CachedObject {
-	return ledgerState.transferOutputBookings.Store(transferOutputBooking)
 }
 
 func (ledgerState *LedgerState) sortRealityIds(aggregatedRealities map[reality.Id]*objectstorage.CachedObject) []reality.Id {
@@ -528,7 +524,7 @@ func (ledgerState *LedgerState) generateAggregatedRealityId(sortedRealityIds []r
 func (ledgerState *LedgerState) getTargetReality(inputs []*objectstorage.CachedObject) *objectstorage.CachedObject {
 	realityIds := make([]reality.Id, len(inputs))
 	for i, input := range inputs {
-		realityIds[i] = input.Get().(*TransferOutput).GetRealityId()
+		realityIds[i] = input.Get().(*transfer.Output).GetRealityId()
 	}
 
 	return ledgerState.AggregateRealities(realityIds...)
@@ -541,24 +537,6 @@ func (ledgerState *LedgerState) getTransferInputs(transfer *transfer.Transfer) [
 	for i, transferOutputReference := range inputs {
 		result[i] = ledgerState.GetTransferOutput(transferOutputReference)
 	}
-
-	return result
-}
-
-func transferOutputFactory(key []byte) objectstorage.StorableObject {
-	result := &TransferOutput{
-		storageKey: make([]byte, len(key)),
-	}
-	copy(result.storageKey, key)
-
-	return result
-}
-
-func transferOutputBookingFactory(key []byte) objectstorage.StorableObject {
-	result := &TransferOutputBooking{
-		storageKey: make([]byte, len(key)),
-	}
-	copy(result.storageKey, key)
 
 	return result
 }

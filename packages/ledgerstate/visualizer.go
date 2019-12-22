@@ -34,7 +34,7 @@ func (visualizer *Visualizer) RenderTransferOutputs(pngFileName string) error {
 
 	visualizer.ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
 		object.Consume(func(object objectstorage.StorableObject) {
-			visualizer.drawTransferOutput(object.(*TransferOutput))
+			visualizer.drawTransferOutput(object.(*transfer.Output))
 		})
 
 		return true
@@ -51,7 +51,7 @@ func (visualizer *Visualizer) reset() *Visualizer {
 	return visualizer
 }
 
-func (visualizer *Visualizer) drawTransferOutput(transferOutput *TransferOutput) dot.Node {
+func (visualizer *Visualizer) drawTransferOutput(transferOutput *transfer.Output) dot.Node {
 	transferOutputIdentifier := visualizer.generateTransferOutputId(transferOutput)
 	transferOutputNode, transferOutputDrawn := visualizer.transferOutputNodes[transferOutputIdentifier]
 
@@ -63,7 +63,7 @@ func (visualizer *Visualizer) drawTransferOutput(transferOutput *TransferOutput)
 		for transferHash, addresses := range transferOutput.GetConsumers() {
 			for _, addressHash := range addresses {
 				visualizer.ledgerState.GetTransferOutput(transfer.NewOutputReference(transferHash, addressHash)).Consume(func(object objectstorage.StorableObject) {
-					transferOutputNode.Edge(visualizer.drawTransferOutput(object.(*TransferOutput)))
+					transferOutputNode.Edge(visualizer.drawTransferOutput(object.(*transfer.Output)))
 				})
 			}
 		}
@@ -74,7 +74,7 @@ func (visualizer *Visualizer) drawTransferOutput(transferOutput *TransferOutput)
 	return transferOutputNode
 }
 
-func (visualizer *Visualizer) generateTransferOutputId(transferOutput *TransferOutput) (result transferOutputId) {
+func (visualizer *Visualizer) generateTransferOutputId(transferOutput *transfer.Output) (result transferOutputId) {
 	transferHash := transferOutput.GetTransferHash()
 	addressHash := transferOutput.GetAddressHash()
 

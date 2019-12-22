@@ -106,7 +106,7 @@ func Test(t *testing.T) {
 
 	ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
 		object.Consume(func(object objectstorage.StorableObject) {
-			fmt.Println(object.(*TransferOutput))
+			fmt.Println(object.(*transfer.Output))
 		})
 
 		return true
@@ -161,7 +161,7 @@ func spend(ledgerState *LedgerState, transferOutputReferences ...*transfer.Outpu
 	transfer1 := transfer.NewTransfer(transferHash)
 	for _, transferOutputReference := range transferOutputReferences {
 		ledgerState.GetTransferOutput(transferOutputReference).Consume(func(object objectstorage.StorableObject) {
-			transferOutput := object.(*TransferOutput)
+			transferOutput := object.(*transfer.Output)
 
 			for _, coloredBalance := range transferOutput.GetBalances() {
 				totalInputBalance += coloredBalance.GetBalance()
@@ -191,7 +191,7 @@ func multiSpend(ledgerState *LedgerState, outputCount int, transferOutputReferen
 	totalInputBalance := uint64(0)
 	for _, transferOutputReference := range transferOutputReferences {
 		ledgerState.GetTransferOutput(transferOutputReference).Consume(func(object objectstorage.StorableObject) {
-			transferOutput := object.(*TransferOutput)
+			transferOutput := object.(*transfer.Output)
 
 			for _, coloredBalance := range transferOutput.GetBalances() {
 				totalInputBalance += coloredBalance.GetBalance()
@@ -356,7 +356,7 @@ func TestElevate(t *testing.T) {
 
 	ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
 		object.Consume(func(object objectstorage.StorableObject) {
-			fmt.Println(object.(*TransferOutput))
+			fmt.Println(object.(*transfer.Output))
 		})
 
 		return true

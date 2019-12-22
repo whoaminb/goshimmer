@@ -1,58 +1,54 @@
-package ledgerstate
+package transfer
 
 import (
 	"encoding/binary"
 	"sync"
 
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
-
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
-
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
-
 	"github.com/iotaledger/goshimmer/packages/binary/address"
-
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
 	"github.com/iotaledger/goshimmer/packages/stringify"
+
 	"github.com/iotaledger/hive.go/objectstorage"
 )
 
-type TransferOutput struct {
+type Output struct {
 	objectstorage.StorableObjectFlags
 
-	transferHash transfer.Hash
+	transferHash Hash
 	addressHash  address.Address
 	balances     []*coloredcoins.ColoredBalance
 	realityId    reality.Id
-	consumers    map[transfer.Hash][]address.Address
+	consumers    map[Hash][]address.Address
 
-	storageKey  []byte
-	ledgerState *LedgerState
+	storageKey     []byte
+	OutputBookings *objectstorage.ObjectStorage
 
 	realityIdMutex sync.RWMutex
 	consumersMutex sync.RWMutex
 	bookingMutex   sync.Mutex
 }
 
-func NewTransferOutput(ledgerState *LedgerState, realityId reality.Id, transferHash transfer.Hash, addressHash address.Address, balances ...*coloredcoins.ColoredBalance) *TransferOutput {
-	return &TransferOutput{
+func NewTransferOutput(outputBookings *objectstorage.ObjectStorage, realityId reality.Id, transferHash Hash, addressHash address.Address, balances ...*coloredcoins.ColoredBalance) *Output {
+	return &Output{
 		transferHash: transferHash,
 		addressHash:  addressHash,
 		balances:     balances,
 		realityId:    realityId,
-		consumers:    make(map[transfer.Hash][]address.Address),
+		consumers:    make(map[Hash][]address.Address),
 
-		storageKey:  append(transferHash[:], addressHash[:]...),
-		ledgerState: ledgerState,
+		storageKey:     append(transferHash[:], addressHash[:]...),
+		OutputBookings: outputBookings,
 	}
 }
 
-func (transferOutput *TransferOutput) GetTransferHash() (transferHash transfer.Hash) {
+func (transferOutput *Output) GetTransferHash() (transferHash Hash) {
 	transferHash = transferOutput.transferHash
 
 	return
 }
 
-func (transferOutput *TransferOutput) GetRealityId() (realityId reality.Id) {
+func (transferOutput *Output) GetRealityId() (realityId reality.Id) {
 	transferOutput.realityIdMutex.RLock()
 	realityId = transferOutput.realityId
 	transferOutput.realityIdMutex.RUnlock()
@@ -60,11 +56,11 @@ func (transferOutput *TransferOutput) GetRealityId() (realityId reality.Id) {
 	return
 }
 
-func (transferOutput *TransferOutput) GetAddressHash() (addressHash address.Address) {
+func (transferOutput *Output) GetAddressHash() (addressHash address.Address) {
 	return transferOutput.addressHash
 }
 
-func (transferOutput *TransferOutput) SetRealityId(realityId reality.Id) {
+func (transferOutput *Output) SetRealityId(realityId reality.Id) {
 	transferOutput.realityIdMutex.RLock()
 	if transferOutput.realityId != realityId {
 		transferOutput.realityIdMutex.RUnlock()
@@ -81,12 +77,12 @@ func (transferOutput *TransferOutput) SetRealityId(realityId reality.Id) {
 	}
 }
 
-func (transferOutput *TransferOutput) GetBalances() []*coloredcoins.ColoredBalance {
+func (transferOutput *Output) GetBalances() []*coloredcoins.ColoredBalance {
 	return transferOutput.balances
 }
 
-func (transferOutput *TransferOutput) GetConsumers() (consumers map[transfer.Hash][]address.Address) {
-	consumers = make(map[transfer.Hash][]address.Address)
+func (transferOutput *Output) GetConsumers() (consumers map[Hash][]address.Address) {
+	consumers = make(map[Hash][]address.Address)
 
 	transferOutput.consumersMutex.RLock()
 	for transferHash, addresses := range transferOutput.consumers {
@@ -98,7 +94,7 @@ func (transferOutput *TransferOutput) GetConsumers() (consumers map[transfer.Has
 	return
 }
 
-func (transferOutput *TransferOutput) addConsumer(consumer transfer.Hash, outputs map[address.Address][]*coloredcoins.ColoredBalance) (consumersToElevate map[transfer.Hash][]address.Address, err error) {
+func (transferOutput *Output) AddConsumer(consumer Hash, outputs map[address.Address][]*coloredcoins.ColoredBalance) (consumersToElevate map[Hash][]address.Address, err error) {
 	transferOutput.consumersMutex.RLock()
 	if _, exist := transferOutput.consumers[consumer]; exist {
 		transferOutput.consumersMutex.RUnlock()
@@ -111,13 +107,13 @@ func (transferOutput *TransferOutput) addConsumer(consumer transfer.Hash, output
 			consumersToElevate = nil
 			err = transferOutput.markAsSpent()
 		case 1:
-			consumersToElevate = make(map[transfer.Hash][]address.Address, 1)
+			consumersToElevate = make(map[Hash][]address.Address, 1)
 			for transferHash, addresses := range transferOutput.consumers {
 				consumersToElevate[transferHash] = addresses
 			}
 			err = nil
 		default:
-			consumersToElevate = make(map[transfer.Hash][]address.Address)
+			consumersToElevate = make(map[Hash][]address.Address)
 			err = nil
 		}
 		consumers := make([]address.Address, len(outputs))
@@ -137,16 +133,16 @@ func (transferOutput *TransferOutput) addConsumer(consumer transfer.Hash, output
 	return
 }
 
-func (transferOutput *TransferOutput) markAsSpent() error {
+func (transferOutput *Output) markAsSpent() error {
 	transferOutput.bookingMutex.Lock()
 
-	currentBookingKey := generateTransferOutputBookingStorageKey(transferOutput.GetRealityId(), transferOutput.addressHash, false, transferOutput.transferHash)
-	if oldTransferOutputBooking, err := transferOutput.ledgerState.transferOutputBookings.Load(currentBookingKey); err != nil {
+	currentBookingKey := GenerateOutputBookingStorageKey(transferOutput.GetRealityId(), transferOutput.addressHash, false, transferOutput.transferHash)
+	if oldTransferOutputBooking, err := transferOutput.OutputBookings.Load(currentBookingKey); err != nil {
 		transferOutput.bookingMutex.Unlock()
 
 		return err
 	} else {
-		transferOutput.ledgerState.storeTransferOutputBooking(newTransferOutputBooking(transferOutput.GetRealityId(), transferOutput.addressHash, true, transferOutput.transferHash)).Release()
+		transferOutput.OutputBookings.Store(NewTransferOutputBooking(transferOutput.GetRealityId(), transferOutput.addressHash, true, transferOutput.transferHash)).Release()
 
 		oldTransferOutputBooking.Consume(func(transferOutputBooking objectstorage.StorableObject) {
 			transferOutputBooking.Delete()
@@ -158,8 +154,8 @@ func (transferOutput *TransferOutput) markAsSpent() error {
 	return nil
 }
 
-func (transferOutput *TransferOutput) String() string {
-	return stringify.Struct("TransferOutput",
+func (transferOutput *Output) String() string {
+	return stringify.Struct("Output",
 		stringify.StructField("transferHash", transferOutput.transferHash.String()),
 		stringify.StructField("addressHash", transferOutput.addressHash.String()),
 		stringify.StructField("balances", transferOutput.balances),
@@ -170,20 +166,20 @@ func (transferOutput *TransferOutput) String() string {
 
 // region support object storage ///////////////////////////////////////////////////////////////////////////////////////
 
-func (transferOutput *TransferOutput) GetStorageKey() []byte {
+func (transferOutput *Output) GetStorageKey() []byte {
 	return transferOutput.storageKey
 }
 
-func (transferOutput *TransferOutput) Update(other objectstorage.StorableObject) {}
+func (transferOutput *Output) Update(other objectstorage.StorableObject) {}
 
-func (transferOutput *TransferOutput) MarshalBinary() ([]byte, error) {
+func (transferOutput *Output) MarshalBinary() ([]byte, error) {
 	transferOutput.realityIdMutex.RLock()
 	transferOutput.consumersMutex.RLock()
 
 	balanceCount := len(transferOutput.balances)
 	consumerCount := len(transferOutput.consumers)
 
-	serializedLength := reality.IdLength + 4 + balanceCount*coloredcoins.BalanceLength + 4 + consumerCount*transfer.HashLength
+	serializedLength := reality.IdLength + 4 + balanceCount*coloredcoins.BalanceLength + 4 + consumerCount*HashLength
 	for _, addresses := range transferOutput.consumers {
 		serializedLength += 4
 		for range addresses {
@@ -207,8 +203,8 @@ func (transferOutput *TransferOutput) MarshalBinary() ([]byte, error) {
 	binary.LittleEndian.PutUint32(result[offset:], uint32(consumerCount))
 	offset += 4
 	for transferHash, addresses := range transferOutput.consumers {
-		copy(result[offset:], transferHash[:transfer.HashLength])
-		offset += transfer.HashLength
+		copy(result[offset:], transferHash[:HashLength])
+		offset += HashLength
 
 		binary.LittleEndian.PutUint32(result[offset:], uint32(len(addresses)))
 		offset += 4
@@ -225,12 +221,12 @@ func (transferOutput *TransferOutput) MarshalBinary() ([]byte, error) {
 	return result, nil
 }
 
-func (transferOutput *TransferOutput) UnmarshalBinary(serializedObject []byte) error {
-	if err := transferOutput.transferHash.UnmarshalBinary(transferOutput.storageKey[:transfer.HashLength]); err != nil {
+func (transferOutput *Output) UnmarshalBinary(serializedObject []byte) error {
+	if err := transferOutput.transferHash.UnmarshalBinary(transferOutput.storageKey[:HashLength]); err != nil {
 		return err
 	}
 
-	if err := transferOutput.addressHash.UnmarshalBinary(transferOutput.storageKey[transfer.HashLength:]); err != nil {
+	if err := transferOutput.addressHash.UnmarshalBinary(transferOutput.storageKey[HashLength:]); err != nil {
 		return err
 	}
 
@@ -253,7 +249,15 @@ func (transferOutput *TransferOutput) UnmarshalBinary(serializedObject []byte) e
 	return nil
 }
 
-func (transferOutput *TransferOutput) unmarshalBalances(serializedBalances []byte) ([]*coloredcoins.ColoredBalance, error) {
+func (transferOutput *Output) IsSpent() (result bool) {
+	transferOutput.consumersMutex.RLock()
+	result = len(transferOutput.consumers) >= 1
+	transferOutput.consumersMutex.RUnlock()
+
+	return
+}
+
+func (transferOutput *Output) unmarshalBalances(serializedBalances []byte) ([]*coloredcoins.ColoredBalance, error) {
 	balanceCount := int(binary.LittleEndian.Uint32(serializedBalances))
 
 	balances := make([]*coloredcoins.ColoredBalance, balanceCount)
@@ -269,19 +273,19 @@ func (transferOutput *TransferOutput) unmarshalBalances(serializedBalances []byt
 	return balances, nil
 }
 
-func (transferOutput *TransferOutput) unmarshalConsumers(serializedConsumers []byte) (map[transfer.Hash][]address.Address, error) {
+func (transferOutput *Output) unmarshalConsumers(serializedConsumers []byte) (map[Hash][]address.Address, error) {
 	offset := 0
 
 	consumerCount := int(binary.LittleEndian.Uint32(serializedConsumers[offset:]))
 	offset += 4
 
-	consumers := make(map[transfer.Hash][]address.Address, consumerCount)
+	consumers := make(map[Hash][]address.Address, consumerCount)
 	for i := 0; i < consumerCount; i++ {
-		transferHash := transfer.Hash{}
+		transferHash := Hash{}
 		if err := transferHash.UnmarshalBinary(serializedConsumers[offset:]); err != nil {
 			return nil, err
 		}
-		offset += transfer.HashLength
+		offset += HashLength
 
 		addressHashCount := int(binary.LittleEndian.Uint32(serializedConsumers[offset:]))
 		offset += 4
@@ -302,3 +306,12 @@ func (transferOutput *TransferOutput) unmarshalConsumers(serializedConsumers []b
 }
 
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func OutputFactory(key []byte) objectstorage.StorableObject {
+	result := &Output{
+		storageKey: make([]byte, len(key)),
+	}
+	copy(result.storageKey, key)
+
+	return result
+}

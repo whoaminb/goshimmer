@@ -1,11 +1,9 @@
-package ledgerstate
+package transfer
 
 import (
 	"testing"
 
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
-
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
 
@@ -15,10 +13,10 @@ import (
 )
 
 func TestTransferOutput_MarshalUnmarshal(t *testing.T) {
-	transferOutput := NewTransferOutput(nil, reality.NewId("REALITY"), transfer.NewHash("RECEIVE"), address.New([]byte("ADDRESS1")), coloredcoins.NewColoredBalance(coloredcoins.NewColor("IOTA"), 44), coloredcoins.NewColoredBalance(coloredcoins.NewColor("BTC"), 88))
-	transferOutput.consumers = make(map[transfer.Hash][]address.Address)
+	transferOutput := NewTransferOutput(nil, reality.NewId("REALITY"), NewHash("RECEIVE"), address.New([]byte("ADDRESS1")), coloredcoins.NewColoredBalance(coloredcoins.NewColor("IOTA"), 44), coloredcoins.NewColoredBalance(coloredcoins.NewColor("BTC"), 88))
+	transferOutput.consumers = make(map[Hash][]address.Address)
 
-	spendTransferHash := transfer.NewHash("SPEND")
+	spendTransferHash := NewHash("SPEND")
 	transferOutput.consumers[spendTransferHash] = make([]address.Address, 2)
 	transferOutput.consumers[spendTransferHash][0] = address.New([]byte("ADDRESS2"))
 	transferOutput.consumers[spendTransferHash][1] = address.New([]byte("ADDRESS3"))
@@ -28,7 +26,7 @@ func TestTransferOutput_MarshalUnmarshal(t *testing.T) {
 		t.Error(err)
 	}
 
-	unmarshaledTransferOutput := TransferOutput{storageKey: transferOutput.GetStorageKey()}
+	unmarshaledTransferOutput := Output{storageKey: transferOutput.GetStorageKey()}
 	if err := unmarshaledTransferOutput.UnmarshalBinary(marshaledData); err != nil {
 		t.Error(err)
 	}

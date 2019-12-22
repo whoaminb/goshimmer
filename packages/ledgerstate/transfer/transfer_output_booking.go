@@ -1,58 +1,57 @@
-package ledgerstate
+package transfer
 
 import (
 	"github.com/iotaledger/goshimmer/packages/binary/address"
 	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 	"github.com/iotaledger/goshimmer/packages/stringify"
 	"github.com/iotaledger/hive.go/objectstorage"
 )
 
 // region struct + constructor + public api ////////////////////////////////////////////////////////////////////////////
 
-type TransferOutputBooking struct {
+type OutputBooking struct {
 	objectstorage.StorableObjectFlags
 
 	realityId    reality.Id
 	addressHash  address.Address
 	spent        bool
-	transferHash transfer.Hash
+	transferHash Hash
 
 	storageKey []byte
 }
 
-func newTransferOutputBooking(realityId reality.Id, addressHash address.Address, spent bool, transferHash transfer.Hash) (result *TransferOutputBooking) {
-	result = &TransferOutputBooking{
+func NewTransferOutputBooking(realityId reality.Id, addressHash address.Address, spent bool, transferHash Hash) (result *OutputBooking) {
+	result = &OutputBooking{
 		realityId:    realityId,
 		addressHash:  addressHash,
 		spent:        spent,
 		transferHash: transferHash,
 
-		storageKey: generateTransferOutputBookingStorageKey(realityId, addressHash, spent, transferHash),
+		storageKey: GenerateOutputBookingStorageKey(realityId, addressHash, spent, transferHash),
 	}
 
 	return
 }
 
-func (booking *TransferOutputBooking) GetRealityId() reality.Id {
+func (booking *OutputBooking) GetRealityId() reality.Id {
 	return booking.realityId
 }
 
-func (booking *TransferOutputBooking) GetAddressHash() address.Address {
+func (booking *OutputBooking) GetAddressHash() address.Address {
 	return booking.addressHash
 }
 
-func (booking *TransferOutputBooking) IsSpent() bool {
+func (booking *OutputBooking) IsSpent() bool {
 	return booking.spent
 }
 
-func (booking *TransferOutputBooking) GetTransferHash() transfer.Hash {
+func (booking *OutputBooking) GetTransferHash() Hash {
 	return booking.transferHash
 }
 
-func (booking *TransferOutputBooking) String() string {
-	return stringify.Struct("TransferOutputBooking",
+func (booking *OutputBooking) String() string {
+	return stringify.Struct("OutputBooking",
 		stringify.StructField("realityId", booking.realityId),
 		stringify.StructField("addressHash", booking.addressHash),
 		stringify.StructField("spent", booking.spent),
@@ -64,13 +63,13 @@ func (booking *TransferOutputBooking) String() string {
 
 // region support object storage ///////////////////////////////////////////////////////////////////////////////////////
 
-func (booking *TransferOutputBooking) GetStorageKey() []byte {
+func (booking *OutputBooking) GetStorageKey() []byte {
 	return booking.storageKey
 }
 
-func (booking *TransferOutputBooking) Update(other objectstorage.StorableObject) {
-	if otherBooking, ok := other.(*TransferOutputBooking); !ok {
-		panic("Update method expects a *TransferOutputBooking")
+func (booking *OutputBooking) Update(other objectstorage.StorableObject) {
+	if otherBooking, ok := other.(*OutputBooking); !ok {
+		panic("Update method expects a *OutputBooking")
 	} else {
 		booking.realityId = otherBooking.realityId
 		booking.addressHash = otherBooking.addressHash
@@ -79,11 +78,11 @@ func (booking *TransferOutputBooking) Update(other objectstorage.StorableObject)
 	}
 }
 
-func (booking *TransferOutputBooking) MarshalBinary() ([]byte, error) {
+func (booking *OutputBooking) MarshalBinary() ([]byte, error) {
 	return []byte{}, nil
 }
 
-func (booking *TransferOutputBooking) UnmarshalBinary(data []byte) error {
+func (booking *OutputBooking) UnmarshalBinary(data []byte) error {
 	if len(booking.storageKey) < marshalTransferOutputBookingTotalLength {
 		return errors.New("unmarshal failed: the length of the key is to short")
 	}
@@ -110,25 +109,6 @@ func (booking *TransferOutputBooking) UnmarshalBinary(data []byte) error {
 	}
 
 	return nil
-}
-
-// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// region private utility methods //////////////////////////////////////////////////////////////////////////////////////
-
-func generateTransferOutputBookingStorageKey(realityId reality.Id, addressHash address.Address, spent bool, transferHash transfer.Hash) (storageKey []byte) {
-	storageKey = make([]byte, reality.IdLength+address.Length+1+transfer.HashLength)
-
-	copy(storageKey[marshalTransferOutputBookingRealityIdStart:marshalTransferOutputBookingRealityIdEnd], realityId[:reality.IdLength])
-	copy(storageKey[marshalTransferOutputBookingAddressHashStart:marshalTransferOutputBookingAddressHashEnd], addressHash[:address.Length])
-	if spent {
-		storageKey[marshalTransferOutputBookingSpentStart] = byte(SPENT)
-	} else {
-		storageKey[marshalTransferOutputBookingSpentStart] = byte(UNSPENT)
-	}
-	copy(storageKey[marshalTransferOutputBookingTransferHashStart:marshalTransferOutputBookingTransferHashEnd], transferHash[:transfer.HashLength])
-
-	return
 }
 
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
