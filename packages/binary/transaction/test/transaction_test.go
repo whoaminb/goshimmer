@@ -22,6 +22,7 @@ func BenchmarkVerifySignature(b *testing.B) {
 	transactions := make([]*transaction.Transaction, b.N)
 	for i := 0; i < b.N; i++ {
 		transactions[i] = transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), data.New([]byte("test")))
+		transactions[i].GetBytes()
 	}
 
 	var wg sync.WaitGroup
