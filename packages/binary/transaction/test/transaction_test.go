@@ -2,7 +2,10 @@ package test
 
 import (
 	"fmt"
+	"sync"
 	"testing"
+
+	"github.com/panjf2000/ants/v2"
 
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 
@@ -14,6 +17,26 @@ import (
 	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload/valuetransfer"
 	"github.com/stretchr/testify/assert"
 )
+
+func BenchmarkVerifySignature(b *testing.B) {
+	transaction := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), data.New([]byte("test")))
+
+	var wg sync.WaitGroup
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		wg.Add(1)
+
+		ants.Submit(func() {
+			transaction.VerifySignature()
+
+			wg.Done()
+		})
+	}
+
+	wg.Wait()
+}
 
 func TestNew(t *testing.T) {
 	newTransaction1 := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), data.New([]byte("test")))
