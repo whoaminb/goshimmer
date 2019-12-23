@@ -19,7 +19,10 @@ import (
 )
 
 func BenchmarkVerifySignature(b *testing.B) {
-	transaction := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), data.New([]byte("test")))
+	transactions := make([]*transaction.Transaction, b.N)
+	for i := 0; i < b.N; i++ {
+		transactions[i] = transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), data.New([]byte("test")))
+	}
 
 	var wg sync.WaitGroup
 
@@ -28,11 +31,14 @@ func BenchmarkVerifySignature(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		wg.Add(1)
 
-		ants.Submit(func() {
-			transaction.VerifySignature()
+		currentIndex := i
+		if err := ants.Submit(func() {
+			transactions[currentIndex].VerifySignature()
 
 			wg.Done()
-		})
+		}); err != nil {
+			b.Error(err)
+		}
 	}
 
 	wg.Wait()
