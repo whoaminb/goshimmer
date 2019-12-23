@@ -40,7 +40,7 @@ func NewLedgerState(storageId string) *LedgerState {
 		conflictSets:           objectstorage.New(storageId+"CONFLICT_SETS", conflict.Factory, objectstorage.CacheTime(1*time.Second)),
 	}
 
-	mainReality := newReality(MAIN_REALITY_ID)
+	mainReality := newReality(reality.MAIN_ID)
 	mainReality.ledgerState = result
 	mainReality.SetPreferred()
 	result.realities.Store(mainReality).Release()
@@ -49,7 +49,7 @@ func NewLedgerState(storageId string) *LedgerState {
 }
 
 func (ledgerState *LedgerState) AddTransferOutput(transferHash transfer.Hash, addressHash address.Address, balances ...*coloredcoins.ColoredBalance) *LedgerState {
-	ledgerState.GetReality(MAIN_REALITY_ID).Consume(func(object objectstorage.StorableObject) {
+	ledgerState.GetReality(reality.MAIN_ID).Consume(func(object objectstorage.StorableObject) {
 		mainReality := object.(*Reality)
 
 		mainReality.bookTransferOutput(transfer.NewTransferOutput(ledgerState.transferOutputBookings, reality.EmptyId, transferHash, addressHash, balances...))
@@ -127,10 +127,10 @@ func (ledgerState *LedgerState) ForEachTransferOutput(callback func(object *obje
 }
 
 func (ledgerState *LedgerState) CreateReality(id reality.Id) {
-	newReality := newReality(id, MAIN_REALITY_ID)
+	newReality := newReality(id, reality.MAIN_ID)
 	newReality.ledgerState = ledgerState
 
-	if mainReality, mainRealityErr := ledgerState.realities.Load(MAIN_REALITY_ID[:]); mainRealityErr != nil {
+	if mainReality, mainRealityErr := ledgerState.realities.Load(reality.MAIN_ID[:]); mainRealityErr != nil {
 		panic(mainRealityErr)
 	} else {
 		mainReality.Consume(func(object objectstorage.StorableObject) {
@@ -249,7 +249,7 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 func (ledgerState *LedgerState) AggregateRealities(realityIds ...reality.Id) *objectstorage.CachedObject {
 	switch len(realityIds) {
 	case 0:
-		if loadedReality, loadedRealityErr := ledgerState.realities.Load(MAIN_REALITY_ID[:]); loadedRealityErr != nil {
+		if loadedReality, loadedRealityErr := ledgerState.realities.Load(reality.MAIN_ID[:]); loadedRealityErr != nil {
 			panic(loadedRealityErr)
 		} else {
 			loadedReality.Get().(*Reality).ledgerState = ledgerState
@@ -395,7 +395,7 @@ func (ledgerState *LedgerState) Prune() *LedgerState {
 		panic(err)
 	}
 
-	mainReality := newReality(MAIN_REALITY_ID)
+	mainReality := newReality(reality.MAIN_ID)
 	mainReality.ledgerState = ledgerState
 	mainReality.SetPreferred()
 	ledgerState.realities.Store(mainReality).Release()

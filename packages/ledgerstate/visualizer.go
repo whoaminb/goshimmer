@@ -38,7 +38,7 @@ func (visualizer *Visualizer) RenderTransferOutputs(pngFileName string) error {
 		})
 
 		return true
-	}, MAIN_REALITY_ID)
+	}, reality.MAIN_ID)
 
 	return graphviz.RenderPNG(visualizer.graph, pngFileName)
 }
@@ -97,12 +97,12 @@ func (visualizer *Visualizer) getRealitySubGraph(realityId reality.Id) *dot.Grap
 	realityGraph, exists := visualizer.realitySubGraphs[realityId]
 	if !exists {
 		visualizer.ledgerState.GetReality(realityId).Consume(func(object objectstorage.StorableObject) {
-			reality := object.(*Reality)
+			currentReality := object.(*Reality)
 
-			parentRealities := reality.GetParentRealityIds()
+			parentRealities := currentReality.GetParentRealityIds()
 			switch true {
 			case len(parentRealities) > 1:
-				realityGraph = visualizer.getRealitySubGraph(MAIN_REALITY_ID).Subgraph("AGGREGATED REALITY [ "+visualizer.generateRealityName(realityId)+" ]", dot.ClusterOption{})
+				realityGraph = visualizer.getRealitySubGraph(reality.MAIN_ID).Subgraph("AGGREGATED REALITY [ "+visualizer.generateRealityName(realityId)+" ]", dot.ClusterOption{})
 
 				visualizer.styleRealitySubGraph(realityGraph, realityTypeAggregated)
 
