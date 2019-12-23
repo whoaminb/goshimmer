@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
+
 	"github.com/iotaledger/goshimmer/packages/binary/transaction"
 
 	"github.com/iotaledger/goshimmer/packages/binary/address"
@@ -17,7 +19,7 @@ func TestNew(t *testing.T) {
 	newTransaction1 := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), data.New([]byte("test")))
 	assert.Equal(t, newTransaction1.VerifySignature(), true)
 
-	valueTransfer := valuetransfer.New().AddInput(transaction.EmptyId, address.Random())
+	valueTransfer := valuetransfer.New().AddInput(transfer.NewHash("test"), address.Random())
 
 	newValueTransaction1 := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), valueTransfer)
 	assert.Equal(t, newValueTransaction1.VerifySignature(), true)
