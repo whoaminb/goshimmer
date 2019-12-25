@@ -19,6 +19,33 @@ func NewOutputReference(transferHash Hash, addressHash address.Address) *OutputR
 	}
 }
 
+func (reference *OutputReference) GetAddress() address.Address {
+	return reference.addressHash
+}
+
+func (reference *OutputReference) MarshalBinary() (result []byte, err error) {
+	result = make([]byte, HashLength+address.Length)
+	offset := 0
+
+	copy(result[offset:], reference.transferHash[:])
+	offset += HashLength
+
+	copy(result[offset:], reference.addressHash[:])
+
+	return
+}
+
+func (reference *OutputReference) UnmarshalBinary(bytes []byte) (err error) {
+	offset := 0
+
+	copy(reference.transferHash[:], bytes[offset:])
+	offset += HashLength
+
+	copy(reference.addressHash[:], bytes[offset:])
+
+	return
+}
+
 func (reference *OutputReference) GetStorageKey() []byte {
 	return reference.storageKey
 }

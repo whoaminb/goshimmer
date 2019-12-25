@@ -5,6 +5,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/iotaledger/goshimmer/packages/binary/signature/ed25119"
+
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
+
 	"github.com/panjf2000/ants/v2"
 
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
@@ -49,16 +53,26 @@ func TestNew(t *testing.T) {
 	newTransaction1 := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), data.New([]byte("test")))
 	assert.Equal(t, newTransaction1.VerifySignature(), true)
 
-	valueTransfer := valuetransfer.New().AddInput(transfer.NewHash("test"), address.Random())
+	keyPairOfSourceAddress := ed25119.GenerateKeyPair()
+	keyPairOfTargetAddress := ed25119.GenerateKeyPair()
 
-	newValueTransaction1 := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), valueTransfer)
+	newValueTransaction1 := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(),
+		valuetransfer.New().
+			AddInput(transfer.NewHash("test"), address.FromPublicKey(keyPairOfSourceAddress.PublicKey)).
+			AddOutput(address.FromPublicKey(keyPairOfTargetAddress.PublicKey), coloredcoins.NewColoredBalance(coloredcoins.NewColor("IOTA"), 12)).
+			Sign(keyPairOfSourceAddress),
+	)
 	assert.Equal(t, newValueTransaction1.VerifySignature(), true)
 
 	newValueTransaction2, _ := transaction.FromBytes(newValueTransaction1.GetBytes())
 	assert.Equal(t, newValueTransaction2.VerifySignature(), true)
 
-	if newValueTransaction1.GetPayload().GetType() == valuetransfer.Type {
-		fmt.Println("VALUE TRANSFER TRANSACTION")
+	fmt.Println(newValueTransaction1.GetPayload().(*valuetransfer.ValueTransfer).MarshalBinary())
+	fmt.Println(newValueTransaction2.GetPayload().(*valuetransfer.ValueTransfer).MarshalBinary())
+
+	if newValueTransaction2.GetPayload().GetType() == valuetransfer.Type {
+		fmt.Println(newValueTransaction1.GetPayload().(*valuetransfer.ValueTransfer).VerifySignatures())
+		fmt.Println(newValueTransaction2.GetPayload().(*valuetransfer.ValueTransfer).VerifySignatures())
 	}
 
 	newTransaction2 := transaction.New(newTransaction1.GetId(), transaction.EmptyId, identity.Generate(), data.New([]byte("test1")))

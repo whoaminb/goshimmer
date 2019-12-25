@@ -14,6 +14,13 @@ func NewColor(color string) (result Color) {
 	return
 }
 
+func (color *Color) MarshalBinary() (result []byte, err error) {
+	result = make([]byte, ColorLength)
+	copy(result, color[:])
+
+	return
+}
+
 func (color *Color) UnmarshalBinary(data []byte) error {
 	copy(color[:], data[:ColorLength])
 

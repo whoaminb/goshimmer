@@ -3,6 +3,10 @@ package address
 import (
 	"crypto/rand"
 
+	"golang.org/x/crypto/blake2b"
+
+	"github.com/iotaledger/goshimmer/packages/binary/signature/ed25119"
+
 	"github.com/mr-tron/base58"
 )
 
@@ -20,6 +24,14 @@ func FromBase58EncodedString(base58EncodedString string) (result Address) {
 	} else {
 		copy(result[:], addressBytes)
 	}
+
+	return
+}
+
+func FromPublicKey(publicKey ed25119.PublicKey) (result Address) {
+	hashedPublicKey := blake2b.Sum256(publicKey[:])
+
+	copy(result[:], hashedPublicKey[:])
 
 	return
 }
