@@ -22,6 +22,49 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func BenchmarkVerifyValueTransactions(b *testing.B) {
+	keyPairOfSourceAddress := ed25119.GenerateKeyPair()
+	keyPairOfTargetAddress := ed25119.GenerateKeyPair()
+
+	transactions := make([][]byte, b.N)
+	for i := 0; i < b.N; i++ {
+		tx := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), valuetransfer.New().
+			AddInput(transfer.NewHash("test"), address.FromPublicKey(keyPairOfSourceAddress.PublicKey)).
+			AddOutput(address.FromPublicKey(keyPairOfTargetAddress.PublicKey), coloredcoins.NewColoredBalance(coloredcoins.NewColor("IOTA"), 12)).
+			Sign(keyPairOfSourceAddress))
+
+		if marshaledTransaction, err := tx.MarshalBinary(); err != nil {
+			b.Error(err)
+		} else {
+			transactions[i] = marshaledTransaction
+		}
+	}
+
+	var wg sync.WaitGroup
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		wg.Add(1)
+
+		currentIndex := i
+		if err := ants.Submit(func() {
+			if tx, err := transaction.FromBytes(transactions[currentIndex]); err != nil {
+				b.Error(err)
+			} else {
+				tx.VerifySignature()
+				tx.GetPayload().(*valuetransfer.ValueTransfer).VerifySignatures()
+			}
+
+			wg.Done()
+		}); err != nil {
+			b.Error(err)
+		}
+	}
+
+	wg.Wait()
+}
+
 func BenchmarkVerifySignature(b *testing.B) {
 	transactions := make([]*transaction.Transaction, b.N)
 	for i := 0; i < b.N; i++ {
