@@ -6,6 +6,7 @@ import (
 	"github.com/iotaledger/goshimmer/packages/binary/transactionmetadata"
 	"github.com/iotaledger/goshimmer/packages/storageprefix"
 	"github.com/iotaledger/hive.go/async"
+	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/objectstorage"
 )
 
@@ -14,6 +15,8 @@ type Tangle struct {
 	transactionStorage         *objectstorage.ObjectStorage
 	transactionMetadataStorage *objectstorage.ObjectStorage
 	approversStorage           *objectstorage.ObjectStorage
+
+	Events tangleEvents
 
 	verifyTransactionsWorkerPool async.WorkerPool
 	storeTransactionsWorkerPool  async.WorkerPool
@@ -24,6 +27,18 @@ func New(storageId []byte) (result *Tangle) {
 		transactionStorage:         objectstorage.New(append(storageId, storageprefix.TangleTransaction...), transactionFactory),
 		transactionMetadataStorage: objectstorage.New(append(storageId, storageprefix.TangleTransactionMetadata...), transactionFactory),
 		approversStorage:           objectstorage.New(append(storageId, storageprefix.TangleApprovers...), approversFactory),
+
+		Events: tangleEvents{
+			TransactionSolid: events.NewEvent(func(handler interface{}, params ...interface{}) {
+				cachedTransaction := params[0].(*objectstorage.CachedObject)
+				cachedTransactionMetadata := params[1].(*objectstorage.CachedObject)
+
+				cachedTransaction.RegisterConsumer()
+				cachedTransactionMetadata.RegisterConsumer()
+
+				handler.(func(*objectstorage.CachedObject, *objectstorage.CachedObject))(cachedTransaction, cachedTransactionMetadata)
+			}),
+		},
 	}
 
 	result.solidifier = newSolidifier(result)

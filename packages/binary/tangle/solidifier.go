@@ -71,7 +71,7 @@ func (solidifier *solidifier) solidify(cachedTransaction *objectstorage.CachedOb
 
 		// if current transaction is solid and was not marked as solid before: mark as solid and propagate
 		if solidifier.isTransactionSolid(currentTransaction, currentTransactionMetadata) && currentTransactionMetadata.SetSolid(true) {
-			// fmt.Println("SOLID", currentTransaction.GetId())
+			solidifier.tangle.Events.TransactionSolid.Trigger(currentCachedTransaction, currentCachedTransactionMetadata)
 
 			solidifier.tangle.GetApprovers(currentTransaction.GetId()).Consume(func(object objectstorage.StorableObject) {
 				for approverTransactionId := range object.(*approvers.Approvers).Get() {
