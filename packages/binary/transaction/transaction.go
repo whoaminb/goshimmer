@@ -99,6 +99,14 @@ func (transaction *Transaction) GetId() (result Id) {
 	return
 }
 
+func (transaction *Transaction) GetTrunkTransactionId() Id {
+	return transaction.trunkTransactionId
+}
+
+func (transaction *Transaction) GetBranchTransactionId() Id {
+	return transaction.branchTransactionId
+}
+
 func (transaction *Transaction) GetPayload() payload.Payload {
 	return transaction.payload
 }

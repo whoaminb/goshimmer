@@ -2,8 +2,11 @@ package test
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"testing"
+
+	"github.com/iotaledger/goshimmer/packages/binary/async"
 
 	"github.com/iotaledger/goshimmer/packages/binary/signature/ed25119"
 
@@ -23,6 +26,9 @@ import (
 )
 
 func BenchmarkVerifyDataTransactions(b *testing.B) {
+	var pool async.WorkerPool
+	pool.Tune(runtime.NumCPU() * 2)
+
 	transactions := make([][]byte, b.N)
 	for i := 0; i < b.N; i++ {
 		tx := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), data.New([]byte("some data")))
@@ -34,31 +40,26 @@ func BenchmarkVerifyDataTransactions(b *testing.B) {
 		}
 	}
 
-	var wg sync.WaitGroup
-
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		wg.Add(1)
-
 		currentIndex := i
-		if err := ants.Submit(func() {
+		pool.Submit(func() {
 			if tx, err := transaction.FromBytes(transactions[currentIndex]); err != nil {
 				b.Error(err)
 			} else {
 				tx.VerifySignature()
 			}
-
-			wg.Done()
-		}); err != nil {
-			b.Error(err)
-		}
+		})
 	}
 
-	wg.Wait()
+	pool.Shutdown()
 }
 
 func BenchmarkVerifyValueTransactions(b *testing.B) {
+	var pool async.WorkerPool
+	pool.Tune(runtime.NumCPU() * 2)
+
 	keyPairOfSourceAddress := ed25119.GenerateKeyPair()
 	keyPairOfTargetAddress := ed25119.GenerateKeyPair()
 
@@ -76,32 +77,26 @@ func BenchmarkVerifyValueTransactions(b *testing.B) {
 		}
 	}
 
-	var wg sync.WaitGroup
-
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		wg.Add(1)
-
 		currentIndex := i
-		if err := ants.Submit(func() {
+		pool.Submit(func() {
 			if tx, err := transaction.FromBytes(transactions[currentIndex]); err != nil {
 				b.Error(err)
 			} else {
 				tx.VerifySignature()
 				tx.GetPayload().(*valuetransfer.ValueTransfer).VerifySignatures()
 			}
-
-			wg.Done()
-		}); err != nil {
-			b.Error(err)
-		}
+		})
 	}
 
-	wg.Wait()
+	pool.Shutdown()
 }
 
 func BenchmarkVerifySignature(b *testing.B) {
+	pool, _ := ants.NewPool(80, ants.WithNonblocking(false))
+
 	transactions := make([]*transaction.Transaction, b.N)
 	for i := 0; i < b.N; i++ {
 		transactions[i] = transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), data.New([]byte("test")))
@@ -116,12 +111,14 @@ func BenchmarkVerifySignature(b *testing.B) {
 		wg.Add(1)
 
 		currentIndex := i
-		if err := ants.Submit(func() {
+		if err := pool.Submit(func() {
 			transactions[currentIndex].VerifySignature()
 
 			wg.Done()
 		}); err != nil {
 			b.Error(err)
+
+			return
 		}
 	}
 

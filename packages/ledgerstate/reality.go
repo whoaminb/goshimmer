@@ -596,9 +596,7 @@ func (mreality *Reality) processConflictingInput(input *transfer.Output, consume
 
 		err = mreality.createRealityForPreviouslyUnconflictingConsumers(consumersToElevate, cachedConflict.Get().(*conflict.Conflict))
 	} else {
-		if cachedConflict, err = mreality.ledgerState.conflictSets.Load(conflictId[:]); err != nil {
-			return
-		}
+		cachedConflict = mreality.ledgerState.conflictSets.Load(conflictId[:])
 	}
 
 	return
@@ -611,7 +609,7 @@ func (mreality *Reality) createRealityForPreviouslyUnconflictingConsumers(consum
 
 		// Retrieve the Reality for this Transfer or create one if no Reality exists, yet.
 		var realityIsNew bool
-		if cachedElevatedReality, realityErr := mreality.ledgerState.realities.ComputeIfAbsent(elevatedRealityId[:], func(key []byte) (object objectstorage.StorableObject, e error) {
+		cachedElevatedReality := mreality.ledgerState.realities.ComputeIfAbsent(elevatedRealityId[:], func(key []byte) (object objectstorage.StorableObject) {
 			newReality := newReality(elevatedRealityId, mreality.id)
 			newReality.ledgerState = mreality.ledgerState
 			newReality.SetPreferred()
@@ -623,30 +621,29 @@ func (mreality *Reality) createRealityForPreviouslyUnconflictingConsumers(consum
 
 			realityIsNew = true
 
-			return newReality, nil
-		}); realityErr != nil {
-			err = realityErr
-		} else {
-			cachedElevatedReality.Consume(func(object objectstorage.StorableObject) {
-				elevatedReality := object.(*Reality)
+			return newReality
+		})
 
-				// We register every Conflict with the Reality (independent if it is "new" or not), to reflect its
-				// association to all corresponding Conflicts. (Note: A Reality can be part of multiple Conflicts if the
-				// Transfer that is associated to this Reality consumes multiple inputs.
-				conflict.AddReality(elevatedRealityId)
-				elevatedReality.AddConflict(conflict.GetId())
+		cachedElevatedReality.Consume(func(object objectstorage.StorableObject) {
+			elevatedReality := object.(*Reality)
 
-				// A transaction can consume multiple inputs. We only elevate the consumers of a Reality once (when the
-				// Reality is created the first time).
-				if realityIsNew {
-					for _, addressHash := range addressHashes {
-						if err = mreality.elevateTransferOutput(transfer.NewOutputReference(transferHash, addressHash), elevatedReality); err != nil {
-							return
-						}
+			// We register every Conflict with the Reality (independent if it is "new" or not), to reflect its
+			// association to all corresponding Conflicts. (Note: A Reality can be part of multiple Conflicts if the
+			// Transfer that is associated to this Reality consumes multiple inputs.
+			conflict.AddReality(elevatedRealityId)
+			elevatedReality.AddConflict(conflict.GetId())
+
+			// A transaction can consume multiple inputs. We only elevate the consumers of a Reality once (when the
+			// Reality is created the first time).
+			if realityIsNew {
+				for _, addressHash := range addressHashes {
+					if err = mreality.elevateTransferOutput(transfer.NewOutputReference(transferHash, addressHash), elevatedReality); err != nil {
+						return
 					}
 				}
-			})
-		}
+			}
+		})
+
 	}
 
 	return
@@ -767,29 +764,26 @@ func (mreality *Reality) bookTransferOutput(transferOutput *transfer.Output) (er
 
 	// remove old booking if the Output is currently booked in another reality
 	if transferOutputRealityId != realityId {
-		if oldTransferOutputBooking, err := mreality.ledgerState.transferOutputBookings.Load(transfer.GenerateOutputBookingStorageKey(transferOutputRealityId, transferOutputAddressHash, transferOutput.IsSpent(), transferOutput.GetTransferHash())); err != nil {
-			return err
-		} else {
-			transferOutput.SetRealityId(realityId)
+		oldTransferOutputBooking := mreality.ledgerState.transferOutputBookings.Load(transfer.GenerateOutputBookingStorageKey(transferOutputRealityId, transferOutputAddressHash, transferOutput.IsSpent(), transferOutput.GetTransferHash()))
+		transferOutput.SetRealityId(realityId)
 
-			mreality.ledgerState.GetReality(transferOutputRealityId).Consume(func(object objectstorage.StorableObject) {
-				transferOutputReality := object.(*Reality)
+		mreality.ledgerState.GetReality(transferOutputRealityId).Consume(func(object objectstorage.StorableObject) {
+			transferOutputReality := object.(*Reality)
 
-				// decrease transferOutputCount and remove reality if it is empty
-				if transferOutputReality.DecreaseTransferOutputCount() == 0 && transferOutputReality.GetSubRealityIdCount() == 0 {
-					for _, cachedParentReality := range transferOutputReality.GetParentRealities() {
-						cachedParentReality.Consume(func(parentReality objectstorage.StorableObject) {
-							parentReality.(*Reality).UnregisterSubReality(transferOutputRealityId)
-						})
-					}
-					transferOutputReality.Delete()
+			// decrease transferOutputCount and remove reality if it is empty
+			if transferOutputReality.DecreaseTransferOutputCount() == 0 && transferOutputReality.GetSubRealityIdCount() == 0 {
+				for _, cachedParentReality := range transferOutputReality.GetParentRealities() {
+					cachedParentReality.Consume(func(parentReality objectstorage.StorableObject) {
+						parentReality.(*Reality).UnregisterSubReality(transferOutputRealityId)
+					})
 				}
-			})
+				transferOutputReality.Delete()
+			}
+		})
 
-			oldTransferOutputBooking.Consume(func(transferOutputBooking objectstorage.StorableObject) {
-				transferOutputBooking.Delete()
-			})
-		}
+		oldTransferOutputBooking.Consume(func(transferOutputBooking objectstorage.StorableObject) {
+			transferOutputBooking.Delete()
+		})
 	}
 
 	// book the Output into the current Reality

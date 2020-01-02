@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iotaledger/goshimmer/packages/storageprefix"
+
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
 
 	"github.com/iotaledger/goshimmer/packages/binary/address"
@@ -31,13 +33,13 @@ type LedgerState struct {
 	conflictSets           *objectstorage.ObjectStorage
 }
 
-func NewLedgerState(storageId string) *LedgerState {
+func NewLedgerState(storageId []byte) *LedgerState {
 	result := &LedgerState{
-		storageId:              []byte(storageId),
-		transferOutputs:        objectstorage.New(storageId+"TRANSFER_OUTPUTS", transfer.OutputFactory, objectstorage.CacheTime(1*time.Second)),
-		transferOutputBookings: objectstorage.New(storageId+"TRANSFER_OUTPUT_BOOKING", transfer.OutputBookingFactory, objectstorage.CacheTime(1*time.Second)),
-		realities:              objectstorage.New(storageId+"REALITIES", realityFactory, objectstorage.CacheTime(1*time.Second)),
-		conflictSets:           objectstorage.New(storageId+"CONFLICT_SETS", conflict.Factory, objectstorage.CacheTime(1*time.Second)),
+		storageId:              storageId,
+		transferOutputs:        objectstorage.New(append(storageId, storageprefix.LedgerStateTransferOutput...), transfer.OutputFactory, objectstorage.CacheTime(1*time.Second)),
+		transferOutputBookings: objectstorage.New(append(storageId, storageprefix.LedgerStateTransferOutputBooking...), transfer.OutputBookingFactory, objectstorage.CacheTime(1*time.Second)),
+		realities:              objectstorage.New(append(storageId, storageprefix.LedgerStateReality...), realityFactory, objectstorage.CacheTime(1*time.Second)),
+		conflictSets:           objectstorage.New(append(storageId, storageprefix.LedgerStateConflictSet...), conflict.Factory, objectstorage.CacheTime(1*time.Second)),
 	}
 
 	mainReality := newReality(reality.MAIN_ID)
@@ -59,17 +61,14 @@ func (ledgerState *LedgerState) AddTransferOutput(transferHash transfer.Hash, ad
 }
 
 func (ledgerState *LedgerState) GetTransferOutput(transferOutputReference *transfer.OutputReference) *objectstorage.CachedObject {
-	if cachedTransferOutput, err := ledgerState.transferOutputs.Load(transferOutputReference.GetStorageKey()); err != nil {
-		panic(err)
-	} else {
-		if cachedTransferOutput.Exists() {
-			if transferOutput := cachedTransferOutput.Get().(*transfer.Output); transferOutput != nil {
-				transferOutput.OutputBookings = ledgerState.transferOutputBookings
-			}
+	cachedTransferOutput := ledgerState.transferOutputs.Load(transferOutputReference.GetStorageKey())
+	if cachedTransferOutput.Exists() {
+		if transferOutput := cachedTransferOutput.Get().(*transfer.Output); transferOutput != nil {
+			transferOutput.OutputBookings = ledgerState.transferOutputBookings
 		}
-
-		return cachedTransferOutput
 	}
+
+	return cachedTransferOutput
 }
 
 func (ledgerState *LedgerState) ForEachConflictSet(callback func(object *objectstorage.CachedObject) bool) {
@@ -130,29 +129,22 @@ func (ledgerState *LedgerState) CreateReality(id reality.Id) {
 	newReality := newReality(id, reality.MAIN_ID)
 	newReality.ledgerState = ledgerState
 
-	if mainReality, mainRealityErr := ledgerState.realities.Load(reality.MAIN_ID[:]); mainRealityErr != nil {
-		panic(mainRealityErr)
-	} else {
-		mainReality.Consume(func(object objectstorage.StorableObject) {
-			object.(*Reality).RegisterSubReality(id)
-		})
-	}
+	ledgerState.realities.Load(reality.MAIN_ID[:]).Consume(func(object objectstorage.StorableObject) {
+		object.(*Reality).RegisterSubReality(id)
+	})
 
 	ledgerState.realities.Store(newReality).Release()
 }
 
 func (ledgerState *LedgerState) GetReality(id reality.Id) *objectstorage.CachedObject {
-	if cachedObject, err := ledgerState.realities.Load(id[:]); err != nil {
-		panic(err)
-	} else {
-		if cachedObject.Exists() {
-			if reality := cachedObject.Get().(*Reality); reality != nil {
-				reality.ledgerState = ledgerState
-			}
+	cachedObject := ledgerState.realities.Load(id[:])
+	if cachedObject.Exists() {
+		if reality := cachedObject.Get().(*Reality); reality != nil {
+			reality.ledgerState = ledgerState
 		}
-
-		return cachedObject
 	}
+
+	return cachedObject
 }
 
 func (ledgerState *LedgerState) BookTransfer(transfer *transfer.Transfer) (err error) {
@@ -249,21 +241,15 @@ func (ledgerState *LedgerState) GenerateRealityVisualization(pngFilename string)
 func (ledgerState *LedgerState) AggregateRealities(realityIds ...reality.Id) *objectstorage.CachedObject {
 	switch len(realityIds) {
 	case 0:
-		if loadedReality, loadedRealityErr := ledgerState.realities.Load(reality.MAIN_ID[:]); loadedRealityErr != nil {
-			panic(loadedRealityErr)
-		} else {
-			loadedReality.Get().(*Reality).ledgerState = ledgerState
+		loadedReality := ledgerState.realities.Load(reality.MAIN_ID[:])
+		loadedReality.Get().(*Reality).ledgerState = ledgerState
 
-			return loadedReality
-		}
+		return loadedReality
 	case 1:
-		if loadedReality, loadedRealityErr := ledgerState.realities.Load(realityIds[0][:]); loadedRealityErr != nil {
-			panic(loadedRealityErr)
-		} else {
-			loadedReality.Get().(*Reality).ledgerState = ledgerState
+		loadedReality := ledgerState.realities.Load(realityIds[0][:])
+		loadedReality.Get().(*Reality).ledgerState = ledgerState
 
-			return loadedReality
-		}
+		return loadedReality
 	default:
 		aggregatedRealities := make(map[reality.Id]*objectstorage.CachedObject)
 
@@ -275,10 +261,8 @@ func (ledgerState *LedgerState) AggregateRealities(realityIds ...reality.Id) *ob
 			}
 
 			// load reality or abort if it fails
-			cachedReality, loadingErr := ledgerState.realities.Load(realityId[:])
-			if loadingErr != nil {
-				panic(loadingErr)
-			} else if !cachedReality.Exists() {
+			cachedReality := ledgerState.realities.Load(realityId[:])
+			if !cachedReality.Exists() {
 				panic(errors.New("referenced reality does not exist: " + realityId.String()))
 			}
 
@@ -340,7 +324,7 @@ func (ledgerState *LedgerState) AggregateRealities(realityIds ...reality.Id) *ob
 		aggregatedRealityId := ledgerState.generateAggregatedRealityId(ledgerState.sortRealityIds(parentConflictRealities))
 
 		newAggregatedRealityCreated := false
-		if newCachedAggregatedReality, err := ledgerState.realities.ComputeIfAbsent(aggregatedRealityId[:], func(key []byte) (object objectstorage.StorableObject, e error) {
+		newCachedAggregatedReality := ledgerState.realities.ComputeIfAbsent(aggregatedRealityId[:], func(key []byte) (object objectstorage.StorableObject) {
 			aggregatedReality := newReality(aggregatedRealityId, aggregatedRealityParentIds...)
 			aggregatedReality.ledgerState = ledgerState
 			aggregatedReality.SetPreferred(aggregatedRealityIsPreferred)
@@ -355,24 +339,22 @@ func (ledgerState *LedgerState) AggregateRealities(realityIds ...reality.Id) *ob
 
 			newAggregatedRealityCreated = true
 
-			return aggregatedReality, nil
-		}); err != nil {
-			panic(err)
-		} else {
-			if !newAggregatedRealityCreated {
-				aggregatedReality := newCachedAggregatedReality.Get().(*Reality)
+			return aggregatedReality
+		})
 
-				for _, realityId := range aggregatedRealityParentIds {
-					if aggregatedReality.AddParentReality(realityId) {
-						ledgerState.GetReality(realityId).Consume(func(object objectstorage.StorableObject) {
-							object.(*Reality).RegisterSubReality(aggregatedRealityId)
-						})
-					}
+		if !newAggregatedRealityCreated {
+			aggregatedReality := newCachedAggregatedReality.Get().(*Reality)
+
+			for _, realityId := range aggregatedRealityParentIds {
+				if aggregatedReality.AddParentReality(realityId) {
+					ledgerState.GetReality(realityId).Consume(func(object objectstorage.StorableObject) {
+						object.(*Reality).RegisterSubReality(aggregatedRealityId)
+					})
 				}
 			}
-
-			return newCachedAggregatedReality
 		}
+
+		return newCachedAggregatedReality
 	}
 }
 

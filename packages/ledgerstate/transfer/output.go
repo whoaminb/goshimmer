@@ -137,17 +137,12 @@ func (transferOutput *Output) markAsSpent() error {
 	transferOutput.bookingMutex.Lock()
 
 	currentBookingKey := GenerateOutputBookingStorageKey(transferOutput.GetRealityId(), transferOutput.addressHash, false, transferOutput.transferHash)
-	if oldTransferOutputBooking, err := transferOutput.OutputBookings.Load(currentBookingKey); err != nil {
-		transferOutput.bookingMutex.Unlock()
+	oldTransferOutputBooking := transferOutput.OutputBookings.Load(currentBookingKey)
+	transferOutput.OutputBookings.Store(NewTransferOutputBooking(transferOutput.GetRealityId(), transferOutput.addressHash, true, transferOutput.transferHash)).Release()
 
-		return err
-	} else {
-		transferOutput.OutputBookings.Store(NewTransferOutputBooking(transferOutput.GetRealityId(), transferOutput.addressHash, true, transferOutput.transferHash)).Release()
-
-		oldTransferOutputBooking.Consume(func(transferOutputBooking objectstorage.StorableObject) {
-			transferOutputBooking.Delete()
-		})
-	}
+	oldTransferOutputBooking.Consume(func(transferOutputBooking objectstorage.StorableObject) {
+		transferOutputBooking.Delete()
+	})
 
 	transferOutput.bookingMutex.Unlock()
 

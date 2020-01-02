@@ -12,7 +12,6 @@ import (
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 	"github.com/iotaledger/hive.go/objectstorage"
-	"github.com/iotaledger/hive.go/parameter"
 )
 
 var (
@@ -33,14 +32,8 @@ var (
 	pendingReality = reality.NewId("PENDING")
 )
 
-func init() {
-	if err := parameter.FetchConfig(false); err != nil {
-		panic(err)
-	}
-}
-
 func Benchmark(b *testing.B) {
-	ledgerState := NewLedgerState("testLedger").Prune().AddTransferOutput(
+	ledgerState := NewLedgerState([]byte("testLedger")).Prune().AddTransferOutput(
 		transferHash1, addressHash1, coloredcoins.NewColoredBalance(eth, 1024),
 	)
 
@@ -64,7 +57,7 @@ func Benchmark(b *testing.B) {
 }
 
 func Test(t *testing.T) {
-	ledgerState := NewLedgerState("testLedger").Prune().AddTransferOutput(
+	ledgerState := NewLedgerState([]byte("testLedger")).Prune().AddTransferOutput(
 		transferHash1, addressHash1, coloredcoins.NewColoredBalance(eth, 1337), coloredcoins.NewColoredBalance(iota_, 1338),
 	)
 
@@ -102,7 +95,7 @@ func Test(t *testing.T) {
 
 	time.Sleep(1000 * time.Millisecond)
 
-	objectstorage.WaitForWritesToFlush()
+	ledgerState.transferOutputs.WaitForWritesToFlush()
 
 	ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
 		object.Consume(func(object objectstorage.StorableObject) {
@@ -130,7 +123,7 @@ func generateRandomAddressHash() address.Address {
 }
 
 func initializeLedgerStateWithBalances(numberOfBalances int) (ledgerState *LedgerState, result []*transfer.OutputReference) {
-	ledgerState = NewLedgerState("testLedger").Prune()
+	ledgerState = NewLedgerState([]byte("testLedger")).Prune()
 
 	for i := 0; i < numberOfBalances; i++ {
 		transferHash := generateRandomTransferHash()
@@ -239,7 +232,7 @@ func TestAggregateAggregatedRealities(t *testing.T) {
 
 	time.Sleep(2000 * time.Millisecond)
 
-	objectstorage.WaitForWritesToFlush()
+	ledgerState.transferOutputs.WaitForWritesToFlush()
 
 	_ = ledgerState.GenerateRealityVisualization("realities1.png")
 	_ = NewVisualizer(ledgerState).RenderTransferOutputs("outputs1.png")
@@ -248,7 +241,7 @@ func TestAggregateAggregatedRealities(t *testing.T) {
 
 	time.Sleep(2000 * time.Millisecond)
 
-	objectstorage.WaitForWritesToFlush()
+	ledgerState.transferOutputs.WaitForWritesToFlush()
 
 	_ = ledgerState.GenerateRealityVisualization("realities2.png")
 	_ = NewVisualizer(ledgerState).RenderTransferOutputs("outputs2.png")
@@ -283,14 +276,14 @@ func TestElevateAggregatedReality(t *testing.T) {
 
 	time.Sleep(1000 * time.Millisecond)
 
-	objectstorage.WaitForWritesToFlush()
+	ledgerState.transferOutputs.WaitForWritesToFlush()
 
 	_ = ledgerState.GenerateRealityVisualization("realities.png")
 	_ = NewVisualizer(ledgerState).RenderTransferOutputs("outputs.png")
 }
 
 func TestElevate(t *testing.T) {
-	ledgerState := NewLedgerState("testLedger").Prune().AddTransferOutput(
+	ledgerState := NewLedgerState([]byte("testLedger")).Prune().AddTransferOutput(
 		transferHash1, addressHash1, coloredcoins.NewColoredBalance(eth, 1337), coloredcoins.NewColoredBalance(iota_, 1338),
 	)
 
@@ -352,7 +345,7 @@ func TestElevate(t *testing.T) {
 
 	time.Sleep(1000 * time.Millisecond)
 
-	objectstorage.WaitForWritesToFlush()
+	ledgerState.transferOutputs.WaitForWritesToFlush()
 
 	ledgerState.ForEachTransferOutput(func(object *objectstorage.CachedObject) bool {
 		object.Consume(func(object objectstorage.StorableObject) {
