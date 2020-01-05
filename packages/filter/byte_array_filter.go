@@ -3,12 +3,13 @@ package filter
 import (
 	"sync"
 
+	"github.com/iotaledger/goshimmer/packages/binary/types"
 	"github.com/iotaledger/goshimmer/packages/typeutils"
 )
 
 type ByteArrayFilter struct {
 	byteArrays      [][]byte
-	byteArraysByKey map[string]bool
+	byteArraysByKey map[string]types.Empty
 	size            int
 	mutex           sync.RWMutex
 }
@@ -16,7 +17,7 @@ type ByteArrayFilter struct {
 func NewByteArrayFilter(size int) *ByteArrayFilter {
 	return &ByteArrayFilter{
 		byteArrays:      make([][]byte, 0, size),
-		byteArraysByKey: make(map[string]bool, size),
+		byteArraysByKey: make(map[string]types.Empty, size),
 		size:            size,
 	}
 }
@@ -45,7 +46,7 @@ func (filter *ByteArrayFilter) Add(byteArray []byte) bool {
 			filter.byteArrays = append(filter.byteArrays, byteArray)
 		}
 
-		filter.byteArraysByKey[key] = true
+		filter.byteArraysByKey[key] = types.Void
 
 		return true
 	} else {

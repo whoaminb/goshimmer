@@ -5,5 +5,7 @@ import (
 )
 
 type tangleEvents struct {
-	TransactionSolid *events.Event
+	TransactionSolid    *events.Event
+	TransactionAttached *events.Event
+	Error               *events.Event
 }

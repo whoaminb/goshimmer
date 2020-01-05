@@ -5,9 +5,11 @@ import (
 	"github.com/iotaledger/goshimmer/packages/binary/transaction"
 	"github.com/iotaledger/goshimmer/packages/binary/transactionmetadata"
 	"github.com/iotaledger/goshimmer/packages/storageprefix"
+	"github.com/iotaledger/goshimmer/packages/stringify"
 	"github.com/iotaledger/hive.go/async"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/objectstorage"
+	"github.com/pkg/errors"
 )
 
 type Tangle struct {
@@ -29,6 +31,15 @@ func New(storageId []byte) (result *Tangle) {
 		approversStorage:           objectstorage.New(append(storageId, storageprefix.TangleApprovers...), approversFactory),
 
 		Events: tangleEvents{
+			TransactionAttached: events.NewEvent(func(handler interface{}, params ...interface{}) {
+				cachedTransaction := params[0].(*objectstorage.CachedObject)
+				cachedTransactionMetadata := params[1].(*objectstorage.CachedObject)
+
+				cachedTransaction.RegisterConsumer()
+				cachedTransactionMetadata.RegisterConsumer()
+
+				handler.(func(*objectstorage.CachedObject, *objectstorage.CachedObject))(cachedTransaction, cachedTransactionMetadata)
+			}),
 			TransactionSolid: events.NewEvent(func(handler interface{}, params ...interface{}) {
 				cachedTransaction := params[0].(*objectstorage.CachedObject)
 				cachedTransactionMetadata := params[1].(*objectstorage.CachedObject)
@@ -37,6 +48,9 @@ func New(storageId []byte) (result *Tangle) {
 				cachedTransactionMetadata.RegisterConsumer()
 
 				handler.(func(*objectstorage.CachedObject, *objectstorage.CachedObject))(cachedTransaction, cachedTransactionMetadata)
+			}),
+			Error: events.NewEvent(func(handler interface{}, params ...interface{}) {
+				handler.(func(error))(params[0].(error))
 			}),
 		},
 	}
@@ -80,7 +94,7 @@ func (tangle *Tangle) GetApprovers(transactionId transaction.Id) *objectstorage.
 
 func (tangle *Tangle) verifyTransaction(transaction *transaction.Transaction) {
 	if !transaction.VerifySignature() {
-		// err = errors.New("transaction has invalid signature")
+		tangle.Events.Error.Trigger(errors.New("transaction with id " + stringify.Interface(transaction.GetId()) + " has an invalid signature"))
 
 		return
 	}
