@@ -9,7 +9,7 @@ import (
 	"github.com/iotaledger/hive.go/async"
 )
 
-type ValueTransactionSignatureFilter struct {
+type ValueTransferSignatureFilter struct {
 	onAcceptCallback func(tx *transaction.Transaction)
 	onRejectCallback func(tx *transaction.Transaction)
 	workerPool       async.WorkerPool
@@ -18,13 +18,13 @@ type ValueTransactionSignatureFilter struct {
 	onRejectCallbackMutex sync.RWMutex
 }
 
-func NewValueTransactionSignatureFilter() (result *ValueTransactionSignatureFilter) {
-	result = &ValueTransactionSignatureFilter{}
+func NewValueTransferSignatureFilter() (result *ValueTransferSignatureFilter) {
+	result = &ValueTransferSignatureFilter{}
 
 	return
 }
 
-func (filter *ValueTransactionSignatureFilter) Filter(tx *transaction.Transaction) {
+func (filter *ValueTransferSignatureFilter) Filter(tx *transaction.Transaction) {
 	filter.workerPool.Submit(func() {
 		if payload := tx.GetPayload(); payload.GetType() == valuetransfer.Type {
 			if valueTransfer, ok := payload.(*valuetransfer.ValueTransfer); ok && valueTransfer.VerifySignatures() {
@@ -38,23 +38,23 @@ func (filter *ValueTransactionSignatureFilter) Filter(tx *transaction.Transactio
 	})
 }
 
-func (filter *ValueTransactionSignatureFilter) OnAccept(callback func(tx *transaction.Transaction)) {
+func (filter *ValueTransferSignatureFilter) OnAccept(callback func(tx *transaction.Transaction)) {
 	filter.onAcceptCallbackMutex.Lock()
 	filter.onAcceptCallback = callback
 	filter.onAcceptCallbackMutex.Unlock()
 }
 
-func (filter *ValueTransactionSignatureFilter) OnReject(callback func(tx *transaction.Transaction)) {
+func (filter *ValueTransferSignatureFilter) OnReject(callback func(tx *transaction.Transaction)) {
 	filter.onRejectCallbackMutex.Lock()
 	filter.onRejectCallback = callback
 	filter.onRejectCallbackMutex.Unlock()
 }
 
-func (filter *ValueTransactionSignatureFilter) Shutdown() {
+func (filter *ValueTransferSignatureFilter) Shutdown() {
 	filter.workerPool.ShutdownGracefully()
 }
 
-func (filter *ValueTransactionSignatureFilter) getAcceptCallback() (result func(tx *transaction.Transaction)) {
+func (filter *ValueTransferSignatureFilter) getAcceptCallback() (result func(tx *transaction.Transaction)) {
 	filter.onAcceptCallbackMutex.RLock()
 	result = filter.onAcceptCallback
 	filter.onAcceptCallbackMutex.RUnlock()
@@ -62,7 +62,7 @@ func (filter *ValueTransactionSignatureFilter) getAcceptCallback() (result func(
 	return
 }
 
-func (filter *ValueTransactionSignatureFilter) getRejectCallback() (result func(tx *transaction.Transaction)) {
+func (filter *ValueTransferSignatureFilter) getRejectCallback() (result func(tx *transaction.Transaction)) {
 	filter.onRejectCallbackMutex.RLock()
 	result = filter.onRejectCallback
 	filter.onRejectCallbackMutex.RUnlock()

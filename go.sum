@@ -101,6 +101,10 @@ github.com/iotaledger/hive.go v0.0.0-20200101185538-ae70241fee7f h1:vxfLVJOsHHEb
 github.com/iotaledger/hive.go v0.0.0-20200101185538-ae70241fee7f/go.mod h1:vrZrvGaWT1o5kz3Jj2B/PcUtqsFzZnLWrO3zEsGSuwk=
 github.com/iotaledger/hive.go v0.0.0-20200101211541-ea7950f4c2f2 h1:S84ohGcHKq6NFOY77HUXLvqYfOveJhzzphSeimTUtTw=
 github.com/iotaledger/hive.go v0.0.0-20200101211541-ea7950f4c2f2/go.mod h1:vrZrvGaWT1o5kz3Jj2B/PcUtqsFzZnLWrO3zEsGSuwk=
+github.com/iotaledger/hive.go v0.0.0-20200105155739-b36b4405762f h1:HqEFrjhbUB4uAOl9a9tTj78hYZ2bQLP9qLUlYwanPPY=
+github.com/iotaledger/hive.go v0.0.0-20200105155739-b36b4405762f/go.mod h1:vrZrvGaWT1o5kz3Jj2B/PcUtqsFzZnLWrO3zEsGSuwk=
+github.com/iotaledger/hive.go v0.0.0-20200106003337-d78637b86bf2 h1:HBQKEP6PnaEhG7j3HNjZTkpALvek8QYPeoJXyDzBDpo=
+github.com/iotaledger/hive.go v0.0.0-20200106003337-d78637b86bf2/go.mod h1:vrZrvGaWT1o5kz3Jj2B/PcUtqsFzZnLWrO3zEsGSuwk=
 github.com/iotaledger/iota.go v1.0.0-beta.9 h1:c654s9pkdhMBkABUvWg+6k91MEBbdtmZXP1xDfQpajg=
 github.com/iotaledger/iota.go v1.0.0-beta.9/go.mod h1:F6WBmYd98mVjAmmPVYhnxg8NNIWCjjH8VWT9qvv3Rc8=
 github.com/jonboulle/clockwork v0.1.0/go.mod h1:Ii8DK3G1RaLaWxj9trq07+26W01tbo22gdxWY5EU2bo=

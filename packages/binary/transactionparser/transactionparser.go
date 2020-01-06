@@ -43,7 +43,7 @@ func New() (result *TransactionParser) {
 	// add builtin filters
 	result.AddBytesFilter(builtinfilters.NewRecentlySeenBytesFilter())
 	result.AddTransactionsFilter(builtinfilters.NewTransactionSignatureFilter())
-	result.AddTransactionsFilter(builtinfilters.NewValueTransactionSignatureFilter())
+	result.AddTransactionsFilter(builtinfilters.NewValueTransferSignatureFilter())
 
 	return
 }

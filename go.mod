@@ -15,7 +15,7 @@ require (
 	github.com/golang/protobuf v1.3.2 // indirect
 	github.com/google/open-location-code/go v0.0.0-20190903173953-119bc96a3a51
 	github.com/gorilla/websocket v1.4.1
-	github.com/iotaledger/hive.go v0.0.0-20200101211541-ea7950f4c2f2
+	github.com/iotaledger/hive.go v0.0.0-20200106003337-d78637b86bf2
 	github.com/iotaledger/iota.go v1.0.0-beta.9
 	github.com/kr/text v0.1.0
 	github.com/labstack/echo v3.3.10+incompatible

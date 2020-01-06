@@ -3,6 +3,7 @@ package tangle
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/iotaledger/goshimmer/packages/binary/identity"
 	"github.com/iotaledger/goshimmer/packages/binary/transaction"
@@ -48,10 +49,12 @@ func TestTangle_AttachTransaction(t *testing.T) {
 	}
 
 	newTransaction1 := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), data.New([]byte("some data")))
-	newTransaction2 := transaction.New(newTransaction1.GetId(), transaction.EmptyId, identity.Generate(), data.New([]byte("some other data")))
+	newTransaction2 := transaction.New(newTransaction1.GetId(), newTransaction1.GetId(), identity.Generate(), data.New([]byte("some other data")))
 
 	fmt.Println("ATTACH", newTransaction2.GetId())
 	tangle.AttachTransaction(newTransaction2)
+
+	time.Sleep(1 * time.Second)
 
 	fmt.Println("ATTACH", newTransaction1.GetId())
 	tangle.AttachTransaction(newTransaction1)
