@@ -13,10 +13,10 @@ import (
 )
 
 func TestTransferOutput_MarshalUnmarshal(t *testing.T) {
-	transferOutput := NewTransferOutput(nil, reality.NewId("REALITY"), NewHash("RECEIVE"), address.New([]byte("ADDRESS1")), coloredcoins.NewColoredBalance(coloredcoins.NewColor("IOTA"), 44), coloredcoins.NewColoredBalance(coloredcoins.NewColor("BTC"), 88))
-	transferOutput.consumers = make(map[Hash][]address.Address)
+	transferOutput := NewTransferOutput(nil, reality.NewId("REALITY"), NewId([]byte("RECEIVE")), address.New([]byte("ADDRESS1")), coloredcoins.NewColoredBalance(coloredcoins.NewColor("IOTA"), 44), coloredcoins.NewColoredBalance(coloredcoins.NewColor("BTC"), 88))
+	transferOutput.consumers = make(map[Id][]address.Address)
 
-	spendTransferHash := NewHash("SPEND")
+	spendTransferHash := NewId([]byte("SPEND"))
 	transferOutput.consumers[spendTransferHash] = make([]address.Address, 2)
 	transferOutput.consumers[spendTransferHash][0] = address.New([]byte("ADDRESS2"))
 	transferOutput.consumers[spendTransferHash][1] = address.New([]byte("ADDRESS3"))

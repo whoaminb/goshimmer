@@ -6,9 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/iotaledger/goshimmer/packages/binary/async"
-
 	"github.com/iotaledger/goshimmer/packages/binary/signature/ed25119"
+	"github.com/iotaledger/hive.go/async"
 
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
 
@@ -66,7 +65,7 @@ func BenchmarkVerifyValueTransactions(b *testing.B) {
 	transactions := make([][]byte, b.N)
 	for i := 0; i < b.N; i++ {
 		tx := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), valuetransfer.New().
-			AddInput(transfer.NewHash("test"), address.FromPublicKey(keyPairOfSourceAddress.PublicKey)).
+			AddInput(transfer.NewId([]byte("test")), address.FromPublicKey(keyPairOfSourceAddress.PublicKey)).
 			AddOutput(address.FromPublicKey(keyPairOfTargetAddress.PublicKey), coloredcoins.NewColoredBalance(coloredcoins.NewColor("IOTA"), 12)).
 			Sign(keyPairOfSourceAddress))
 
@@ -134,7 +133,7 @@ func TestNew(t *testing.T) {
 
 	newValueTransaction1 := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(),
 		valuetransfer.New().
-			AddInput(transfer.NewHash("test"), address.FromPublicKey(keyPairOfSourceAddress.PublicKey)).
+			AddInput(transfer.NewId("test"), address.FromPublicKey(keyPairOfSourceAddress.PublicKey)).
 			AddOutput(address.FromPublicKey(keyPairOfTargetAddress.PublicKey), coloredcoins.NewColoredBalance(coloredcoins.NewColor("IOTA"), 12)).
 			Sign(keyPairOfSourceAddress),
 	)

@@ -19,6 +19,8 @@ const (
 )
 
 type Tangle struct {
+	storageId []byte
+
 	transactionStorage         *objectstorage.ObjectStorage
 	transactionMetadataStorage *objectstorage.ObjectStorage
 	approversStorage           *objectstorage.ObjectStorage
@@ -34,6 +36,7 @@ type Tangle struct {
 // Constructor for the tangle.
 func New(storageId []byte) (result *Tangle) {
 	result = &Tangle{
+		storageId:                  storageId,
 		transactionStorage:         objectstorage.New(append(storageId, storageprefix.TangleTransaction...), transaction.FromStorage),
 		transactionMetadataStorage: objectstorage.New(append(storageId, storageprefix.TangleTransactionMetadata...), transactionmetadata.FromStorage),
 		approversStorage:           objectstorage.New(append(storageId, storageprefix.TangleApprovers...), approvers.FromStorage),
@@ -47,16 +50,29 @@ func New(storageId []byte) (result *Tangle) {
 	return
 }
 
+// Returns the storage id of this tangle (can be used to create ontologies that follow the storage of the main tangle).
+func (tangle *Tangle) GetStorageId() []byte {
+	return tangle.storageId
+}
+
 // Attaches a new transaction to the tangle.
 func (tangle *Tangle) AttachTransaction(transaction *transaction.Transaction) {
 	tangle.storeTransactionsWorkerPool.Submit(func() { tangle.storeTransactionWorker(transaction) })
 }
 
-// Triggers the solidification of a given transaction.
-func (tangle *Tangle) SolidifyTransaction(transactionId transaction.Id) {
-	tangle.solidifierWorkerPool.Submit(func() {
-		tangle.solidifyTransactionWorker(tangle.GetTransaction(transactionId), tangle.GetTransactionMetadata(transactionId))
-	})
+// Retrieves a transaction from the tangle.
+func (tangle *Tangle) GetTransaction(transactionId transaction.Id) *transaction.CachedTransaction {
+	return &transaction.CachedTransaction{CachedObject: tangle.transactionStorage.Load(transactionId[:])}
+}
+
+// Retrieves the metadata of a transaction from the tangle.
+func (tangle *Tangle) GetTransactionMetadata(transactionId transaction.Id) *transactionmetadata.CachedTransactionMetadata {
+	return &transactionmetadata.CachedTransactionMetadata{CachedObject: tangle.transactionMetadataStorage.Load(transactionId[:])}
+}
+
+// Retrieves the approvers of a transaction from the tangle.
+func (tangle *Tangle) GetApprovers(transactionId transaction.Id) *approvers.CachedApprovers {
+	return &approvers.CachedApprovers{CachedObject: tangle.approversStorage.Load(transactionId[:])}
 }
 
 // Deletes a transaction from the tangle (i.e. for local snapshots)
@@ -82,21 +98,6 @@ func (tangle *Tangle) DeleteTransaction(transactionId transaction.Id) {
 	tangle.missingTransactionsStorage.Delete(transactionId[:])
 
 	tangle.Events.TransactionRemoved.Trigger(transactionId)
-}
-
-// Retrieves a transaction from the tangle.
-func (tangle *Tangle) GetTransaction(transactionId transaction.Id) *transaction.CachedTransaction {
-	return &transaction.CachedTransaction{CachedObject: tangle.transactionStorage.Load(transactionId[:])}
-}
-
-// Retrieves the metadata of a transaction from the tangle.
-func (tangle *Tangle) GetTransactionMetadata(transactionId transaction.Id) *transactionmetadata.CachedTransactionMetadata {
-	return &transactionmetadata.CachedTransactionMetadata{CachedObject: tangle.transactionMetadataStorage.Load(transactionId[:])}
-}
-
-// Retrieves the approvers of a transaction from the tangle.
-func (tangle *Tangle) GetApprovers(transactionId transaction.Id) *approvers.CachedApprovers {
-	return &approvers.CachedApprovers{CachedObject: tangle.approversStorage.Load(transactionId[:])}
 }
 
 // Marks the tangle as stopped, so it will not accept any new transactions (waits for all backgroundTasks to finish.
@@ -161,7 +162,7 @@ func (tangle *Tangle) storeTransactionWorker(tx *transaction.Transaction) {
 	addTransactionToApprovers(transactionId, tx.GetBranchTransactionId())
 
 	if tangle.missingTransactionsStorage.DeleteIfPresent(transactionId[:]) {
-		tangle.Events.MissingTransactionAttached.Trigger(transactionId)
+		tangle.Events.MissingTransactionReceived.Trigger(transactionId)
 	}
 
 	tangle.Events.TransactionAttached.Trigger(cachedTransaction, cachedTransactionMetadata)

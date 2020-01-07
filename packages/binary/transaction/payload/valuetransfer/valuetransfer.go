@@ -43,16 +43,24 @@ func (valueTransfer *ValueTransfer) GetType() payload.Type {
 	return Type
 }
 
-func (valueTransfer *ValueTransfer) AddInput(transferHash transfer.Hash, address address.Address) *ValueTransfer {
+func (valueTransfer *ValueTransfer) AddInput(transferId transfer.Id, address address.Address) *ValueTransfer {
 	if valueTransfer.isFinalized() {
 		panic("you can not add inputs after you have started finalizing (sign / marshal) the ValueTransfer")
 	}
 
 	valueTransfer.inputsMutex.Lock()
-	valueTransfer.inputs = append(valueTransfer.inputs, transfer.NewOutputReference(transferHash, address))
+	valueTransfer.inputs = append(valueTransfer.inputs, transfer.NewOutputReference(transferId, address))
 	valueTransfer.inputsMutex.Unlock()
 
 	return valueTransfer
+}
+
+func (valueTransfer *ValueTransfer) GetInputs() (result []*transfer.OutputReference) {
+	valueTransfer.inputsMutex.RLock()
+	result = valueTransfer.inputs
+	valueTransfer.inputsMutex.RUnlock()
+
+	return
 }
 
 func (valueTransfer *ValueTransfer) AddOutput(address address.Address, balance *coloredcoins.ColoredBalance) *ValueTransfer {
@@ -180,7 +188,7 @@ func (valueTransfer *ValueTransfer) marshalPayloadBytes() (result []byte) {
 
 func (valueTransfer *ValueTransfer) marshalInputs() (result []byte) {
 	inputCount := len(valueTransfer.inputs)
-	marshaledTransferOutputReferenceLength := transfer.HashLength + address.Length
+	marshaledTransferOutputReferenceLength := transfer.IdLength + address.Length
 
 	result = make([]byte, 4+inputCount*marshaledTransferOutputReferenceLength)
 	offset := 0
@@ -281,7 +289,7 @@ func (valueTransfer *ValueTransfer) unmarshalInputs(bytes []byte, offset *int) (
 	*offset += 4
 
 	valueTransfer.inputs = make([]*transfer.OutputReference, inputCount)
-	marshaledTransferOutputReferenceLength := transfer.HashLength + address.Length
+	marshaledTransferOutputReferenceLength := transfer.IdLength + address.Length
 	for i := 0; i < inputCount; i++ {
 		var transferOutputReference transfer.OutputReference
 		if err = transferOutputReference.UnmarshalBinary(bytes[*offset:]); err != nil {

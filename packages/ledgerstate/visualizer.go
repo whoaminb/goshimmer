@@ -11,7 +11,7 @@ import (
 	"github.com/iotaledger/hive.go/objectstorage"
 )
 
-type transferOutputId [transfer.HashLength + address.Length]byte
+type transferOutputId [transfer.IdLength + address.Length]byte
 
 type Visualizer struct {
 	ledgerState         *LedgerState
@@ -79,7 +79,7 @@ func (visualizer *Visualizer) generateTransferOutputId(transferOutput *transfer.
 	addressHash := transferOutput.GetAddressHash()
 
 	copy(result[:], transferHash[:])
-	copy(result[transfer.HashLength:], addressHash[:])
+	copy(result[transfer.IdLength:], addressHash[:])
 
 	return
 }

@@ -16,19 +16,19 @@ type Id [IdLength]byte
 func NewId(conflictBytes ...interface{}) (result Id) {
 	switch len(conflictBytes) {
 	case 2:
-		transferHash, ok := conflictBytes[0].(transfer.Hash)
+		transferHash, ok := conflictBytes[0].(transfer.Id)
 		if !ok {
 			panic("expected first parameter of NewId to be a TransferHash")
 		}
 
-		addressHash, ok := conflictBytes[0].(transfer.Hash)
+		addressHash, ok := conflictBytes[0].(transfer.Id)
 		if !ok {
 			panic("expected second parameter of NewId to be a AddressHash")
 		}
 
-		fullConflictSetIdentifier := make([]byte, transfer.HashLength+address.Length)
+		fullConflictSetIdentifier := make([]byte, transfer.IdLength+address.Length)
 		copy(fullConflictSetIdentifier, transferHash[:])
-		copy(fullConflictSetIdentifier[transfer.HashLength:], addressHash[:])
+		copy(fullConflictSetIdentifier[transfer.IdLength:], addressHash[:])
 
 		result = blake2b.Sum256(fullConflictSetIdentifier)
 	case 1:

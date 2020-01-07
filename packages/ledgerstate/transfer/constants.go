@@ -16,7 +16,7 @@ const (
 	marshalTransferOutputBookingSpentStart        = marshalTransferOutputBookingAddressHashEnd
 	marshalTransferOutputBookingSpentEnd          = marshalTransferOutputBookingSpentStart + 1
 	marshalTransferOutputBookingTransferHashStart = marshalTransferOutputBookingSpentEnd
-	marshalTransferOutputBookingTransferHashEnd   = marshalTransferOutputBookingTransferHashStart + HashLength
+	marshalTransferOutputBookingTransferHashEnd   = marshalTransferOutputBookingTransferHashStart + IdLength
 	marshalTransferOutputBookingTotalLength       = marshalTransferOutputBookingTransferHashEnd
 )
 

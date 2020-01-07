@@ -7,11 +7,11 @@ import (
 
 type OutputReference struct {
 	storageKey   []byte
-	transferHash Hash
+	transferHash Id
 	addressHash  address.Address
 }
 
-func NewOutputReference(transferHash Hash, addressHash address.Address) *OutputReference {
+func NewOutputReference(transferHash Id, addressHash address.Address) *OutputReference {
 	return &OutputReference{
 		storageKey:   append(transferHash[:], addressHash[:]...),
 		transferHash: transferHash,
@@ -19,16 +19,20 @@ func NewOutputReference(transferHash Hash, addressHash address.Address) *OutputR
 	}
 }
 
+func (reference *OutputReference) GetTransferHash() Id {
+	return reference.transferHash
+}
+
 func (reference *OutputReference) GetAddress() address.Address {
 	return reference.addressHash
 }
 
 func (reference *OutputReference) MarshalBinary() (result []byte, err error) {
-	result = make([]byte, HashLength+address.Length)
+	result = make([]byte, IdLength+address.Length)
 	offset := 0
 
 	copy(result[offset:], reference.transferHash[:])
-	offset += HashLength
+	offset += IdLength
 
 	copy(result[offset:], reference.addressHash[:])
 
@@ -39,7 +43,7 @@ func (reference *OutputReference) UnmarshalBinary(bytes []byte) (err error) {
 	offset := 0
 
 	copy(reference.transferHash[:], bytes[offset:])
-	offset += HashLength
+	offset += IdLength
 
 	copy(reference.addressHash[:], bytes[offset:])
 

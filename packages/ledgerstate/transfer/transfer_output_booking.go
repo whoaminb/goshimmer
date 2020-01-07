@@ -16,12 +16,12 @@ type OutputBooking struct {
 	realityId    reality.Id
 	addressHash  address.Address
 	spent        bool
-	transferHash Hash
+	transferHash Id
 
 	storageKey []byte
 }
 
-func NewTransferOutputBooking(realityId reality.Id, addressHash address.Address, spent bool, transferHash Hash) (result *OutputBooking) {
+func NewTransferOutputBooking(realityId reality.Id, addressHash address.Address, spent bool, transferHash Id) (result *OutputBooking) {
 	result = &OutputBooking{
 		realityId:    realityId,
 		addressHash:  addressHash,
@@ -46,7 +46,7 @@ func (booking *OutputBooking) IsSpent() bool {
 	return booking.spent
 }
 
-func (booking *OutputBooking) GetTransferHash() Hash {
+func (booking *OutputBooking) GetTransferHash() Id {
 	return booking.transferHash
 }
 

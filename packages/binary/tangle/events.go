@@ -10,7 +10,7 @@ type Events struct {
 	TransactionAttached        *events.Event
 	TransactionSolid           *events.Event
 	TransactionMissing         *events.Event
-	MissingTransactionAttached *events.Event
+	MissingTransactionReceived *events.Event
 	TransactionRemoved         *events.Event
 }
 
@@ -19,7 +19,7 @@ func newEvents() *Events {
 		TransactionAttached:        events.NewEvent(cachedTransactionEvent),
 		TransactionSolid:           events.NewEvent(cachedTransactionEvent),
 		TransactionMissing:         events.NewEvent(transactionIdEvent),
-		MissingTransactionAttached: events.NewEvent(transactionIdEvent),
+		MissingTransactionReceived: events.NewEvent(transactionIdEvent),
 		TransactionRemoved:         events.NewEvent(transactionIdEvent),
 	}
 }

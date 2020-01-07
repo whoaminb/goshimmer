@@ -8,8 +8,8 @@ import (
 
 // region private utility methods //////////////////////////////////////////////////////////////////////////////////////
 
-func GenerateOutputBookingStorageKey(realityId reality.Id, addressHash address.Address, spent bool, transferHash Hash) (storageKey []byte) {
-	storageKey = make([]byte, reality.IdLength+address.Length+1+HashLength)
+func GenerateOutputBookingStorageKey(realityId reality.Id, addressHash address.Address, spent bool, transferHash Id) (storageKey []byte) {
+	storageKey = make([]byte, reality.IdLength+address.Length+1+IdLength)
 
 	copy(storageKey[marshalTransferOutputBookingRealityIdStart:marshalTransferOutputBookingRealityIdEnd], realityId[:reality.IdLength])
 	copy(storageKey[marshalTransferOutputBookingAddressHashStart:marshalTransferOutputBookingAddressHashEnd], addressHash[:address.Length])
@@ -18,7 +18,7 @@ func GenerateOutputBookingStorageKey(realityId reality.Id, addressHash address.A
 	} else {
 		storageKey[marshalTransferOutputBookingSpentStart] = byte(UNSPENT)
 	}
-	copy(storageKey[marshalTransferOutputBookingTransferHashStart:marshalTransferOutputBookingTransferHashEnd], transferHash[:HashLength])
+	copy(storageKey[marshalTransferOutputBookingTransferHashStart:marshalTransferOutputBookingTransferHashEnd], transferHash[:IdLength])
 
 	return
 }

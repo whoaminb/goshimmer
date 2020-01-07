@@ -50,7 +50,7 @@ func NewLedgerState(storageId []byte) *LedgerState {
 	return result
 }
 
-func (ledgerState *LedgerState) AddTransferOutput(transferHash transfer.Hash, addressHash address.Address, balances ...*coloredcoins.ColoredBalance) *LedgerState {
+func (ledgerState *LedgerState) AddTransferOutput(transferHash transfer.Id, addressHash address.Address, balances ...*coloredcoins.ColoredBalance) *LedgerState {
 	ledgerState.GetReality(reality.MAIN_ID).Consume(func(object objectstorage.StorableObject) {
 		mainReality := object.(*Reality)
 
@@ -153,7 +153,7 @@ func (ledgerState *LedgerState) BookTransfer(transfer *transfer.Transfer) (err e
 	ledgerState.getTargetReality(inputs).Consume(func(object objectstorage.StorableObject) {
 		targetReality := object.(*Reality)
 
-		if err = targetReality.bookTransfer(transfer.GetHash(), inputs, transfer.GetOutputs()); err != nil {
+		if err = targetReality.bookTransfer(transfer.GetId(), inputs, transfer.GetOutputs()); err != nil {
 			return
 		}
 
@@ -388,7 +388,7 @@ func (ledgerState *LedgerState) Prune() *LedgerState {
 func (ledgerState *LedgerState) generateFilterPrefixes(filters []interface{}) ([][]byte, bool) {
 	filteredRealities := make([]reality.Id, 0)
 	filteredAddresses := make([]address.Address, 0)
-	filteredTransfers := make([]transfer.Hash, 0)
+	filteredTransfers := make([]transfer.Id, 0)
 	filterSpent := false
 	filterUnspent := false
 
@@ -398,7 +398,7 @@ func (ledgerState *LedgerState) generateFilterPrefixes(filters []interface{}) ([
 			filteredRealities = append(filteredRealities, typeCastedValue)
 		case address.Address:
 			filteredAddresses = append(filteredAddresses, typeCastedValue)
-		case transfer.Hash:
+		case transfer.Id:
 			filteredTransfers = append(filteredTransfers, typeCastedValue)
 		case transfer.SpentIndicator:
 			switch typeCastedValue {

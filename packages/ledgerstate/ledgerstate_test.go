@@ -17,12 +17,12 @@ import (
 var (
 	iota_          = coloredcoins.NewColor("IOTA")
 	eth            = coloredcoins.NewColor("ETH")
-	transferHash1  = transfer.NewHash("TRANSFER1")
-	transferHash2  = transfer.NewHash("TRANSFER2")
-	transferHash3  = transfer.NewHash("TRANSFER3")
-	transferHash4  = transfer.NewHash("TRANSFER4")
-	transferHash5  = transfer.NewHash("TRANSFER5")
-	transferHash6  = transfer.NewHash("TRANSFER6")
+	transferHash1  = transfer.NewId([]byte("TRANSFER1"))
+	transferHash2  = transfer.NewId([]byte("TRANSFER2"))
+	transferHash3  = transfer.NewId([]byte("TRANSFER3"))
+	transferHash4  = transfer.NewId([]byte("TRANSFER4"))
+	transferHash5  = transfer.NewId([]byte("TRANSFER5"))
+	transferHash6  = transfer.NewId([]byte("TRANSFER6"))
 	addressHash1   = address.New([]byte("ADDRESS1"))
 	addressHash2   = address.New([]byte("ADDRESS2"))
 	addressHash3   = address.New([]byte("ADDRESS3"))
@@ -42,7 +42,7 @@ func Benchmark(b *testing.B) {
 	lastTransferHash := transferHash1
 
 	for i := 0; i < b.N; i++ {
-		newTransferHash := transfer.NewHash(strconv.Itoa(i))
+		newTransferHash := transfer.NewId([]byte(strconv.Itoa(i)))
 
 		if err := ledgerState.BookTransfer(transfer.NewTransfer(newTransferHash).AddInput(
 			transfer.NewOutputReference(lastTransferHash, addressHash1),
@@ -108,10 +108,10 @@ func Test(t *testing.T) {
 
 var transferHashCounter = 0
 
-func generateRandomTransferHash() transfer.Hash {
+func generateRandomTransferHash() transfer.Id {
 	transferHashCounter++
 
-	return transfer.NewHash("TRANSFER" + strconv.Itoa(transferHashCounter))
+	return transfer.NewId([]byte("TRANSFER" + strconv.Itoa(transferHashCounter)))
 }
 
 var addressHashCounter = 0

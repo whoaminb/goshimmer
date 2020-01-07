@@ -424,7 +424,7 @@ func (mreality *Reality) CreateReality(id reality.Id) *objectstorage.CachedObjec
 
 // Books a transfer into this reality (wrapper for the private bookTransfer function).
 func (mreality *Reality) BookTransfer(transfer *transfer.Transfer) (err error) {
-	err = mreality.bookTransfer(transfer.GetHash(), mreality.ledgerState.getTransferInputs(transfer), transfer.GetOutputs())
+	err = mreality.bookTransfer(transfer.GetId(), mreality.ledgerState.getTransferInputs(transfer), transfer.GetOutputs())
 
 	return
 }
@@ -450,7 +450,7 @@ func (mreality *Reality) String() (result string) {
 }
 
 // Books a transfer into this reality (contains the dispatcher for the actual tasks).
-func (mreality *Reality) bookTransfer(transferHash transfer.Hash, inputs objectstorage.CachedObjects, outputs map[address.Address][]*coloredcoins.ColoredBalance) (err error) {
+func (mreality *Reality) bookTransfer(transferHash transfer.Id, inputs objectstorage.CachedObjects, outputs map[address.Address][]*coloredcoins.ColoredBalance) (err error) {
 	if err = mreality.verifyTransfer(inputs, outputs); err != nil {
 		return
 	}
@@ -511,7 +511,7 @@ func (mreality *Reality) verifyTransfer(inputs []*objectstorage.CachedObject, ou
 
 // Internal utility function that marks the consumed inputs as spent and returns the corresponding conflicts if the
 // inputs have been consumed before.
-func (mreality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transferHash transfer.Hash, outputs map[address.Address][]*coloredcoins.ColoredBalance) (conflicts objectstorage.CachedObjects, err error) {
+func (mreality *Reality) consumeInputs(inputs objectstorage.CachedObjects, transferHash transfer.Id, outputs map[address.Address][]*coloredcoins.ColoredBalance) (conflicts objectstorage.CachedObjects, err error) {
 	conflicts = make(objectstorage.CachedObjects, 0)
 
 	for _, input := range inputs {
@@ -539,7 +539,7 @@ func (mreality *Reality) consumeInputs(inputs objectstorage.CachedObjects, trans
 //
 // If the inputs have been used before and we consequently have a non-empty list of conflicts, we first create a new
 // reality for the inputs and then book the transfer outputs into the correct reality.
-func (mreality *Reality) createTransferOutputs(transferHash transfer.Hash, outputs map[address.Address][]*coloredcoins.ColoredBalance, conflicts objectstorage.CachedObjects) (err error) {
+func (mreality *Reality) createTransferOutputs(transferHash transfer.Id, outputs map[address.Address][]*coloredcoins.ColoredBalance, conflicts objectstorage.CachedObjects) (err error) {
 	if len(conflicts) >= 1 {
 		targetRealityId := transferHash.ToRealityId()
 
@@ -588,7 +588,7 @@ func (mreality *Reality) collectParentConflictRealities(parentConflictRealities 
 
 // Utility function that processes a conflicting input by retrieving the corresponding conflict.
 // If there is a non-empty list of consumers to elevate, we elevate them.
-func (mreality *Reality) processConflictingInput(input *transfer.Output, consumersToElevate map[transfer.Hash][]address.Address) (cachedConflict *objectstorage.CachedObject, err error) {
+func (mreality *Reality) processConflictingInput(input *transfer.Output, consumersToElevate map[transfer.Id][]address.Address) (cachedConflict *objectstorage.CachedObject, err error) {
 	conflictId := conflict.NewId(input.GetTransferHash(), input.GetAddressHash())
 
 	if len(consumersToElevate) >= 1 {
@@ -603,7 +603,7 @@ func (mreality *Reality) processConflictingInput(input *transfer.Output, consume
 }
 
 // Creates a Reality for the consumers of the conflicting inputs and registers it as part of the corresponding Conflict.
-func (mreality *Reality) createRealityForPreviouslyUnconflictingConsumers(consumersOfConflictingInput map[transfer.Hash][]address.Address, conflict *conflict.Conflict) (err error) {
+func (mreality *Reality) createRealityForPreviouslyUnconflictingConsumers(consumersOfConflictingInput map[transfer.Id][]address.Address, conflict *conflict.Conflict) (err error) {
 	for transferHash, addressHashes := range consumersOfConflictingInput {
 		elevatedRealityId := transferHash.ToRealityId()
 

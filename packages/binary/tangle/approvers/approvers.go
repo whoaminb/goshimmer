@@ -1,7 +1,10 @@
 package approvers
 
 import (
+	"encoding/binary"
 	"sync"
+
+	"github.com/iotaledger/goshimmer/packages/binary/types"
 
 	"github.com/iotaledger/goshimmer/packages/binary/transaction"
 	"github.com/iotaledger/hive.go/objectstorage"
@@ -11,14 +14,14 @@ type Approvers struct {
 	objectstorage.StorableObjectFlags
 
 	transactionId  transaction.Id
-	approvers      map[transaction.Id]empty
+	approvers      map[transaction.Id]types.Empty
 	approversMutex sync.RWMutex
 }
 
 func New(transactionId transaction.Id) *Approvers {
 	return &Approvers{
 		transactionId: transactionId,
-		approvers:     make(map[transaction.Id]empty),
+		approvers:     make(map[transaction.Id]types.Empty),
 	}
 }
 
@@ -39,11 +42,11 @@ func (approvers *Approvers) GetTransactionId() transaction.Id {
 	return approvers.transactionId
 }
 
-func (approvers *Approvers) Get() (result map[transaction.Id]empty) {
+func (approvers *Approvers) Get() (result map[transaction.Id]types.Empty) {
 	approvers.approversMutex.RLock()
-	result = make(map[transaction.Id]empty, len(approvers.approvers))
+	result = make(map[transaction.Id]types.Empty, len(approvers.approvers))
 	for approverId := range approvers.approvers {
-		result[approverId] = void
+		result[approverId] = types.Void
 	}
 	approvers.approversMutex.RUnlock()
 
@@ -57,7 +60,7 @@ func (approvers *Approvers) Add(transactionId transaction.Id) (modified bool) {
 
 		approvers.approversMutex.Lock()
 		if _, exists := approvers.approvers[transactionId]; !exists {
-			approvers.approvers[transactionId] = void
+			approvers.approvers[transactionId] = types.Void
 
 			modified = true
 
@@ -111,11 +114,50 @@ func (approvers *Approvers) Update(other objectstorage.StorableObject) {
 }
 
 func (approvers *Approvers) MarshalBinary() (result []byte, err error) {
+	approvers.approversMutex.RLock()
+
+	approversCount := len(approvers.approvers)
+	result = make([]byte, 4+approversCount*transaction.IdLength)
+	offset := 0
+
+	binary.LittleEndian.PutUint32(result[offset:], uint32(approversCount))
+	offset += 4
+
+	for approverId := range approvers.approvers {
+		marshaledBytes, marshalErr := approverId.MarshalBinary()
+		if marshalErr != nil {
+			err = marshalErr
+
+			approvers.approversMutex.RUnlock()
+
+			return
+		}
+
+		copy(result[offset:], marshaledBytes)
+		offset += len(marshaledBytes)
+	}
+
+	approvers.approversMutex.RUnlock()
+
 	return
 }
 
 func (approvers *Approvers) UnmarshalBinary(data []byte) (err error) {
-	approvers.approvers = make(map[transaction.Id]empty)
+	approvers.approvers = make(map[transaction.Id]types.Empty)
+	offset := 0
+
+	approversCount := int(binary.LittleEndian.Uint32(data[offset:]))
+	offset += 4
+
+	for i := 0; i < approversCount; i++ {
+		var approverId transaction.Id
+		if err = approverId.UnmarshalBinary(data[offset:]); err != nil {
+			return
+		}
+		offset += transaction.IdLength
+
+		approvers.approvers[approverId] = types.Void
+	}
 
 	return
 }

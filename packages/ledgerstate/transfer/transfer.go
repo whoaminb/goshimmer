@@ -6,21 +6,21 @@ import (
 )
 
 type Transfer struct {
-	hash    Hash
+	id      Id
 	inputs  []*OutputReference
 	outputs map[address.Address][]*coloredcoins.ColoredBalance
 }
 
-func NewTransfer(transferHash Hash) *Transfer {
+func NewTransfer(id Id) *Transfer {
 	return &Transfer{
-		hash:    transferHash,
+		id:      id,
 		inputs:  make([]*OutputReference, 0),
 		outputs: make(map[address.Address][]*coloredcoins.ColoredBalance),
 	}
 }
 
-func (transfer *Transfer) GetHash() Hash {
-	return transfer.hash
+func (transfer *Transfer) GetId() Id {
+	return transfer.id
 }
 
 func (transfer *Transfer) GetInputs() []*OutputReference {
