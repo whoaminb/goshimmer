@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/iotaledger/hive.go/events"
+
 	"github.com/iotaledger/goshimmer/packages/binary/identity"
 	"github.com/iotaledger/goshimmer/packages/binary/transaction"
 	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload/data"
@@ -20,21 +22,16 @@ func BenchmarkTangle_AttachTransaction(b *testing.B) {
 
 	testIdentity := identity.Generate()
 
-	transactionBytes := make([][]byte, b.N)
+	transactionBytes := make([]*transaction.Transaction, b.N)
 	for i := 0; i < b.N; i++ {
-		transactionBytes[i] = transaction.New(transaction.EmptyId, transaction.EmptyId, testIdentity, data.New([]byte("some data"))).GetBytes()
+		transactionBytes[i] = transaction.New(transaction.EmptyId, transaction.EmptyId, testIdentity, data.New([]byte("some data")))
+		transactionBytes[i].GetBytes()
 	}
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		if txToAttach, err := transaction.FromBytes(transactionBytes[i]); err != nil {
-			b.Error(err)
-
-			return
-		} else {
-			tangle.AttachTransaction(txToAttach)
-		}
+		tangle.AttachTransaction(transactionBytes[i])
 	}
 
 	tangle.Shutdown()
@@ -48,13 +45,21 @@ func TestTangle_AttachTransaction(t *testing.T) {
 		return
 	}
 
+	tangle.Events.TransactionMissing.Attach(events.NewClosure(func(transactionId transaction.Id) {
+		fmt.Println("MISSING:", transactionId)
+	}))
+
+	tangle.Events.TransactionRemoved.Attach(events.NewClosure(func(transactionId transaction.Id) {
+		fmt.Println("REMOVED:", transactionId)
+	}))
+
 	newTransaction1 := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), data.New([]byte("some data")))
 	newTransaction2 := transaction.New(newTransaction1.GetId(), newTransaction1.GetId(), identity.Generate(), data.New([]byte("some other data")))
 
 	fmt.Println("ATTACH", newTransaction2.GetId())
 	tangle.AttachTransaction(newTransaction2)
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(37 * time.Second)
 
 	fmt.Println("ATTACH", newTransaction1.GetId())
 	tangle.AttachTransaction(newTransaction1)

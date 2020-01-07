@@ -26,6 +26,13 @@ func New(transactionId transaction.Id) *TransactionMetadata {
 	}
 }
 
+func FromStorage(id []byte) objectstorage.StorableObject {
+	result := &TransactionMetadata{}
+	copy(result.transactionId[:], id)
+
+	return result
+}
+
 func (transactionMetadata *TransactionMetadata) IsSolid() (result bool) {
 	transactionMetadata.solidMutex.RLock()
 	result = transactionMetadata.solid

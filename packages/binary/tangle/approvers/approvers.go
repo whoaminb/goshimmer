@@ -24,7 +24,7 @@ func New(transactionId transaction.Id) *Approvers {
 
 // Get's called when we restore the approvers from storage. The bytes and the content will be unmarshaled by an external
 // caller (the objectStorage factory).
-func FromStorage(id []byte) (result *Approvers) {
+func FromStorage(id []byte) (result objectstorage.StorableObject) {
 	var transactionId transaction.Id
 	copy(transactionId[:], id)
 
@@ -92,6 +92,14 @@ func (approvers *Approvers) Remove(transactionId transaction.Id) (modified bool)
 	return
 }
 
+func (approvers *Approvers) Size() (result int) {
+	approvers.approversMutex.RLock()
+	result = len(approvers.approvers)
+	approvers.approversMutex.RUnlock()
+
+	return
+}
+
 func (approvers *Approvers) GetStorageKey() []byte {
 	transactionId := approvers.GetTransactionId()
 
@@ -107,5 +115,7 @@ func (approvers *Approvers) MarshalBinary() (result []byte, err error) {
 }
 
 func (approvers *Approvers) UnmarshalBinary(data []byte) (err error) {
+	approvers.approvers = make(map[transaction.Id]empty)
+
 	return
 }
