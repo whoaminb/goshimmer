@@ -4,9 +4,12 @@ import (
 	"container/list"
 	"time"
 
+	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload/valuetransfer"
+
 	"github.com/iotaledger/goshimmer/packages/binary/tangle/approvers"
 	"github.com/iotaledger/goshimmer/packages/binary/tangle/missingtransaction"
 	"github.com/iotaledger/goshimmer/packages/binary/transaction"
+	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload/data"
 	"github.com/iotaledger/goshimmer/packages/binary/transactionmetadata"
 	"github.com/iotaledger/goshimmer/packages/storageprefix"
 	"github.com/iotaledger/hive.go/async"
@@ -48,6 +51,31 @@ func New(storageId []byte) (result *Tangle) {
 	result.solidifierWorkerPool.Tune(1024)
 
 	return
+}
+
+func (tangle *Tangle) LoadSnapshot(snapshot *Snapshot) {
+	fakeTransactionId := func(tx *transaction.Transaction, id transaction.Id) *transaction.Transaction {
+		fakedTransaction := transaction.FromStorage(id[:])
+		if err := fakedTransaction.UnmarshalBinary(tx.GetBytes()); err != nil {
+			panic(err)
+		}
+
+		return fakedTransaction.(*transaction.Transaction)
+	}
+
+	for transactionId, addresses := range snapshot.SolidEntryPoints {
+		if addresses == nil {
+			tangle.AttachTransaction(fakeTransactionId(transaction.New(transaction.EmptyId, transaction.EmptyId, nil, data.New(nil)), transactionId))
+		} else {
+			valueTransfer := valuetransfer.New()
+
+			for address, coloredBalance := range addresses {
+				valueTransfer.AddOutput(address, coloredBalance)
+			}
+
+			tangle.AttachTransaction(fakeTransactionId(transaction.New(transaction.EmptyId, transaction.EmptyId, nil, valueTransfer), transactionId))
+		}
+	}
 }
 
 // Returns the storage id of this tangle (can be used to create ontologies that follow the storage of the main tangle).
@@ -157,7 +185,7 @@ func (tangle *Tangle) storeTransactionWorker(tx *transaction.Transaction) {
 
 	transactionId := tx.GetId()
 
-	cachedTransactionMetadata := &transactionmetadata.CachedTransactionMetadata{CachedObject: tangle.transactionMetadataStorage.Store(transactionmetadata.New(tx.GetId()))}
+	cachedTransactionMetadata := &transactionmetadata.CachedTransactionMetadata{CachedObject: tangle.transactionMetadataStorage.Store(transactionmetadata.New(transactionId))}
 	addTransactionToApprovers(transactionId, tx.GetTrunkTransactionId())
 	addTransactionToApprovers(transactionId, tx.GetBranchTransactionId())
 

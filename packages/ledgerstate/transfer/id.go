@@ -44,4 +44,4 @@ func (transferId Id) String() string {
 
 var EmptyId = Id{}
 
-const IdLength = 32
+const IdLength = 64

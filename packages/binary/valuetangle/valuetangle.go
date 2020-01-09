@@ -2,15 +2,19 @@ package valuetangle
 
 import (
 	"container/list"
+	"fmt"
+	"time"
 
 	"github.com/iotaledger/goshimmer/packages/binary/address"
+
+	"github.com/iotaledger/goshimmer/packages/binary/types"
+
+	"github.com/iotaledger/goshimmer/packages/storageprefix"
+
 	"github.com/iotaledger/goshimmer/packages/binary/tangle"
-	"github.com/iotaledger/goshimmer/packages/binary/tangle/approvers"
-	"github.com/iotaledger/goshimmer/packages/binary/tangle/missingtransaction"
 	"github.com/iotaledger/goshimmer/packages/binary/transaction"
 	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload/valuetransfer"
 	"github.com/iotaledger/goshimmer/packages/binary/transactionmetadata"
-	"github.com/iotaledger/goshimmer/packages/binary/types"
 	"github.com/iotaledger/goshimmer/packages/binary/valuetangle/model"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 	"github.com/iotaledger/hive.go/async"
@@ -18,7 +22,12 @@ import (
 	"github.com/iotaledger/hive.go/objectstorage"
 )
 
-// The value tangle defines an "ontology" on top of the tangle that "sees"" the value transfers as a hidden tangle in
+const (
+	MaxMissingTimeBeforeCleanup = 30 * time.Second
+	MissingCheckInterval        = 5 * time.Second
+)
+
+// The "value tangle" defines an "ontology" on top of the tangle that "sees"" the value transfers as a hidden tangle in
 // the tangle.
 type ValueTangle struct {
 	tangle *tangle.Tangle
@@ -29,7 +38,7 @@ type ValueTangle struct {
 
 	storeTransactionsWorkerPool async.WorkerPool
 	solidifierWorkerPool        async.WorkerPool
-	// cleanupWorkerPool           async.WorkerPool
+	cleanupWorkerPool           async.WorkerPool
 
 	Events Events
 }
@@ -37,7 +46,15 @@ type ValueTangle struct {
 func New(tangle *tangle.Tangle) (valueTangle *ValueTangle) {
 	valueTangle = &ValueTangle{
 		tangle: tangle,
+
+		transferMetadataStorage: objectstorage.New(append(tangle.GetStorageId(), storageprefix.ValueTangleTransferMetadata...), model.TransferMetadataFromStorage),
+		consumersStorage:        objectstorage.New(append(tangle.GetStorageId(), storageprefix.ValueTangleConsumers...), model.ConsumersFromStorage),
+		missingTransferStorage:  objectstorage.New(append(tangle.GetStorageId(), storageprefix.TangleMissingTransaction...), model.MissingTransferFromStorage),
+
+		Events: *newEvents(),
 	}
+
+	valueTangle.solidifierWorkerPool.Tune(1024)
 
 	tangle.Events.TransactionSolid.Attach(events.NewClosure(valueTangle.attachTransaction))
 	tangle.Events.TransactionRemoved.Attach(events.NewClosure(valueTangle.deleteTransfer))
@@ -51,34 +68,58 @@ func (valueTangle *ValueTangle) attachTransaction(cachedTransaction *transaction
 	})
 }
 
-// Retrieves a transaction from the tangle.
-func (valueTangle *ValueTangle) GetTransfer(transactionId transaction.Id) *model.CachedValueTransfer {
-	cachedTransaction := valueTangle.tangle.GetTransaction(transactionId)
+// Retrieves a transfer from the tangle.
+func (valueTangle *ValueTangle) GetTransfer(transferId transfer.Id) *model.CachedValueTransfer {
+	cachedTransaction := valueTangle.tangle.GetTransaction(transaction.NewId(transferId[:]))
 
-	// return an empty result if the transaction is no value transaction
+	// return an empty result if the transfer is no value transfer
 	if tx := cachedTransaction.Unwrap(); tx != nil && tx.GetPayload().GetType() != valuetransfer.Type {
 		cachedTransaction.Release()
 
-		return &model.CachedValueTransfer{CachedTransaction: &transaction.CachedTransaction{CachedObject: objectstorage.NewEmptyCachedObject(transactionId[:])}}
+		return &model.CachedValueTransfer{CachedTransaction: &transaction.CachedTransaction{CachedObject: objectstorage.NewEmptyCachedObject(transferId[:])}}
 	}
 
 	return &model.CachedValueTransfer{CachedTransaction: cachedTransaction}
 }
 
-// Retrieves the metadata of a transaction from the tangle.
-func (valueTangle *ValueTangle) GetTransferMetadata(transactionId transaction.Id) *transactionmetadata.CachedTransactionMetadata {
-	return &transactionmetadata.CachedTransactionMetadata{CachedObject: valueTangle.transferMetadataStorage.Load(transactionId[:])}
+// Retrieves the metadata of a transfer from the tangle.
+func (valueTangle *ValueTangle) GetTransferMetadata(transferId transfer.Id) *model.CachedTransferMetadata {
+	return &model.CachedTransferMetadata{CachedObject: valueTangle.transferMetadataStorage.Load(transferId[:])}
 }
 
-func (valueTangle *ValueTangle) deleteTransfer(transactionId transaction.Id) {
+// Retrieves the approvers of a transfer from the tangle.
+func (valueTangle *ValueTangle) GetConsumers(transferId transfer.Id) *model.CachedConsumers {
+	return &model.CachedConsumers{CachedObject: valueTangle.consumersStorage.Load(transferId[:])}
+}
+
+func (valueTangle *ValueTangle) deleteTransfer(transferIf transfer.Id) {
 
 }
 
-// Marks the tangle as stopped, so it will not accept any new transactions (waits for all backgroundTasks to finish.
+// Marks the tangle as stopped, so it will not accept any new transfers (waits for all backgroundTasks to finish.
 func (valueTangle *ValueTangle) Shutdown() *ValueTangle {
+	valueTangle.tangle.Shutdown()
+
 	valueTangle.storeTransactionsWorkerPool.ShutdownGracefully()
+	valueTangle.solidifierWorkerPool.ShutdownGracefully()
+	valueTangle.cleanupWorkerPool.ShutdownGracefully()
 
 	return valueTangle
+}
+
+// Resets the database and deletes all objects (good for testing or "node resets").
+func (valueTangle *ValueTangle) Prune() error {
+	for _, storage := range []*objectstorage.ObjectStorage{
+		valueTangle.transferMetadataStorage,
+		valueTangle.consumersStorage,
+		valueTangle.missingTransferStorage,
+	} {
+		if err := storage.Prune(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (valueTangle *ValueTangle) storeTransactionWorker(cachedTx *transaction.CachedTransaction, cachedTxMetadata *transactionmetadata.CachedTransactionMetadata) {
@@ -107,113 +148,129 @@ func (valueTangle *ValueTangle) storeTransactionWorker(cachedTx *transaction.Cac
 
 	cachedValueTransfer := &model.CachedValueTransfer{CachedTransaction: cachedTx}
 
-	valueTransfer, transferId := cachedValueTransfer.Unwrap()
+	valueTransfer := cachedValueTransfer.Unwrap()
 	if valueTransfer == nil {
 		cachedValueTransfer.Release()
 
 		return
 	}
 
-	for transferId := range valueTangle.getInputsMap(valueTransfer) {
-		addTransferToConsumers(transferId, transferId)
+	transferId := valueTransfer.GetId()
+
+	cachedTransferMetadata := &model.CachedTransferMetadata{CachedObject: valueTangle.transferMetadataStorage.Store(model.NewTransferMetadata(transferId))}
+	for referencedTransferId := range valueTransfer.GetInputs() {
+		addTransferToConsumers(transferId, referencedTransferId)
 	}
 
 	if valueTangle.missingTransferStorage.DeleteIfPresent(transferId[:]) {
 		valueTangle.Events.MissingTransferReceived.Trigger(transferId)
 	}
 
-	valueTangle.Events.TransferAttached.Trigger(cachedValueTransfer)
+	valueTangle.Events.TransferAttached.Trigger(cachedValueTransfer, cachedTransferMetadata)
 
 	valueTangle.solidifierWorkerPool.Submit(func() {
-		valueTangle.solidifyTransferWorker(cachedValueTransfer, transferId)
+		valueTangle.solidifyTransferWorker(cachedValueTransfer, cachedTransferMetadata)
 	})
 }
 
-// Worker that solidifies the transactions (recursively from past to present).
-func (valueTangle *ValueTangle) solidifyTransferWorker(cachedValueTransfer *model.CachedValueTransfer, transferId transfer.Id) {
-	isTransferMarkedAsSolid := func(transactionId transaction.Id) bool {
-		if transactionId == transaction.EmptyId {
-			return true
-		}
-
-		transferMetadataCached := valueTangle.GetTransferMetadata(transactionId)
-		if transactionMetadata := transferMetadataCached.Unwrap(); transactionMetadata == nil {
+// Worker that solidifies the transfers (recursively from past to present).
+func (valueTangle *ValueTangle) solidifyTransferWorker(cachedValueTransfer *model.CachedValueTransfer, cachedTransferMetadata *model.CachedTransferMetadata) {
+	areInputsSolid := func(transferId transfer.Id, addresses map[address.Address]types.Empty) bool {
+		transferMetadataCached := valueTangle.GetTransferMetadata(transferId)
+		if transferMetadata := transferMetadataCached.Unwrap(); transferMetadata == nil {
 			transferMetadataCached.Release()
 
-			// if transaction is missing and was not reported as missing, yet
-			if cachedMissingTransfer, missingTransactionStored := valueTangle.missingTransferStorage.StoreIfAbsent(transactionId[:], missingtransaction.New(transactionId)); missingTransactionStored {
+			// if transfer is missing and was not reported as missing, yet
+			if cachedMissingTransfer, missingTransactionStored := valueTangle.missingTransferStorage.StoreIfAbsent(transferId[:], model.NewMissingTransfer(transferId)); missingTransactionStored {
 				cachedMissingTransfer.Consume(func(object objectstorage.StorableObject) {
-					valueTangle.monitorMissingTransactionWorker(object.(*missingtransaction.MissingTransaction).GetTransactionId())
+					valueTangle.monitorMissingTransactionWorker(object.(*model.MissingTransfer).GetTransferId())
 				})
 			}
 
 			return false
-		} else if !transactionMetadata.IsSolid() {
+		} else if !transferMetadata.IsSolid() {
 			transferMetadataCached.Release()
 
 			return false
 		}
 		transferMetadataCached.Release()
 
+		cachedTransfer := valueTangle.GetTransfer(transferId)
+		if valueTransfer := cachedTransfer.Unwrap(); valueTransfer == nil {
+			cachedTransfer.Release()
+
+			return false
+		} else {
+			outputs := valueTransfer.GetOutputs()
+			for address := range outputs {
+				if _, addressExists := outputs[address]; !addressExists {
+					cachedTransfer.Release()
+
+					fmt.Println("INVALID TX DETECTED")
+
+					return false
+				}
+			}
+		}
+		cachedTransfer.Release()
+
 		return true
 	}
 
-	isTransactionSolid := func(transaction *transaction.Transaction, transactionMetadata *transactionmetadata.TransactionMetadata) bool {
-		if transaction == nil || transaction.IsDeleted() {
+	isTransferSolid := func(transfer *model.ValueTransfer, transferMetadata *model.TransferMetadata) bool {
+		if transfer == nil || transfer.IsDeleted() {
 			return false
 		}
 
-		if transactionMetadata == nil || transactionMetadata.IsDeleted() {
+		if transferMetadata == nil || transferMetadata.IsDeleted() {
 			return false
 		}
 
-		if transactionMetadata.IsSolid() {
+		if transferMetadata.IsSolid() {
 			return true
 		}
 
 		// 1. check tangle solidity
-		isTrunkSolid := isTransferMarkedAsSolid(transaction.GetTrunkTransactionId())
-		isBranchSolid := isTransferMarkedAsSolid(transaction.GetBranchTransactionId())
-		if isTrunkSolid && isBranchSolid {
-			// 2. check payload solidity
-			return true
+		inputsSolid := true
+		for inputTransferId, addresses := range transfer.GetInputs() {
+			inputsSolid = inputsSolid && areInputsSolid(inputTransferId, addresses)
 		}
 
-		return false
+		return inputsSolid
 	}
 
-	popElementsFromStack := func(stack *list.List) (*transaction.CachedTransaction, *transactionmetadata.CachedTransactionMetadata) {
+	popElementsFromStack := func(stack *list.List) (*model.CachedValueTransfer, *model.CachedTransferMetadata) {
 		currentSolidificationEntry := stack.Front()
-		currentCachedTransaction := currentSolidificationEntry.Value.([2]interface{})[0]
-		currentCachedTransactionMetadata := currentSolidificationEntry.Value.([2]interface{})[1]
+		currentCachedTransfer := currentSolidificationEntry.Value.([2]interface{})[0]
+		currentCachedTransferMetadata := currentSolidificationEntry.Value.([2]interface{})[1]
 		stack.Remove(currentSolidificationEntry)
 
-		return currentCachedTransaction.(*transaction.CachedTransaction), currentCachedTransactionMetadata.(*transactionmetadata.CachedTransactionMetadata)
+		return currentCachedTransfer.(*model.CachedValueTransfer), currentCachedTransferMetadata.(*model.CachedTransferMetadata)
 	}
 
 	// initialize the stack
 	solidificationStack := list.New()
-	solidificationStack.PushBack([2]interface{}{cachedValueTransfer, transferId})
+	solidificationStack.PushBack([2]interface{}{cachedValueTransfer, cachedTransferMetadata})
 
-	// process transactions that are supposed to be checked for solidity recursively
+	// process transfers that are supposed to be checked for solidity recursively
 	for solidificationStack.Len() > 0 {
-		currentCachedTransaction, currentCachedTransactionMetadata := popElementsFromStack(solidificationStack)
+		currentCachedTransfer, currentCachedTransferMetadata := popElementsFromStack(solidificationStack)
 
-		currentTransaction := currentCachedTransaction.Unwrap()
-		currentTransactionMetadata := currentCachedTransactionMetadata.Unwrap()
-		if currentTransaction == nil || currentTransactionMetadata == nil {
-			currentCachedTransaction.Release()
-			currentCachedTransactionMetadata.Release()
+		currentTransfer := currentCachedTransfer.Unwrap()
+		currentTransferMetadata := currentCachedTransferMetadata.Unwrap()
+		if currentTransfer == nil || currentTransferMetadata == nil {
+			currentCachedTransfer.Release()
+			currentCachedTransferMetadata.Release()
 
 			continue
 		}
 
-		// if current transaction is solid and was not marked as solid before: mark as solid and propagate
-		if isTransactionSolid(currentTransaction, currentTransactionMetadata) && currentTransactionMetadata.SetSolid(true) {
-			valueTangle.Events.TransferSolid.Trigger(currentCachedTransaction, currentCachedTransactionMetadata)
+		// if current transfer is solid and was not marked as solid before: mark as solid and propagate
+		if isTransferSolid(currentTransfer, currentTransferMetadata) && currentTransferMetadata.SetSolid(true) {
+			valueTangle.Events.TransferSolid.Trigger(currentCachedTransfer, currentCachedTransferMetadata)
 
-			valueTangle.GetConsumers(currentTransaction.GetId()).Consume(func(object objectstorage.StorableObject) {
-				for approverTransactionId := range object.(*approvers.Approvers).Get() {
+			valueTangle.GetConsumers(currentTransfer.GetId()).Consume(func(object objectstorage.StorableObject) {
+				for approverTransactionId := range object.(*model.Consumers).Get() {
 					solidificationStack.PushBack([2]interface{}{
 						valueTangle.GetTransfer(approverTransactionId),
 						valueTangle.GetTransferMetadata(approverTransactionId),
@@ -223,24 +280,50 @@ func (valueTangle *ValueTangle) solidifyTransferWorker(cachedValueTransfer *mode
 		}
 
 		// release cached results
-		currentCachedTransaction.Release()
-		currentCachedTransactionMetadata.Release()
+		currentCachedTransfer.Release()
+		currentCachedTransferMetadata.Release()
 	}
 }
 
-func (valueTangle *ValueTangle) getInputsMap(valueTransfer *valuetransfer.ValueTransfer) (result map[transfer.Id]map[address.Address]types.Empty) {
-	result = make(map[transfer.Id]map[address.Address]types.Empty)
+// Worker that Monitors the missing transfers (by scheduling regular checks).
+func (valueTangle *ValueTangle) monitorMissingTransactionWorker(transferId transfer.Id) {
+	var scheduleNextMissingCheck func(transferId transfer.Id)
+	scheduleNextMissingCheck = func(transferId transfer.Id) {
+		time.AfterFunc(MissingCheckInterval, func() {
+			valueTangle.missingTransferStorage.Load(transferId[:]).Consume(func(object objectstorage.StorableObject) {
+				missingTransfer := object.(*model.MissingTransfer)
 
-	for _, transferOutputReference := range valueTransfer.GetInputs() {
-		addressMap, addressMapExists := result[transferOutputReference.GetTransferHash()]
-		if !addressMapExists {
-			addressMap = make(map[address.Address]types.Empty)
+				if time.Since(missingTransfer.GetMissingSince()) >= MaxMissingTimeBeforeCleanup {
+					valueTangle.cleanupWorkerPool.Submit(func() { valueTangle.cleanupWorker(missingTransfer.GetTransferId()) })
+				} else {
+					valueTangle.Events.TransferMissing.Trigger(transferId)
 
-			result[transferOutputReference.GetTransferHash()] = addressMap
-		}
-
-		addressMap[transferOutputReference.GetAddress()] = types.Void
+					scheduleNextMissingCheck(transferId)
+				}
+			})
+		})
 	}
+	valueTangle.Events.TransferMissing.Trigger(transferId)
 
-	return
+	scheduleNextMissingCheck(transferId)
+}
+
+// Worker that recursively cleans up the approvers of a unsolidifiable missing transfer.
+func (valueTangle *ValueTangle) cleanupWorker(transferId transfer.Id) {
+	cleanupStack := list.New()
+	cleanupStack.PushBack(transferId)
+
+	for cleanupStack.Len() >= 1 {
+		currentStackEntry := cleanupStack.Front()
+		currentTransferId := currentStackEntry.Value.(transfer.Id)
+		cleanupStack.Remove(currentStackEntry)
+
+		valueTangle.GetConsumers(currentTransferId).Consume(func(object objectstorage.StorableObject) {
+			for approverTransactionId := range object.(*model.Consumers).Get() {
+				valueTangle.deleteTransfer(currentTransferId)
+
+				cleanupStack.PushBack(approverTransactionId)
+			}
+		})
+	}
 }

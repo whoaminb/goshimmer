@@ -191,7 +191,9 @@ func (transaction *Transaction) MarshalBinary() (result []byte, err error) {
 			copy(result[offset:], transaction.branchTransactionId[:])
 			offset += IdLength
 
-			copy(result[offset:], transaction.issuer.PublicKey)
+			if transaction.issuer != nil {
+				copy(result[offset:], transaction.issuer.PublicKey)
+			}
 			offset += identity.PublicKeySize
 
 			binary.LittleEndian.PutUint32(result[offset:], transaction.payload.GetType())
@@ -202,10 +204,12 @@ func (transaction *Transaction) MarshalBinary() (result []byte, err error) {
 				offset += serializedPayloadLength
 			}
 
-			transaction.signatureMutex.Lock()
-			copy(transaction.signature[:], transaction.issuer.Sign(result[:offset]))
-			transaction.signatureMutex.Unlock()
-			copy(result[offset:], transaction.signature[:])
+			if transaction.issuer != nil {
+				transaction.signatureMutex.Lock()
+				copy(transaction.signature[:], transaction.issuer.Sign(result[:offset]))
+				transaction.signatureMutex.Unlock()
+				copy(result[offset:], transaction.signature[:])
+			}
 			// offset += identity.SignatureSize
 
 			transaction.bytes = result

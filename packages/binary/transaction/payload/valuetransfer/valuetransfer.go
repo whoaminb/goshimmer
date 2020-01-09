@@ -79,6 +79,14 @@ func (valueTransfer *ValueTransfer) AddOutput(address address.Address, balance *
 	return valueTransfer
 }
 
+func (valueTransfer *ValueTransfer) GetOutputs() (result map[address.Address][]*coloredcoins.ColoredBalance) {
+	valueTransfer.outputsMutex.RLock()
+	result = valueTransfer.outputs
+	valueTransfer.outputsMutex.RUnlock()
+
+	return
+}
+
 func (valueTransfer *ValueTransfer) Sign(keyPair ed25119.KeyPair) *ValueTransfer {
 	payloadBytes := valueTransfer.marshalPayloadBytes()
 

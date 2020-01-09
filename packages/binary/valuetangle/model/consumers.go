@@ -26,15 +26,11 @@ func NewConsumers(transferId transfer.Id) *Consumers {
 
 // Get's called when we restore the approvers from storage. The bytes and the content will be unmarshaled by an external
 // caller (the objectStorage factory).
-func FromStorage(id []byte) (result objectstorage.StorableObject) {
-	var transferId transfer.Id
-	copy(transferId[:], id)
+func ConsumersFromStorage(id []byte) objectstorage.StorableObject {
+	result := &Consumers{}
+	copy(result.transferId[:], id)
 
-	result = &Consumers{
-		transferId: transferId,
-	}
-
-	return
+	return result
 }
 
 func (consumers *Consumers) GetTransferId() transfer.Id {

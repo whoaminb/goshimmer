@@ -15,7 +15,7 @@ type MissingTransfer struct {
 	missingSince time.Time
 }
 
-func New(transferId transfer.Id) *MissingTransfer {
+func NewMissingTransfer(transferId transfer.Id) *MissingTransfer {
 	return &MissingTransfer{
 		transferId:   transferId,
 		missingSince: time.Now(),
