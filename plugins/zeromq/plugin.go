@@ -5,36 +5,30 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iotaledger/goshimmer/packages/daemon"
-	"github.com/iotaledger/goshimmer/packages/events"
 	"github.com/iotaledger/goshimmer/packages/model/value_transaction"
-	"github.com/iotaledger/goshimmer/packages/node"
+	"github.com/iotaledger/goshimmer/packages/parameter"
+	"github.com/iotaledger/goshimmer/packages/shutdown"
 	"github.com/iotaledger/goshimmer/plugins/tangle"
+	"github.com/iotaledger/hive.go/daemon"
+	"github.com/iotaledger/hive.go/events"
+	"github.com/iotaledger/hive.go/logger"
+	"github.com/iotaledger/hive.go/node"
 )
 
-var PLUGIN = node.NewPlugin("ZeroMQ", configure, run)
-
+// zeromq logging is disabled by default
+var PLUGIN = node.NewPlugin("ZeroMQ", node.Disabled, configure, run)
+var log *logger.Logger
 var publisher *Publisher
 var emptyTag = strings.Repeat("9", 27)
 
 // Configure the zeromq plugin
 func configure(plugin *node.Plugin) {
-
-	daemon.Events.Shutdown.Attach(events.NewClosure(func() {
-		plugin.LogInfo("Stopping ZeroMQ Publisher ...")
-
-		if err := publisher.Shutdown(); err != nil {
-			plugin.LogFailure("Stopping ZeroMQ Publisher: " + err.Error())
-		} else {
-			plugin.LogSuccess("Stopping ZeroMQ Publisher ... done")
-		}
-	}))
-
+	log = logger.NewLogger("ZeroMQ")
 	tangle.Events.TransactionStored.Attach(events.NewClosure(func(tx *value_transaction.ValueTransaction) {
 		// create goroutine for every event
 		go func() {
 			if err := publishTx(tx); err != nil {
-				plugin.LogFailure(err.Error())
+				log.Errorf("error publishing tx: %s", err.Error())
 			}
 		}()
 	}))
@@ -42,16 +36,25 @@ func configure(plugin *node.Plugin) {
 
 // Start the zeromq plugin
 func run(plugin *node.Plugin) {
+	zeromqPort := parameter.NodeConfig.GetInt(ZEROMQ_PORT)
+	log.Infof("Starting ZeroMQ Publisher (port %d) ...", zeromqPort)
 
-	plugin.LogInfo("Starting ZeroMQ Publisher (port " + strconv.Itoa(*PORT.Value) + ") ...")
-
-	daemon.BackgroundWorker("ZeroMQ Publisher", func() {
+	daemon.BackgroundWorker("ZeroMQ Publisher", func(shutdownSignal <-chan struct{}) {
 		if err := startPublisher(plugin); err != nil {
-			plugin.LogFailure("Stopping ZeroMQ Publisher: " + err.Error())
+			log.Errorf("Stopping ZeroMQ Publisher: %s", err.Error())
 		} else {
-			plugin.LogSuccess("Starting ZeroMQ Publisher (port " + strconv.Itoa(*PORT.Value) + ") ... done")
+			log.Infof("Starting ZeroMQ Publisher (port %d) ... done", zeromqPort)
 		}
-	})
+
+		<-shutdownSignal
+
+		log.Info("Stopping ZeroMQ Publisher ...")
+		if err := publisher.Shutdown(); err != nil {
+			log.Errorf("Stopping ZeroMQ Publisher: %s", err.Error())
+		} else {
+			log.Info("Stopping ZeroMQ Publisher ... done")
+		}
+	}, shutdown.ShutdownPriorityZMQ)
 }
 
 // Start the zmq publisher.
@@ -62,7 +65,7 @@ func startPublisher(plugin *node.Plugin) error {
 	}
 	publisher = pub
 
-	return publisher.Start(*PORT.Value)
+	return publisher.Start(parameter.NodeConfig.GetInt(ZEROMQ_PORT))
 }
 
 // Publish a transaction that has recently been added to the ledger

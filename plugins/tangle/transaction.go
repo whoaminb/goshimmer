@@ -1,13 +1,11 @@
 package tangle
 
 import (
-	"github.com/dgraph-io/badger"
 	"github.com/iotaledger/goshimmer/packages/database"
-	"github.com/iotaledger/goshimmer/packages/datastructure"
 	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/model/value_transaction"
-	"github.com/iotaledger/goshimmer/packages/node"
-	"github.com/iotaledger/goshimmer/packages/typeutils"
+	"github.com/iotaledger/hive.go/lru_cache"
+	"github.com/iotaledger/hive.go/typeutils"
 	"github.com/iotaledger/iota.go/trinary"
 )
 
@@ -53,22 +51,28 @@ func StoreTransaction(transaction *value_transaction.ValueTransaction) {
 
 // region lru cache ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-var transactionCache = datastructure.NewLRUCache(TRANSACTION_CACHE_SIZE, &datastructure.LRUCacheOptions{
-	EvictionCallback: onEvictTransaction,
+var transactionCache = lru_cache.NewLRUCache(TRANSACTION_CACHE_SIZE, &lru_cache.LRUCacheOptions{
+	EvictionCallback:  onEvictTransactions,
+	EvictionBatchSize: 200,
 })
 
-func onEvictTransaction(_ interface{}, value interface{}) {
-	if evictedTransaction := value.(*value_transaction.ValueTransaction); evictedTransaction.GetModified() {
-		go func(evictedTransaction *value_transaction.ValueTransaction) {
-			if err := storeTransactionInDatabase(evictedTransaction); err != nil {
+func onEvictTransactions(_ interface{}, values interface{}) {
+	// TODO: replace with apply
+	for _, obj := range values.([]interface{}) {
+		if tx := obj.(*value_transaction.ValueTransaction); tx.GetModified() {
+			if err := storeTransactionInDatabase(tx); err != nil {
 				panic(err)
 			}
-		}(evictedTransaction)
+		}
 	}
 }
 
+func FlushTransactionCache() {
+	transactionCache.DeleteAll()
+}
+
 const (
-	TRANSACTION_CACHE_SIZE = 50000
+	TRANSACTION_CACHE_SIZE = 500
 )
 
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -77,7 +81,7 @@ const (
 
 var transactionDatabase database.Database
 
-func configureTransactionDatabase(plugin *node.Plugin) {
+func configureTransactionDatabase() {
 	if db, err := database.Get("transaction"); err != nil {
 		panic(err)
 	} else {
@@ -100,7 +104,7 @@ func storeTransactionInDatabase(transaction *value_transaction.ValueTransaction)
 func getTransactionFromDatabase(transactionHash trinary.Trytes) (*value_transaction.ValueTransaction, errors.IdentifiableError) {
 	txData, err := transactionDatabase.Get(typeutils.StringToBytes(transactionHash))
 	if err != nil {
-		if err == badger.ErrKeyNotFound {
+		if err == database.ErrKeyNotFound {
 			return nil, nil
 		} else {
 			return nil, ErrDatabaseError.Derive(err, "failed to retrieve transaction")

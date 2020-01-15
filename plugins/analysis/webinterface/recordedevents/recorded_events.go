@@ -3,10 +3,10 @@ package recordedevents
 import (
 	"sync"
 
-	"github.com/iotaledger/goshimmer/packages/events"
-	"github.com/iotaledger/goshimmer/packages/node"
 	"github.com/iotaledger/goshimmer/plugins/analysis/server"
 	"github.com/iotaledger/goshimmer/plugins/analysis/webinterface/types"
+	"github.com/iotaledger/hive.go/events"
+	"github.com/iotaledger/hive.go/node"
 )
 
 var nodes = make(map[string]bool)
@@ -16,13 +16,11 @@ var lock sync.Mutex
 
 func Configure(plugin *node.Plugin) {
 	server.Events.AddNode.Attach(events.NewClosure(func(nodeId string) {
-		if _, exists := nodes[nodeId]; !exists {
-			lock.Lock()
-			defer lock.Unlock()
+		lock.Lock()
+		defer lock.Unlock()
 
-			if _, exists := nodes[nodeId]; !exists {
-				nodes[nodeId] = false
-			}
+		if _, exists := nodes[nodeId]; !exists {
+			nodes[nodeId] = false
 		}
 	}))
 

@@ -1,13 +1,11 @@
 package tangle
 
 import (
-	"github.com/dgraph-io/badger"
 	"github.com/iotaledger/goshimmer/packages/database"
-	"github.com/iotaledger/goshimmer/packages/datastructure"
 	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/model/approvers"
-	"github.com/iotaledger/goshimmer/packages/node"
-	"github.com/iotaledger/goshimmer/packages/typeutils"
+	"github.com/iotaledger/hive.go/lru_cache"
+	"github.com/iotaledger/hive.go/typeutils"
 	"github.com/iotaledger/iota.go/trinary"
 )
 
@@ -52,18 +50,24 @@ func StoreApprovers(approvers *approvers.Approvers) {
 
 // region lru cache ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-var approversCache = datastructure.NewLRUCache(APPROVERS_CACHE_SIZE, &datastructure.LRUCacheOptions{
-	EvictionCallback: onEvictApprovers,
+var approversCache = lru_cache.NewLRUCache(APPROVERS_CACHE_SIZE, &lru_cache.LRUCacheOptions{
+	EvictionCallback:  onEvictApprovers,
+	EvictionBatchSize: 100,
 })
 
-func onEvictApprovers(_ interface{}, value interface{}) {
-	if evictedApprovers := value.(*approvers.Approvers); evictedApprovers.GetModified() {
-		go func(evictedApprovers *approvers.Approvers) {
-			if err := storeApproversInDatabase(evictedApprovers); err != nil {
+func onEvictApprovers(_ interface{}, values interface{}) {
+	// TODO: replace with apply
+	for _, obj := range values.([]interface{}) {
+		if approvers := obj.(*approvers.Approvers); approvers.GetModified() {
+			if err := storeApproversInDatabase(approvers); err != nil {
 				panic(err)
 			}
-		}(evictedApprovers)
+		}
 	}
+}
+
+func FlushApproversCache() {
+	approversCache.DeleteAll()
 }
 
 const (
@@ -76,7 +80,7 @@ const (
 
 var approversDatabase database.Database
 
-func configureApproversDatabase(plugin *node.Plugin) {
+func configureApproversDatabase() {
 	if db, err := database.Get("approvers"); err != nil {
 		panic(err)
 	} else {
@@ -99,7 +103,7 @@ func storeApproversInDatabase(approvers *approvers.Approvers) errors.Identifiabl
 func getApproversFromDatabase(transactionHash trinary.Trytes) (*approvers.Approvers, errors.IdentifiableError) {
 	approversData, err := approversDatabase.Get(typeutils.StringToBytes(transactionHash))
 	if err != nil {
-		if err == badger.ErrKeyNotFound {
+		if err == database.ErrKeyNotFound {
 			return nil, nil
 		}
 

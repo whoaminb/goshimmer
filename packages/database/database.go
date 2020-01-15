@@ -1,92 +1,70 @@
 package database
 
 import (
-	"os"
-	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/dgraph-io/badger"
-	"github.com/dgraph-io/badger/options"
 )
 
-var databasesByName = make(map[string]*databaseImpl)
-var getLock sync.Mutex
+var (
+	ErrKeyNotFound = badger.ErrKeyNotFound
 
-var ErrKeyNotFound = badger.ErrKeyNotFound
+	dbMap = make(map[string]*prefixDb)
+	mu    sync.Mutex
+)
 
-type databaseImpl struct {
-	db       *badger.DB
-	name     string
-	openLock sync.Mutex
+type prefixDb struct {
+	db     *badger.DB
+	name   string
+	prefix []byte
+}
+
+func getPrefix(name string) []byte {
+	return []byte(name + "_")
 }
 
 func Get(name string) (Database, error) {
-	getLock.Lock()
-	defer getLock.Unlock()
+	mu.Lock()
+	defer mu.Unlock()
 
-	if database, exists := databasesByName[name]; exists {
-		return database, nil
+	if db, exists := dbMap[name]; exists {
+		return db, nil
 	}
 
-	database := &databaseImpl{
-		db:   nil,
-		name: name,
-	}
-	if err := database.Open(); err != nil {
-		return nil, err
+	badger := GetBadgerInstance()
+	db := &prefixDb{
+		db:     badger,
+		name:   name,
+		prefix: getPrefix(name),
 	}
 
-	databasesByName[name] = database
+	dbMap[name] = db
 
-	return databasesByName[name], nil
+	return db, nil
 }
 
-func (this *databaseImpl) Open() error {
-	this.openLock.Lock()
-	defer this.openLock.Unlock()
-
-	if this.db == nil {
-		directory := *DIRECTORY.Value
-
-		if _, err := os.Stat(directory); os.IsNotExist(err) {
-			if err := os.Mkdir(directory, 0700); err != nil {
-				return err
-			}
-		}
-
-		opts := badger.DefaultOptions
-		opts.Dir = directory + string(filepath.Separator) + this.name
-		opts.ValueDir = opts.Dir
-		opts.Logger = &logger{}
-		opts.Truncate = true
-		opts.TableLoadingMode = options.MemoryMap
-
-		db, err := badger.Open(opts)
-		if err != nil {
-			return err
-		}
-		this.db = db
-	}
-
-	return nil
+func (this *prefixDb) setEntry(e *badger.Entry) error {
+	err := this.db.Update(func(txn *badger.Txn) error {
+		return txn.SetEntry(e)
+	})
+	return err
 }
 
-func (this *databaseImpl) Set(key []byte, value []byte) error {
-	if err := this.db.Update(func(txn *badger.Txn) error { return txn.Set(key, value) }); err != nil {
-		return err
-	}
-
-	return nil
+func (this *prefixDb) Set(key []byte, value []byte) error {
+	e := badger.NewEntry(append(this.prefix, key...), value)
+	return this.setEntry(e)
 }
 
-func (this *databaseImpl) Contains(key []byte) (bool, error) {
+func (this *prefixDb) SetWithTTL(key []byte, value []byte, ttl time.Duration) error {
+	e := badger.NewEntry(append(this.prefix, key...), value).WithTTL(ttl)
+	return this.setEntry(e)
+}
+
+func (this *prefixDb) Contains(key []byte) (bool, error) {
 	err := this.db.View(func(txn *badger.Txn) error {
-		_, err := txn.Get(key)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		_, err := txn.Get(append(this.prefix, key...))
+		return err
 	})
 
 	if err == ErrKeyNotFound {
@@ -96,11 +74,11 @@ func (this *databaseImpl) Contains(key []byte) (bool, error) {
 	}
 }
 
-func (this *databaseImpl) Get(key []byte) ([]byte, error) {
+func (this *prefixDb) Get(key []byte) ([]byte, error) {
 	var result []byte = nil
 
 	err := this.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(key)
+		item, err := txn.Get(append(this.prefix, key...))
 		if err != nil {
 			return err
 		}
@@ -115,18 +93,20 @@ func (this *databaseImpl) Get(key []byte) ([]byte, error) {
 	return result, err
 }
 
-func (this *databaseImpl) Delete(key []byte) error {
+func (this *prefixDb) Delete(key []byte) error {
 	err := this.db.Update(func(txn *badger.Txn) error {
-		err := txn.Delete(key)
-		return err
+		return txn.Delete(append(this.prefix, key...))
 	})
 	return err
 }
 
-func (this *databaseImpl) ForEach(consumer func([]byte, []byte)) error {
+func (this *prefixDb) forEach(prefix []byte, consumer func([]byte, []byte)) error {
 	err := this.db.View(func(txn *badger.Txn) error {
+		iteratorOptions := badger.DefaultIteratorOptions
+		iteratorOptions.Prefix = prefix // filter by prefix
+
 		// create an iterator the default options
-		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		it := txn.NewIterator(iteratorOptions)
 		defer it.Close()
 
 		// loop through every key-value-pair and call the function
@@ -138,26 +118,17 @@ func (this *databaseImpl) ForEach(consumer func([]byte, []byte)) error {
 				return err
 			}
 
-			consumer(item.Key(), value)
+			consumer(item.Key()[len(this.prefix):], value)
 		}
 		return nil
 	})
 	return err
 }
 
-func (this *databaseImpl) Close() error {
-	this.openLock.Lock()
-	defer this.openLock.Unlock()
+func (this *prefixDb) ForEachWithPrefix(prefix []byte, consumer func([]byte, []byte)) error {
+	return this.forEach(append(this.prefix, prefix...), consumer)
+}
 
-	if this.db != nil {
-		err := this.db.Close()
-
-		this.db = nil
-
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+func (this *prefixDb) ForEach(consumer func([]byte, []byte)) error {
+	return this.forEach(this.prefix, consumer)
 }

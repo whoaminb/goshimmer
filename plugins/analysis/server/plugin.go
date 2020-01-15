@@ -3,50 +3,56 @@ package server
 import (
 	"encoding/hex"
 	"math"
-	"strconv"
 
-	"github.com/iotaledger/goshimmer/packages/daemon"
-	"github.com/iotaledger/goshimmer/packages/events"
 	"github.com/iotaledger/goshimmer/packages/network"
 	"github.com/iotaledger/goshimmer/packages/network/tcp"
-	"github.com/iotaledger/goshimmer/packages/node"
+	"github.com/iotaledger/goshimmer/packages/parameter"
+	"github.com/iotaledger/goshimmer/packages/shutdown"
 	"github.com/iotaledger/goshimmer/plugins/analysis/types/addnode"
 	"github.com/iotaledger/goshimmer/plugins/analysis/types/connectnodes"
 	"github.com/iotaledger/goshimmer/plugins/analysis/types/disconnectnodes"
 	"github.com/iotaledger/goshimmer/plugins/analysis/types/ping"
 	"github.com/iotaledger/goshimmer/plugins/analysis/types/removenode"
+	"github.com/iotaledger/hive.go/daemon"
+	"github.com/iotaledger/hive.go/events"
+	"github.com/iotaledger/hive.go/logger"
+	"github.com/iotaledger/hive.go/node"
 	"github.com/pkg/errors"
 )
 
 var server *tcp.Server
 
+var log *logger.Logger
+
 func Configure(plugin *node.Plugin) {
+	log = logger.NewLogger("Analysis-Server")
 	server = tcp.NewServer()
 
 	server.Events.Connect.Attach(events.NewClosure(HandleConnection))
 	server.Events.Error.Attach(events.NewClosure(func(err error) {
-		plugin.LogFailure("error in server: " + err.Error())
+		log.Errorf("error in server: %s", err.Error())
 	}))
 	server.Events.Start.Attach(events.NewClosure(func() {
-		plugin.LogSuccess("Starting Server (port " + strconv.Itoa(*SERVER_PORT.Value) + ") ... done")
+		log.Infof("Starting Server (port %d) ... done", parameter.NodeConfig.GetInt(CFG_SERVER_PORT))
 	}))
 	server.Events.Shutdown.Attach(events.NewClosure(func() {
-		plugin.LogSuccess("Stopping Server ... done")
+		log.Info("Stopping Server ... done")
 	}))
 }
 
 func Run(plugin *node.Plugin) {
-	daemon.BackgroundWorker("Analysis Server", func() {
-		plugin.LogInfo("Starting Server (port " + strconv.Itoa(*SERVER_PORT.Value) + ") ...")
-
-		server.Listen(*SERVER_PORT.Value)
-	})
+	daemon.BackgroundWorker("Analysis Server", func(shutdownSignal <-chan struct{}) {
+		log.Infof("Starting Server (port %d) ... done", parameter.NodeConfig.GetInt(CFG_SERVER_PORT))
+		go server.Listen(parameter.NodeConfig.GetInt(CFG_SERVER_PORT))
+		<-shutdownSignal
+		Shutdown()
+	}, shutdown.ShutdownPriorityAnalysis)
 }
 
-func Shutdown(plugin *node.Plugin) {
-	plugin.LogInfo("Stopping Server ...")
-
+func Shutdown() {
+	log.Info("Stopping Server ...")
 	server.Shutdown()
+	log.Info("Stopping Server ... done")
 }
 
 func HandleConnection(conn *network.ManagedConnection) {
@@ -153,7 +159,7 @@ func processIncomingPacket(connectionState *byte, receiveBuffer *[]byte, conn *n
 		processIncomingDisconnectNodesPacket(connectionState, receiveBuffer, conn, data, offset, connectedNodeId)
 
 	case STATE_REMOVE_NODE:
-		processIncomingAddNodePacket(connectionState, receiveBuffer, conn, data, offset, connectedNodeId)
+		processIncomingRemoveNodePacket(connectionState, receiveBuffer, conn, data, offset, connectedNodeId)
 	}
 }
 
@@ -305,6 +311,35 @@ func processIncomingDisconnectNodesPacket(connectionState *byte, receiveBuffer *
 		*connectionState = STATE_CONSECUTIVE
 
 		if *offset+len(data) > disconnectnodes.MARSHALED_TOTAL_SIZE {
+			processIncomingPacket(connectionState, receiveBuffer, conn, data[remainingCapacity:], offset, connectedNodeId)
+		}
+	}
+}
+
+func processIncomingRemoveNodePacket(connectionState *byte, receiveBuffer *[]byte, conn *network.ManagedConnection, data []byte, offset *int, connectedNodeId *string) {
+	remainingCapacity := int(math.Min(float64(removenode.MARSHALED_TOTAL_SIZE-*offset), float64(len(data))))
+
+	copy((*receiveBuffer)[*offset:], data[:remainingCapacity])
+
+	if *offset+len(data) < removenode.MARSHALED_TOTAL_SIZE {
+		*offset += len(data)
+	} else {
+		if removeNodePacket, err := removenode.Unmarshal(*receiveBuffer); err != nil {
+			Events.Error.Trigger(err)
+
+			conn.Close()
+
+			return
+		} else {
+			nodeId := hex.EncodeToString(removeNodePacket.NodeId)
+
+			Events.RemoveNode.Trigger(nodeId)
+
+		}
+
+		*connectionState = STATE_CONSECUTIVE
+
+		if *offset+len(data) > addnode.MARSHALED_TOTAL_SIZE {
 			processIncomingPacket(connectionState, receiveBuffer, conn, data[remainingCapacity:], offset, connectedNodeId)
 		}
 	}

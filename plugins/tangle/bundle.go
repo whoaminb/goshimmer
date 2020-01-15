@@ -1,13 +1,11 @@
 package tangle
 
 import (
-	"github.com/dgraph-io/badger"
 	"github.com/iotaledger/goshimmer/packages/database"
-	"github.com/iotaledger/goshimmer/packages/datastructure"
 	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/model/bundle"
-	"github.com/iotaledger/goshimmer/packages/node"
-	"github.com/iotaledger/goshimmer/packages/typeutils"
+	"github.com/iotaledger/hive.go/lru_cache"
+	"github.com/iotaledger/hive.go/typeutils"
 	"github.com/iotaledger/iota.go/trinary"
 )
 
@@ -56,22 +54,28 @@ func StoreBundle(bundle *bundle.Bundle) {
 
 // region lru cache ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-var bundleCache = datastructure.NewLRUCache(BUNDLE_CACHE_SIZE, &datastructure.LRUCacheOptions{
-	EvictionCallback: onEvictBundle,
+var bundleCache = lru_cache.NewLRUCache(BUNDLE_CACHE_SIZE, &lru_cache.LRUCacheOptions{
+	EvictionCallback:  onEvictBundles,
+	EvictionBatchSize: 100,
 })
 
-func onEvictBundle(_ interface{}, value interface{}) {
-	if evictedBundle := value.(*bundle.Bundle); evictedBundle.GetModified() {
-		go func(evictedBundle *bundle.Bundle) {
-			if err := storeBundleInDatabase(evictedBundle); err != nil {
+func onEvictBundles(_ interface{}, values interface{}) {
+	// TODO: replace with apply
+	for _, obj := range values.([]interface{}) {
+		if bndl := obj.(*bundle.Bundle); bndl.GetModified() {
+			if err := storeBundleInDatabase(bndl); err != nil {
 				panic(err)
 			}
-		}(evictedBundle)
+		}
 	}
 }
 
+func FlushBundleCache() {
+	bundleCache.DeleteAll()
+}
+
 const (
-	BUNDLE_CACHE_SIZE = 50000
+	BUNDLE_CACHE_SIZE = 500
 )
 
 // endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -80,7 +84,7 @@ const (
 
 var bundleDatabase database.Database
 
-func configureBundleDatabase(plugin *node.Plugin) {
+func configureBundleDatabase() {
 	if db, err := database.Get("bundle"); err != nil {
 		panic(err)
 	} else {
@@ -103,7 +107,7 @@ func storeBundleInDatabase(bundle *bundle.Bundle) errors.IdentifiableError {
 func getBundleFromDatabase(transactionHash trinary.Trytes) (*bundle.Bundle, errors.IdentifiableError) {
 	bundleData, err := bundleDatabase.Get(typeutils.StringToBytes(transactionHash))
 	if err != nil {
-		if err == badger.ErrKeyNotFound {
+		if err == database.ErrKeyNotFound {
 			return nil, nil
 		}
 

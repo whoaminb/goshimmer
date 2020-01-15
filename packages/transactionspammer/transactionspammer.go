@@ -4,85 +4,92 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iotaledger/goshimmer/plugins/gossip"
+	"github.com/iotaledger/goshimmer/packages/shutdown"
+	"github.com/iotaledger/goshimmer/plugins/autopeering/local"
 
-	"github.com/iotaledger/goshimmer/packages/daemon"
+	"github.com/iotaledger/goshimmer/packages/gossip"
+	"github.com/iotaledger/goshimmer/packages/model/meta_transaction"
 	"github.com/iotaledger/goshimmer/packages/model/value_transaction"
 	"github.com/iotaledger/goshimmer/plugins/tipselection"
+	"github.com/iotaledger/hive.go/daemon"
+	"github.com/iotaledger/hive.go/logger"
 )
 
+var log *logger.Logger
+
 var spamming = false
+var spammingMutex sync.Mutex
 
-var startMutex sync.Mutex
-
-var shutdownSignal chan int
+var shutdownSignal chan struct{}
+var done chan struct{}
 
 var sentCounter = uint(0)
 
+func init() {
+	shutdownSignal = make(chan struct{})
+	done = make(chan struct{})
+}
+
 func Start(tps uint) {
-	startMutex.Lock()
+	log = logger.NewLogger("Transaction Spammer")
+	spammingMutex.Lock()
+	spamming = true
+	spammingMutex.Unlock()
 
-	if !spamming {
-		shutdownSignal = make(chan int, 1)
+	daemon.BackgroundWorker("Transaction Spammer", func(daemonShutdownSignal <-chan struct{}) {
+		start := time.Now()
+		totalSentCounter := int64(0)
 
-		func(shutdownSignal chan int) {
-			daemon.BackgroundWorker("Transaction Spammer", func() {
-				for {
-					start := time.Now()
-					totalSentCounter := int64(0)
+		for {
+			select {
+			case <-daemonShutdownSignal:
+				return
 
-					for {
-						select {
-						case <-daemon.ShutdownSignal:
-							return
+			case <-shutdownSignal:
+				done <- struct{}{}
+				return
 
-						case <-shutdownSignal:
-							return
+			default:
+				sentCounter++
+				totalSentCounter++
 
-						default:
-							sentCounter++
-							totalSentCounter++
-
-							tx := value_transaction.New()
-							tx.SetHead(true)
-							tx.SetTail(true)
-							tx.SetValue(totalSentCounter)
-							tx.SetBranchTransactionHash(tipselection.GetRandomTip())
-							tx.SetTrunkTransactionHash(tipselection.GetRandomTip())
-
-							gossip.Events.ReceiveTransaction.Trigger(tx.MetaTransaction)
-
-							if sentCounter >= tps {
-								duration := time.Since(start)
-
-								if duration < time.Second {
-									time.Sleep(time.Second - duration)
-								}
-
-								start = time.Now()
-
-								sentCounter = 0
-							}
-						}
-					}
+				tx := value_transaction.New()
+				tx.SetHead(true)
+				tx.SetTail(true)
+				tx.SetValue(totalSentCounter)
+				tx.SetBranchTransactionHash(tipselection.GetRandomTip())
+				tx.SetTrunkTransactionHash(tipselection.GetRandomTip())
+				tx.SetTimestamp(uint(time.Now().Unix()))
+				if err := tx.DoProofOfWork(meta_transaction.MIN_WEIGHT_MAGNITUDE); err != nil {
+					log.Warn("PoW failed", err)
+					continue
 				}
-			})
-		}(shutdownSignal)
 
-		spamming = true
-	}
+				gossip.Events.TransactionReceived.Trigger(&gossip.TransactionReceivedEvent{Data: tx.GetBytes(), Peer: &local.GetInstance().Peer})
 
-	startMutex.Unlock()
+				if sentCounter >= tps {
+					duration := time.Since(start)
+
+					if duration < time.Second {
+						time.Sleep(time.Second - duration)
+					}
+
+					start = time.Now()
+
+					sentCounter = 0
+				}
+			}
+		}
+	}, shutdown.ShutdownPriorityTangleSpammer)
 }
 
 func Stop() {
-	startMutex.Lock()
-
+	spammingMutex.Lock()
 	if spamming {
-		close(shutdownSignal)
-
+		shutdownSignal <- struct{}{}
+		// wait for spammer to be done
+		<-done
 		spamming = false
 	}
-
-	startMutex.Unlock()
+	spammingMutex.Unlock()
 }

@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+
+	"github.com/iotaledger/goshimmer/plugins/autopeering/local"
+
+	//"strconv"
 	"time"
 
 	"github.com/gdamore/tcell"
-	"github.com/iotaledger/goshimmer/packages/accountability"
-	"github.com/iotaledger/goshimmer/plugins/autopeering/instances/acceptedneighbors"
-	"github.com/iotaledger/goshimmer/plugins/autopeering/instances/chosenneighbors"
-	"github.com/iotaledger/goshimmer/plugins/autopeering/instances/knownpeers"
-	"github.com/iotaledger/goshimmer/plugins/autopeering/instances/neighborhood"
+	"github.com/iotaledger/goshimmer/plugins/autopeering"
 	"github.com/rivo/tview"
 )
 
@@ -78,11 +78,28 @@ func (headerBar *UIHeaderBar) Update() {
 		fmt.Fprintln(headerBar.InfoContainer)
 	}
 
-	fmt.Fprintf(headerBar.InfoContainer, "[::b]Node ID: [::d]%40v  ", accountability.OwnId().StringIdentifier)
+	outgoing := "0"
+	incoming := "0"
+	neighbors := "0"
+	total := "0"
+	myID := "-"
+	if autopeering.Selection != nil {
+		outgoing = strconv.Itoa(len(autopeering.Selection.GetOutgoingNeighbors()))
+		incoming = strconv.Itoa(len(autopeering.Selection.GetIncomingNeighbors()))
+		neighbors = strconv.Itoa(len(autopeering.Selection.GetNeighbors()))
+	}
+	if autopeering.Discovery != nil {
+		total = strconv.Itoa(len(autopeering.Discovery.GetVerifiedPeers()))
+	}
+	if local.GetInstance() != nil {
+		myID = local.GetInstance().ID().String()
+	}
+
+	fmt.Fprintf(headerBar.InfoContainer, "[::b]Node ID: [::d]%40v  ", myID)
 	fmt.Fprintln(headerBar.InfoContainer)
-	fmt.Fprintf(headerBar.InfoContainer, "[::b]Neighbors: [::d]%40v  ", strconv.Itoa(len(chosenneighbors.INSTANCE.Peers))+" chosen / "+strconv.Itoa(len(acceptedneighbors.INSTANCE.Peers))+" accepted")
+	fmt.Fprintf(headerBar.InfoContainer, "[::b]Neighbors: [::d]%40v  ", outgoing+" chosen / "+incoming+" accepted / "+neighbors+" total")
 	fmt.Fprintln(headerBar.InfoContainer)
-	fmt.Fprintf(headerBar.InfoContainer, "[::b]Known Peers: [::d]%40v  ", strconv.Itoa(len(knownpeers.INSTANCE.Peers))+" total / "+strconv.Itoa(len(neighborhood.INSTANCE.Peers))+" neighborhood")
+	fmt.Fprintf(headerBar.InfoContainer, "[::b]Known Peers: [::d]%40v  ", total+" total")
 	fmt.Fprintln(headerBar.InfoContainer)
 	fmt.Fprintf(headerBar.InfoContainer, "[::b]Uptime: [::d]")
 
