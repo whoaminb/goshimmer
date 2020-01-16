@@ -1,10 +1,13 @@
 package fpc
 
 import (
+	"net"
 	"strconv"
 
+	"github.com/iotaledger/goshimmer/packages/autopeering/peer/service"
 	"github.com/iotaledger/goshimmer/packages/fpc"
 	"github.com/iotaledger/goshimmer/packages/parameter"
+	"github.com/iotaledger/goshimmer/plugins/autopeering/local"
 	"github.com/iotaledger/goshimmer/plugins/fpc/network"
 	"github.com/iotaledger/goshimmer/plugins/fpc/network/server"
 	"github.com/iotaledger/goshimmer/plugins/fpc/prng/client"
@@ -16,19 +19,40 @@ var (
 	INSTANCE *fpc.Instance // INSTANCE points to the fpc instance (concrete type)
 	log      *logger.Logger
 	Events   fpcEvents // Events exposes fpc events
+	config   server.Config
 )
 
 func configureFPC() {
 	log = logger.NewLogger(name)
 	INSTANCE = fpc.New(network.GetKnownPeers, network.QueryNode, fpc.NewParameters())
 	Events.VotingDone = events.NewEvent(votingDoneCaller)
+
+	lPeer := local.GetInstance()
+
+	port := strconv.Itoa(parameter.NodeConfig.GetInt(FPC_PORT))
+
+	host, _, err := net.SplitHostPort(lPeer.Address())
+	if err != nil {
+		log.Fatalf("invalid peering address: %v", err)
+	}
+	err = lPeer.UpdateService(service.FPCKey, "tcp", net.JoinHostPort(host, port))
+	if err != nil {
+		log.Fatalf("could not update services: %v", err)
+	}
+
+	config = server.Config{
+		Address:        host,
+		Port:           port,
+		Log:            log,
+		FPCInstance:    INSTANCE,
+		ShutdownSignal: make(chan struct{}),
+	}
 }
 
 func start(shutdownSignal <-chan struct{}) {
 	defer log.Info("Stopping FPC Processor ... done")
 
-	var fpcServerShutdown chan struct{}
-	server.RunServer(fpcServerShutdown, log, INSTANCE)
+	server.RunServer(config)
 
 	ticker := client.NewTicker()
 	ticker.Connect(parameter.NodeConfig.GetString(PRNG_ADDRESS) + ":" + strconv.Itoa(parameter.NodeConfig.GetInt(PRNG_PORT)))
@@ -45,7 +69,7 @@ func start(shutdownSignal <-chan struct{}) {
 				Events.VotingDone.Trigger(finalizedTxs)
 			}
 		case <-shutdownSignal:
-			fpcServerShutdown <- struct{}{} //close FPC server
+			config.ShutdownSignal <- struct{}{} //close FPC server
 			log.Info("Stopping FPC Processor ...")
 		}
 	}

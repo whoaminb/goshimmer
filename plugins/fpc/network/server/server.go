@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"net"
-	"strconv"
 	"time"
 
 	"github.com/iotaledger/goshimmer/packages/fpc"
@@ -17,6 +16,14 @@ import (
 // queryServer defines the struct of an FPC query server
 type queryServer struct {
 	fpc *fpc.Instance
+}
+
+type Config struct {
+	Address        string
+	Port           string
+	Log            *logger.Logger
+	ShutdownSignal chan struct{}
+	FPCInstance    *fpc.Instance
 }
 
 func newServer(fpc *fpc.Instance) *queryServer {
@@ -74,19 +81,19 @@ func run(address, port string, fpc *fpc.Instance) (*grpc.Server, error) {
 	return grpcServer, err
 }
 
-func RunServer(shutdownSignal <-chan struct{}, log *logger.Logger, fpc *fpc.Instance) {
-	defer log.Info("Stopping FPC Server ... done")
+func RunServer(c Config) {
+	defer c.Log.Info("Stopping FPC Server ... done")
 
-	log.Info("Starting FPC Server (port " + strconv.Itoa(15666) + ") ...")
+	c.Log.Info("Starting FPC Server (port " + c.Port + ") ...")
 
-	log.Info("Starting FPC Server (port " + strconv.Itoa(15666) + ") ... done")
+	server, _ := run(c.Address, c.Port, c.FPCInstance)
 
-	server, _ := run("0.0.0.0", strconv.Itoa(15666), fpc)
+	c.Log.Info("Starting FPC Server (port " + c.Port + ") ... done")
 
 	// Waits until receives a shutdown signal
 
-	<-shutdownSignal
-	log.Info("Stopping FPC Server ...")
+	<-c.ShutdownSignal
+	c.Log.Info("Stopping FPC Server ...")
 	server.GracefulStop()
 
 }
