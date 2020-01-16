@@ -3,11 +3,9 @@ package network
 import (
 	"context"
 	"log"
-	"strconv"
 	"time"
 
 	"github.com/iotaledger/goshimmer/packages/fpc"
-	"github.com/iotaledger/goshimmer/plugins/autopeering/instances/knownpeers"
 	pb "github.com/iotaledger/goshimmer/plugins/fpc/network/query"
 	"google.golang.org/grpc"
 )
@@ -37,16 +35,12 @@ func queryNode(txHash []fpc.ID, client pb.FPCQueryClient) (output []fpc.Opinion)
 }
 
 // QueryNode sends a query to a node and returns a list of opinions
-func QueryNode(txHash []fpc.ID, nodeID string) (opinions []fpc.Opinion) {
-	peer, _ := knownpeers.INSTANCE.GetPeer(nodeID)
-
-	nodeEndPoint := peer.Address.String() + ":" + strconv.FormatUint(uint64(peer.PeeringPort+2000), 10)
-
+func QueryNode(txHash []fpc.ID, nodeAddress string) (opinions []fpc.Opinion) {
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithInsecure())
 
 	// Connect to the node server
-	conn, err := grpc.Dial(nodeEndPoint, opts...)
+	conn, err := grpc.Dial(nodeAddress, opts...)
 	if err != nil {
 		log.Fatalf("fail to dial: %v", err)
 	}

@@ -17,7 +17,7 @@ require (
 	github.com/iotaledger/hive.go v0.0.0-20200110132858-ea86cdb9d91e
 	github.com/iotaledger/iota.go v1.0.0-beta.13
 	github.com/labstack/echo v3.3.10+incompatible
-	github.com/labstack/gommon v0.3.0 // indirect
+	github.com/labstack/gommon v0.3.0
 	github.com/lucasb-eyer/go-colorful v1.0.3 // indirect
 	github.com/magiconair/properties v1.8.1
 	github.com/mattn/go-colorable v0.1.4 // indirect

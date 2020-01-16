@@ -1,8 +1,8 @@
 package fpc
 
 import (
-	"github.com/iotaledger/goshimmer/packages/events"
 	"github.com/iotaledger/goshimmer/packages/fpc"
+	"github.com/iotaledger/hive.go/events"
 )
 
 type fpcEvents struct {

@@ -6,12 +6,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/iotaledger/goshimmer/packages/daemon"
 	"github.com/iotaledger/goshimmer/packages/fpc"
-	"github.com/iotaledger/goshimmer/packages/node"
-	autop "github.com/iotaledger/goshimmer/plugins/autopeering/parameters"
 	pb "github.com/iotaledger/goshimmer/plugins/fpc/network/query"
 	"github.com/iotaledger/goshimmer/plugins/tangle"
+	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/iota.go/trinary"
 	"google.golang.org/grpc"
 )
@@ -76,20 +74,19 @@ func run(address, port string, fpc *fpc.Instance) (*grpc.Server, error) {
 	return grpcServer, err
 }
 
-func RunServer(plugin *node.Plugin, fpc *fpc.Instance) {
-	plugin.LogInfo("Starting TCP Server (port " + strconv.Itoa(*autop.PORT.Value+2000) + ") ...")
+func RunServer(shutdownSignal <-chan struct{}, log *logger.Logger, fpc *fpc.Instance) {
+	defer log.Info("Stopping FPC Server ... done")
 
-	daemon.BackgroundWorker("FPC Server", func() {
-		plugin.LogSuccess("Starting TCP Server (port " + strconv.Itoa(*autop.PORT.Value+2000) + ") ... done")
+	log.Info("Starting FPC Server (port " + strconv.Itoa(15666) + ") ...")
 
-		server, _ := run("0.0.0.0", strconv.Itoa(*autop.PORT.Value+2000), fpc)
+	log.Info("Starting FPC Server (port " + strconv.Itoa(15666) + ") ... done")
 
-		// Waits until receives a shutdown signal
+	server, _ := run("0.0.0.0", strconv.Itoa(15666), fpc)
 
-		<-daemon.ShutdownSignal
-		plugin.LogInfo("Stopping TCP Server ...")
-		server.GracefulStop()
+	// Waits until receives a shutdown signal
 
-		plugin.LogSuccess("Stopping TCP Server ... done")
-	})
+	<-shutdownSignal
+	log.Info("Stopping FPC Server ...")
+	server.GracefulStop()
+
 }

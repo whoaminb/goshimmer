@@ -1,15 +1,21 @@
 package fpc
 
 import (
-	"github.com/iotaledger/goshimmer/packages/node"
+	"github.com/iotaledger/goshimmer/packages/shutdown"
+	"github.com/iotaledger/hive.go/daemon"
+	"github.com/iotaledger/hive.go/node"
 )
 
-var PLUGIN = node.NewPlugin("FPC", configure, run)
+const name = "FPC" // name of the plugin
+
+var PLUGIN = node.NewPlugin(name, node.Enabled, configure, run)
 
 func configure(plugin *node.Plugin) {
-	configureFPC(plugin)
+	configureFPC()
 }
 
 func run(plugin *node.Plugin) {
-	runFPC(plugin)
+	if err := daemon.BackgroundWorker(name, start, shutdown.ShutdownPriorityFPC); err != nil {
+		log.Errorf("Failed to start as daemon: %s", err)
+	}
 }

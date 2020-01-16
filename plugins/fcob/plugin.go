@@ -1,22 +1,29 @@
 package fcob
 
 import (
-	"github.com/iotaledger/goshimmer/packages/events"
-	"github.com/iotaledger/goshimmer/packages/node"
 	"github.com/iotaledger/goshimmer/plugins/fpc"
 	"github.com/iotaledger/goshimmer/plugins/tangle"
+	"github.com/iotaledger/hive.go/events"
+	"github.com/iotaledger/hive.go/logger"
+	"github.com/iotaledger/hive.go/node"
 )
 
-// PLUGIN is the exposed FCoB plugin
-var PLUGIN = node.NewPlugin("FCOB", configure, run)
+const name = "FCOB" // name of the plugin
 
-var api tangleStore
-var runFCOB *events.Closure
-var updateTxsVoted *events.Closure
+// PLUGIN is the exposed FCoB plugin
+var PLUGIN = node.NewPlugin(name, node.Enabled, configure, run)
+
+var (
+	api            tangleStore
+	runFCOB        *events.Closure
+	updateTxsVoted *events.Closure
+	log            *logger.Logger
+)
 
 func configure(plugin *node.Plugin) {
+	log = logger.NewLogger(name)
 	api = tangleStore{}
-	runFCOB = configureFCOB(plugin, api, fpc.INSTANCE)
+	runFCOB = configureFCOB(log, api, fpc.INSTANCE)
 	updateTxsVoted = configureUpdateTxsVoted(plugin, api)
 }
 

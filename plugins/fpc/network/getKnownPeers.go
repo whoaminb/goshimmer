@@ -1,11 +1,17 @@
 package network
 
-import "github.com/iotaledger/goshimmer/plugins/autopeering/instances/knownpeers"
+import (
+	"github.com/iotaledger/goshimmer/packages/autopeering/peer/service"
+	"github.com/iotaledger/goshimmer/plugins/autopeering"
+)
 
 func GetKnownPeers() []string {
-	peers := []string{}
-	for _, peer := range knownpeers.INSTANCE.List() { // Does this read locks INSTANCE (*peerregister.PeerRegister)?
-		peers = append(peers, peer.Identity.StringIdentifier)
+	peerAddresses := []string{}
+	for _, peer := range autopeering.Discovery.GetVerifiedPeers() {
+		fpcService := peer.Services().Get(service.FPCKey)
+		if fpcService != nil {
+			peerAddresses = append(peerAddresses, fpcService.String())
+		}
 	}
-	return peers
+	return peerAddresses
 }

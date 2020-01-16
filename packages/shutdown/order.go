@@ -9,6 +9,7 @@ const (
 	ShutdownPriorityWebAPI
 	ShutdownPriorityGossip
 	ShutdownPriorityZMQ
+	ShutdownPriorityFPC
 	ShutdownPriorityAutopeering
 	ShutdownPriorityGraph
 	ShutdownPriorityUI

@@ -1,13 +1,12 @@
 package fcob
 
 import (
-	"fmt"
-
 	"github.com/iotaledger/goshimmer/packages/errors"
-	"github.com/iotaledger/goshimmer/packages/events"
 	"github.com/iotaledger/goshimmer/packages/fpc"
 	"github.com/iotaledger/goshimmer/packages/model/value_transaction"
-	"github.com/iotaledger/goshimmer/packages/node"
+	"github.com/iotaledger/hive.go/events"
+	"github.com/iotaledger/hive.go/logger"
+	"github.com/iotaledger/hive.go/node"
 	"github.com/iotaledger/iota.go/trinary"
 )
 
@@ -33,8 +32,8 @@ type ConflictChecker interface {
 	GetConflictSet(target trinary.Trytes) (conflictSet map[trinary.Trytes]bool)
 }
 
-func configureFCOB(plugin *node.Plugin, tangle tangleAPI, voter fpc.Voter) *events.Closure {
-	runFCOB := makeRunProtocol(plugin, tangle, voter)
+func configureFCOB(log *logger.Logger, tangle tangleAPI, voter fpc.Voter) *events.Closure {
+	runFCOB := makeRunProtocol(log, tangle, voter)
 	return events.NewClosure(func(transaction *value_transaction.ValueTransaction) {
 		// start as a goroutine so that immediately returns
 		go runFCOB(transaction.GetHash())
@@ -43,18 +42,18 @@ func configureFCOB(plugin *node.Plugin, tangle tangleAPI, voter fpc.Voter) *even
 
 // makeRunProtocol returns a runProtocol function as the
 // FCoB core logic, that uses the given voter and updater interfaces
-func makeRunProtocol(plugin *node.Plugin, tangle tangleAPI, voter fpc.Voter) RunProtocol {
+func makeRunProtocol(log *logger.Logger, tangle tangleAPI, voter fpc.Voter) RunProtocol {
 	// FCoB logic core
 	return func(txHash trinary.Trytes) {
 		// the opinioner decides the initial opinion and the (potential conflict set)
 		initialOpinion, conflictSet, err := decideInitialOpinion(txHash, tangle)
 		if err != nil {
-			plugin.LogFailure(fmt.Sprint(err))
+			log.Error(err.Error())
 			return
 		}
 		err = setOpinion(txHash, initialOpinion, tangle)
 		if err != nil {
-			plugin.LogFailure(fmt.Sprint(err))
+			log.Error(err.Error())
 			return
 		}
 		// don't vote if already voted
@@ -73,7 +72,7 @@ func makeRunProtocol(plugin *node.Plugin, tangle tangleAPI, voter fpc.Voter) Run
 		for tx := range conflictSet {
 			txOpinion, err := getOpinion(tx, tangle)
 			if err != nil {
-				plugin.LogFailure(fmt.Sprint(err))
+				log.Error(err.Error())
 				return
 			}
 			// include only unvoted txs
@@ -88,8 +87,8 @@ func makeRunProtocol(plugin *node.Plugin, tangle tangleAPI, voter fpc.Voter) Run
 		}
 		voter.SubmitTxsForVoting(txsToSubmit...)
 
-		if plugin != nil {
-			plugin.LogInfo(fmt.Sprintf("NewConflict: %v", txsToSubmit))
+		if log != nil {
+			log.Infof("NewConflict: %v", txsToSubmit)
 		}
 	}
 
@@ -97,11 +96,11 @@ func makeRunProtocol(plugin *node.Plugin, tangle tangleAPI, voter fpc.Voter) Run
 
 func configureUpdateTxsVoted(plugin *node.Plugin, tangle tangleAPI) *events.Closure {
 	return events.NewClosure(func(txs []fpc.TxOpinion) {
-		plugin.LogInfo(fmt.Sprintf("Voting Done for txs: %v", txs))
+		log.Infof("Voting Done for txs: %v", txs)
 		for _, tx := range txs {
 			err := setOpinion(trinary.Trytes(tx.TxHash), Opinion{tx.Opinion, VOTED}, tangle)
 			if err != nil {
-				plugin.LogFailure(fmt.Sprint(err))
+				log.Error(err.Error())
 			}
 		}
 	})
