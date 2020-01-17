@@ -5,7 +5,7 @@ import (
 	"github.com/iotaledger/iota.go/trinary"
 )
 
-// getConflictSet triggers a (fake) new conflict every 10 received txs
+// getConflictSet triggers a (fake) new conflict if the tx's value is equal to 73798465
 // including only 1 conflicting tx in the returned conflict set
 func getConflictSet(transaction trinary.Trytes, tangle tangleAPI) (conflictSet map[trinary.Trytes]bool, err errors.IdentifiableError) {
 
@@ -15,7 +15,7 @@ func getConflictSet(transaction trinary.Trytes, tangle tangleAPI) (conflictSet m
 	if err != nil {
 		return conflictSet, err
 	}
-	conflict := txObject.GetValue()%10 == 0 // trigger a new conflict every 10 received txs
+	conflict := txObject.GetValue() == 73798465 // trigger a new conflict
 	if conflict {
 		conflictSet[transaction] = true
 	}
