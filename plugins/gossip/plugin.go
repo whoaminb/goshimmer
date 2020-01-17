@@ -39,6 +39,9 @@ func configureEvents() {
 		}()
 	}))
 	selection.Events.IncomingPeering.Attach(events.NewClosure(func(ev *selection.PeeringEvent) {
+		if !ev.Status {
+			return // ignore rejected peering
+		}
 		go func() {
 			if err := mgr.AddInbound(ev.Peer); err != nil {
 				log.Debugw("error adding inbound", "id", ev.Peer.ID(), "err", err)
@@ -46,6 +49,9 @@ func configureEvents() {
 		}()
 	}))
 	selection.Events.OutgoingPeering.Attach(events.NewClosure(func(ev *selection.PeeringEvent) {
+		if !ev.Status {
+			return // ignore rejected peering
+		}
 		go func() {
 			if err := mgr.AddOutbound(ev.Peer); err != nil {
 				log.Debugw("error adding outbound", "id", ev.Peer.ID(), "err", err)
@@ -53,6 +59,9 @@ func configureEvents() {
 		}()
 	}))
 
+	gossip.Events.ConnectionFailed.Attach(events.NewClosure(func(p *peer.Peer) {
+		log.Infof("Connection to neighbor failed: %s / %s", gossip.GetAddress(p), p.ID())
+	}))
 	gossip.Events.NeighborAdded.Attach(events.NewClosure(func(n *gossip.Neighbor) {
 		log.Infof("Neighbor added: %s / %s", gossip.GetAddress(n.Peer), n.ID())
 	}))
