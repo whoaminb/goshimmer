@@ -11,8 +11,8 @@ func TestOpinionMapLen(t *testing.T) {
 		expected   int
 	}
 	var tests = []testInput{
-		{map[ID][]Opinion{"1": []Opinion{Like, Dislike}}, 1},
-		{map[ID][]Opinion{"1": []Opinion{Like, Dislike}, "2": []Opinion{Dislike}}, 2},
+		{map[ID][]Opinion{"1": {Like, Dislike}}, 1},
+		{map[ID][]Opinion{"1": {Like, Dislike}, "2": {Dislike}}, 2},
 		{map[ID][]Opinion{}, 0},
 	}
 
@@ -33,8 +33,8 @@ func TestOpinionMapGetMap(t *testing.T) {
 		expected map[ID][]Opinion
 	}
 	var tests = []testInput{
-		{map[ID][]Opinion{"1": []Opinion{Like, Dislike}}},
-		{map[ID][]Opinion{"1": []Opinion{Like, Dislike}, "2": []Opinion{Dislike}}},
+		{map[ID][]Opinion{"1": {Like, Dislike}}},
+		{map[ID][]Opinion{"1": {Like, Dislike}, "2": {Dislike}}},
 		{map[ID][]Opinion{}},
 	}
 
@@ -61,8 +61,8 @@ func TestOpinionMapLoad(t *testing.T) {
 		expected   expectedResult
 	}
 	var tests = []testInput{
-		{map[ID][]Opinion{"1": []Opinion{Like, Dislike}}, "1", expectedResult{[]Opinion{Like, Dislike}, true}},
-		{map[ID][]Opinion{"1": []Opinion{Like, Dislike}}, "2", expectedResult{nil, false}},
+		{map[ID][]Opinion{"1": {Like, Dislike}}, "1", expectedResult{[]Opinion{Like, Dislike}, true}},
+		{map[ID][]Opinion{"1": {Like, Dislike}}, "2", expectedResult{nil, false}},
 		{map[ID][]Opinion{}, "1", expectedResult{nil, false}},
 	}
 
@@ -87,22 +87,22 @@ func TestOpinionMapStore(t *testing.T) {
 	}
 	var tests = []testInput{
 		{
-			map[ID][]Opinion{"1": []Opinion{Like, Dislike}},
+			map[ID][]Opinion{"1": {Like, Dislike}},
 			"1",
 			Like,
-			map[ID][]Opinion{"1": []Opinion{Like, Dislike, Like}},
+			map[ID][]Opinion{"1": {Like, Dislike, Like}},
 		},
 		{
-			map[ID][]Opinion{"1": []Opinion{Like, Dislike}},
+			map[ID][]Opinion{"1": {Like, Dislike}},
 			"2",
 			Like,
-			map[ID][]Opinion{"1": []Opinion{Like, Dislike}, "2": []Opinion{Like}},
+			map[ID][]Opinion{"1": {Like, Dislike}, "2": {Like}},
 		},
 		{
 			map[ID][]Opinion{},
 			"1",
 			Like,
-			map[ID][]Opinion{"1": []Opinion{Like}},
+			map[ID][]Opinion{"1": {Like}},
 		},
 	}
 
@@ -126,19 +126,19 @@ func TestOpinionMapDelete(t *testing.T) {
 	}
 	var tests = []testInput{
 		{
-			map[ID][]Opinion{"1": []Opinion{Like, Dislike}},
+			map[ID][]Opinion{"1": {Like, Dislike}},
 			"1",
 			map[ID][]Opinion{},
 		},
 		{
-			map[ID][]Opinion{"1": []Opinion{Like, Dislike}, "2": []Opinion{Like}},
+			map[ID][]Opinion{"1": {Like, Dislike}, "2": {Like}},
 			"2",
-			map[ID][]Opinion{"1": []Opinion{Like, Dislike}},
+			map[ID][]Opinion{"1": {Like, Dislike}},
 		},
 		{
-			map[ID][]Opinion{"1": []Opinion{Like, Dislike}},
+			map[ID][]Opinion{"1": {Like, Dislike}},
 			"2",
-			map[ID][]Opinion{"1": []Opinion{Like, Dislike}},
+			map[ID][]Opinion{"1": {Like, Dislike}},
 		},
 	}
 

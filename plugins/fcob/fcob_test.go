@@ -73,7 +73,7 @@ func TestRunProtocol(t *testing.T) {
 		{
 			db:            mockedDB,
 			tx:            trinary.Trytes("4"),
-			value:         10, //currently value%10 triggers a new conflict
+			value:         73798465, //currently value==73798465 triggers a new conflict
 			branch:        trinary.Trytes("2"),
 			trunk:         trinary.Trytes("2"),
 			expectedLiked: DISLIKED,

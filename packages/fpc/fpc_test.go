@@ -53,9 +53,9 @@ func TestGetInterimOpinion(t *testing.T) {
 		expectedOpinions []Opinion
 	}
 	var tests = []testInput{
-		{map[ID][]Opinion{"1": []Opinion{Like, Like, Like}}, []ID{"1"}, []Opinion{Like}},
-		{map[ID][]Opinion{"1": []Opinion{Like, Like, Like}}, []ID{"2"}, []Opinion{Dislike}},
-		{map[ID][]Opinion{"1": []Opinion{Like}, "2": []Opinion{Dislike}}, []ID{"1", "2", "3"}, []Opinion{Like, Dislike, Dislike}},
+		{map[ID][]Opinion{"1": {Like, Like, Like}}, []ID{"1"}, []Opinion{Like}},
+		{map[ID][]Opinion{"1": {Like, Like, Like}}, []ID{"2"}, []Opinion{Dislike}},
+		{map[ID][]Opinion{"1": {Like}, "2": {Dislike}}, []ID{"1", "2", "3"}, []Opinion{Like, Dislike, Dislike}},
 		{map[ID][]Opinion{}, []ID{"1"}, []Opinion{Dislike}},
 	}
 	for _, test := range tests {
