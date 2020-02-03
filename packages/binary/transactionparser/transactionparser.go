@@ -3,12 +3,11 @@ package transactionparser
 import (
 	"sync"
 
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
 	"github.com/iotaledger/goshimmer/packages/binary/transactionparser/builtinfilters"
 
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/typeutils"
-
-	"github.com/iotaledger/goshimmer/packages/binary/transaction"
 )
 
 type TransactionParser struct {

@@ -1,8 +1,8 @@
 package tangle
 
 import (
-	"github.com/iotaledger/goshimmer/packages/binary/address"
-	"github.com/iotaledger/goshimmer/packages/binary/transaction"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
+	"github.com/iotaledger/goshimmer/packages/binary/valuetangle/model/address"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
 )
 

@@ -1,8 +1,9 @@
 package transfer
 
 import (
-	"github.com/iotaledger/goshimmer/packages/binary/address"
+	"github.com/iotaledger/goshimmer/packages/binary/valuetangle/model/address"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/reality"
+
 	"github.com/iotaledger/hive.go/objectstorage"
 )
 

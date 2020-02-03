@@ -6,21 +6,19 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/iotaledger/goshimmer/packages/binary/signature/ed25119"
 	"github.com/iotaledger/hive.go/async"
-
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
 
 	"github.com/panjf2000/ants/v2"
 
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
-
-	"github.com/iotaledger/goshimmer/packages/binary/transaction"
-
 	"github.com/iotaledger/goshimmer/packages/binary/address"
 	"github.com/iotaledger/goshimmer/packages/binary/identity"
-	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload/data"
-	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload/valuetransfer"
+	"github.com/iotaledger/goshimmer/packages/binary/signature/ed25119"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction/payload/data"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction/payload/valuetransfer"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
+
 	"github.com/stretchr/testify/assert"
 )
 

@@ -5,7 +5,7 @@ import (
 )
 
 type CachedApprovers struct {
-	*objectstorage.CachedObject
+	objectstorage.CachedObject
 }
 
 func (cachedObject *CachedApprovers) Unwrap() *Approvers {

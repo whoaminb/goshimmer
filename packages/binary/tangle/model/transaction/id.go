@@ -25,7 +25,7 @@ func (id *Id) UnmarshalBinary(data []byte) (err error) {
 	return
 }
 
-func (id *Id) String() string {
+func (id Id) String() string {
 	return base58.Encode(id[:])
 }
 

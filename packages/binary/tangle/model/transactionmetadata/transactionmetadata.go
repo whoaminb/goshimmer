@@ -4,8 +4,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iotaledger/goshimmer/packages/binary/transaction"
 	"github.com/iotaledger/hive.go/objectstorage"
+
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
 )
 
 type TransactionMetadata struct {

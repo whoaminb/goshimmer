@@ -5,7 +5,11 @@ import (
 )
 
 type CachedTransaction struct {
-	*objectstorage.CachedObject
+	objectstorage.CachedObject
+}
+
+func (cachedTransaction *CachedTransaction) Retain() objectstorage.CachedObject {
+	return &CachedTransaction{cachedTransaction.CachedObject.Retain()}
 }
 
 func (cachedTransaction *CachedTransaction) Unwrap() *Transaction {

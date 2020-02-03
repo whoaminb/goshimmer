@@ -1,9 +1,10 @@
 package tangle
 
 import (
-	"github.com/iotaledger/goshimmer/packages/binary/transaction"
-	"github.com/iotaledger/goshimmer/packages/binary/transactionmetadata"
 	"github.com/iotaledger/hive.go/events"
+
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transactionmetadata"
 )
 
 type Events struct {
@@ -34,8 +35,5 @@ func cachedTransactionEvent(handler interface{}, params ...interface{}) {
 	cachedTransaction := params[0].(*transaction.CachedTransaction)
 	cachedTransactionMetadata := params[1].(*transactionmetadata.CachedTransactionMetadata)
 
-	cachedTransaction.RegisterConsumer()
-	cachedTransactionMetadata.RegisterConsumer()
-
-	handler.(func(*transaction.CachedTransaction, *transactionmetadata.CachedTransactionMetadata))(cachedTransaction, cachedTransactionMetadata)
+	handler.(func(*transaction.CachedTransaction, *transactionmetadata.CachedTransactionMetadata))(cachedTransaction.Retain().(*transaction.CachedTransaction), cachedTransactionMetadata.Retain().(*transactionmetadata.CachedTransactionMetadata))
 }

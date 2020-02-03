@@ -4,9 +4,9 @@ import (
 	"encoding/binary"
 	"sync"
 
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
 	"github.com/iotaledger/goshimmer/packages/binary/types"
 
-	"github.com/iotaledger/goshimmer/packages/binary/transaction"
 	"github.com/iotaledger/hive.go/objectstorage"
 )
 

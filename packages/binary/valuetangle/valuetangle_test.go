@@ -8,19 +8,16 @@ import (
 	"github.com/mr-tron/base58"
 
 	"github.com/iotaledger/goshimmer/packages/binary/address"
-	"github.com/iotaledger/goshimmer/packages/binary/transactionmetadata"
+	"github.com/iotaledger/goshimmer/packages/binary/identity"
+	"github.com/iotaledger/goshimmer/packages/binary/signature/ed25119"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction/payload/valuetransfer"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transactionmetadata"
+	"github.com/iotaledger/goshimmer/packages/binary/valuetangle/model"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 
-	"github.com/iotaledger/goshimmer/packages/binary/signature/ed25119"
-
-	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload/valuetransfer"
-
-	"github.com/iotaledger/goshimmer/packages/binary/identity"
-	"github.com/iotaledger/goshimmer/packages/binary/transaction"
-
-	"github.com/iotaledger/goshimmer/packages/binary/tangle"
-	"github.com/iotaledger/goshimmer/packages/binary/valuetangle/model"
 	"github.com/iotaledger/hive.go/events"
 )
 

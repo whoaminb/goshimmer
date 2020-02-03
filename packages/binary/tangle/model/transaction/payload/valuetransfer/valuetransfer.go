@@ -4,14 +4,11 @@ import (
 	"encoding/binary"
 	"sync"
 
-	"github.com/iotaledger/goshimmer/packages/binary/types"
-
 	"github.com/iotaledger/goshimmer/packages/binary/signature/ed25119"
-
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction/payload"
+	"github.com/iotaledger/goshimmer/packages/binary/types"
+	"github.com/iotaledger/goshimmer/packages/binary/valuetangle/model/address"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
-
-	"github.com/iotaledger/goshimmer/packages/binary/address"
-	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 )
 

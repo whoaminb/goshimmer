@@ -4,14 +4,14 @@ import (
 	"container/list"
 	"time"
 
-	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload/valuetransfer"
-
-	"github.com/iotaledger/goshimmer/packages/binary/tangle/approvers"
-	"github.com/iotaledger/goshimmer/packages/binary/tangle/missingtransaction"
-	"github.com/iotaledger/goshimmer/packages/binary/transaction"
-	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload/data"
-	"github.com/iotaledger/goshimmer/packages/binary/transactionmetadata"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/approvers"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/missingtransaction"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction/payload/data"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction/payload/valuetransfer"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transactionmetadata"
 	"github.com/iotaledger/goshimmer/packages/storageprefix"
+
 	"github.com/iotaledger/hive.go/async"
 	"github.com/iotaledger/hive.go/objectstorage"
 )

@@ -5,7 +5,7 @@ import (
 )
 
 type CachedMissingTransfer struct {
-	*objectstorage.CachedObject
+	objectstorage.CachedObject
 }
 
 func (cachedObject *CachedMissingTransfer) Unwrap() *MissingTransfer {

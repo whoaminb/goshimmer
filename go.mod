@@ -5,7 +5,7 @@ go 1.13
 require (
 	github.com/AndreasBriese/bbloom v0.0.0-20190825152654-46b345b51c96 // indirect
 	github.com/dgraph-io/badger v1.6.0
-	github.com/dgraph-io/badger/v2 v2.0.0
+	github.com/dgraph-io/badger/v2 v2.0.1
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/emicklei/dot v0.10.1
 	github.com/ethereum/go-ethereum v1.9.3
@@ -15,7 +15,7 @@ require (
 	github.com/golang/protobuf v1.3.2 // indirect
 	github.com/google/open-location-code/go v0.0.0-20190903173953-119bc96a3a51
 	github.com/gorilla/websocket v1.4.1
-	github.com/iotaledger/hive.go v0.0.0-20200107105553-d35f44074aa2
+	github.com/iotaledger/hive.go v0.0.0-20200131164002-e50853dd9172
 	github.com/iotaledger/iota.go v1.0.0-beta.9
 	github.com/kr/text v0.1.0
 	github.com/labstack/echo v3.3.10+incompatible

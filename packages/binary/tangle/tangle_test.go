@@ -8,8 +8,8 @@ import (
 	"github.com/iotaledger/hive.go/events"
 
 	"github.com/iotaledger/goshimmer/packages/binary/identity"
-	"github.com/iotaledger/goshimmer/packages/binary/transaction"
-	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload/data"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction/payload/data"
 )
 
 func BenchmarkTangle_AttachTransaction(b *testing.B) {

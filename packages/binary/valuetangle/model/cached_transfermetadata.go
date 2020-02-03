@@ -5,7 +5,7 @@ import (
 )
 
 type CachedTransferMetadata struct {
-	*objectstorage.CachedObject
+	objectstorage.CachedObject
 }
 
 func (cachedObject *CachedTransferMetadata) Unwrap() *TransferMetadata {

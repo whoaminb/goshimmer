@@ -5,7 +5,7 @@ import (
 )
 
 type CachedConsumers struct {
-	*objectstorage.CachedObject
+	objectstorage.CachedObject
 }
 
 func (cachedObject *CachedConsumers) Unwrap() *Consumers {

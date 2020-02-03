@@ -5,18 +5,21 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/iotaledger/goshimmer/packages/binary/valuetangle/model/transferoutput"
+
+	"github.com/iotaledger/hive.go/syncutils"
+
 	"github.com/iotaledger/goshimmer/packages/binary/address"
-
+	"github.com/iotaledger/goshimmer/packages/binary/tangle"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction/payload/valuetransfer"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transactionmetadata"
 	"github.com/iotaledger/goshimmer/packages/binary/types"
-
+	"github.com/iotaledger/goshimmer/packages/binary/valuetangle/model"
+	"github.com/iotaledger/goshimmer/packages/binary/valuetangle/model/consumer"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 	"github.com/iotaledger/goshimmer/packages/storageprefix"
 
-	"github.com/iotaledger/goshimmer/packages/binary/tangle"
-	"github.com/iotaledger/goshimmer/packages/binary/transaction"
-	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload/valuetransfer"
-	"github.com/iotaledger/goshimmer/packages/binary/transactionmetadata"
-	"github.com/iotaledger/goshimmer/packages/binary/valuetangle/model"
-	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 	"github.com/iotaledger/hive.go/async"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/objectstorage"
@@ -39,6 +42,8 @@ type ValueTangle struct {
 	storeTransactionsWorkerPool async.WorkerPool
 	solidifierWorkerPool        async.WorkerPool
 	cleanupWorkerPool           async.WorkerPool
+
+	tangleMutex syncutils.MultiMutex
 
 	Events Events
 }
@@ -157,10 +162,23 @@ func (valueTangle *ValueTangle) storeTransactionWorker(cachedTx *transaction.Cac
 
 	transferId := valueTransfer.GetId()
 
-	cachedTransferMetadata := &model.CachedTransferMetadata{CachedObject: valueTangle.transferMetadataStorage.Store(model.NewTransferMetadata(transferId))}
-	for referencedTransferId := range valueTransfer.GetInputs() {
-		addTransferToConsumers(transferId, referencedTransferId)
+	lockBuilder := syncutils.MultiMutexLockBuilder{}.AddLock(transferId)
+	consumers := make(map[transferoutput.Id]*consumer.Consumer)
+	for referencedTransferId, referencedAddresses := range valueTransfer.GetInputs() {
+		for referencedAddress := range referencedAddresses {
+			transferOutputId := transferoutput.NewId(referencedAddress, referencedTransferId)
+
+			lockBuilder.AddLock(transferOutputId)
+			consumers[transferOutputId] = consumer.New(transferOutputId, transferId)
+		}
 	}
+
+	// lock: own transfer outputs, consumers of inputs,
+	valueTangle.tangleMutex.Lock(lockBuilder.Build()...)
+
+	valueTangle.tangleMutex.Unlock(lockBuilder.Build()...)
+
+	cachedTransferMetadata := &model.CachedTransferMetadata{CachedObject: valueTangle.transferMetadataStorage.Store(model.NewTransferMetadata(transferId))}
 
 	if valueTangle.missingTransferStorage.DeleteIfPresent(transferId[:]) {
 		valueTangle.Events.MissingTransferReceived.Trigger(transferId)

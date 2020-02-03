@@ -4,8 +4,8 @@ import (
 	"sync"
 
 	"github.com/iotaledger/goshimmer/packages/binary/address"
-	"github.com/iotaledger/goshimmer/packages/binary/transaction"
-	"github.com/iotaledger/goshimmer/packages/binary/transaction/payload/valuetransfer"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction/payload/valuetransfer"
 	"github.com/iotaledger/goshimmer/packages/binary/types"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 )

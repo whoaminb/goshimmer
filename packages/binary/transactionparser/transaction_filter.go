@@ -1,7 +1,7 @@
 package transactionparser
 
 import (
-	"github.com/iotaledger/goshimmer/packages/binary/transaction"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
 )
 
 type TransactionFilter interface {

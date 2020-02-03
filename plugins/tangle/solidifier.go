@@ -3,6 +3,8 @@ package tangle
 import (
 	"runtime"
 
+	"github.com/iotaledger/iota.go/trinary"
+
 	"github.com/iotaledger/goshimmer/packages/daemon"
 	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/events"
@@ -13,7 +15,6 @@ import (
 	"github.com/iotaledger/goshimmer/packages/node"
 	"github.com/iotaledger/goshimmer/packages/workerpool"
 	"github.com/iotaledger/goshimmer/plugins/gossip"
-	"github.com/iotaledger/iota.go/trinary"
 )
 
 // region plugin module setup //////////////////////////////////////////////////////////////////////////////////////////
