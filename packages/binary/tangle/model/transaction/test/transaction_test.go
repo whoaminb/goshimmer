@@ -10,12 +10,12 @@ import (
 
 	"github.com/panjf2000/ants/v2"
 
-	"github.com/iotaledger/goshimmer/packages/binary/address"
 	"github.com/iotaledger/goshimmer/packages/binary/identity"
 	"github.com/iotaledger/goshimmer/packages/binary/signature/ed25119"
 	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
 	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction/payload/data"
 	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction/payload/valuetransfer"
+	"github.com/iotaledger/goshimmer/packages/binary/valuetangle/model/address"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/coloredcoins"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate/transfer"
 
@@ -131,7 +131,7 @@ func TestNew(t *testing.T) {
 
 	newValueTransaction1 := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(),
 		valuetransfer.New().
-			AddInput(transfer.NewId("test"), address.FromPublicKey(keyPairOfSourceAddress.PublicKey)).
+			AddInput(transfer.NewId([]byte("test")), address.FromPublicKey(keyPairOfSourceAddress.PublicKey)).
 			AddOutput(address.FromPublicKey(keyPairOfTargetAddress.PublicKey), coloredcoins.NewColoredBalance(coloredcoins.NewColor("IOTA"), 12)).
 			Sign(keyPairOfSourceAddress),
 	)
