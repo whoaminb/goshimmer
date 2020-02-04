@@ -3,8 +3,9 @@ package builtinfilters
 import (
 	"sync"
 
-	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
 	"github.com/iotaledger/hive.go/async"
+
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
 )
 
 type TransactionSignatureFilter struct {

@@ -4,8 +4,7 @@ import (
 	"sync"
 
 	"github.com/iotaledger/hive.go/async"
-
-	"github.com/iotaledger/goshimmer/packages/binary/bytesfilter"
+	"github.com/iotaledger/hive.go/bytesfilter"
 )
 
 type RecentlySeenBytesFilter struct {
