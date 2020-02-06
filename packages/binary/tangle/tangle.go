@@ -4,7 +4,10 @@ import (
 	"container/list"
 	"time"
 
-	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/approvers"
+	"github.com/iotaledger/hive.go/syncutils"
+	"github.com/iotaledger/hive.go/types"
+
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/approver"
 	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/missingtransaction"
 	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
 	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction/payload/data"
@@ -26,7 +29,7 @@ type Tangle struct {
 
 	transactionStorage         *objectstorage.ObjectStorage
 	transactionMetadataStorage *objectstorage.ObjectStorage
-	approversStorage           *objectstorage.ObjectStorage
+	approverStorage            *objectstorage.ObjectStorage
 	missingTransactionsStorage *objectstorage.ObjectStorage
 
 	Events Events
@@ -34,6 +37,8 @@ type Tangle struct {
 	storeTransactionsWorkerPool async.WorkerPool
 	solidifierWorkerPool        async.WorkerPool
 	cleanupWorkerPool           async.WorkerPool
+
+	tangleMutex syncutils.RWMultiMutex
 }
 
 // Constructor for the tangle.
@@ -42,7 +47,7 @@ func New(storageId []byte) (result *Tangle) {
 		storageId:                  storageId,
 		transactionStorage:         objectstorage.New(append(storageId, storageprefix.TangleTransaction...), transaction.FromStorage),
 		transactionMetadataStorage: objectstorage.New(append(storageId, storageprefix.TangleTransactionMetadata...), transactionmetadata.FromStorage),
-		approversStorage:           objectstorage.New(append(storageId, storageprefix.TangleApprovers...), approvers.FromStorage),
+		approverStorage:            objectstorage.New(append(storageId, storageprefix.TangleApprovers...), approver.FromStorage, objectstorage.PartitionKey(transaction.IdLength, transaction.IdLength)),
 		missingTransactionsStorage: objectstorage.New(append(storageId, storageprefix.TangleMissingTransaction...), missingtransaction.FromStorage),
 
 		Events: *newEvents(),
@@ -99,33 +104,58 @@ func (tangle *Tangle) GetTransactionMetadata(transactionId transaction.Id) *tran
 }
 
 // Retrieves the approvers of a transaction from the tangle.
-func (tangle *Tangle) GetApprovers(transactionId transaction.Id) *approvers.CachedApprovers {
-	return &approvers.CachedApprovers{CachedObject: tangle.approversStorage.Load(transactionId[:])}
+func (tangle *Tangle) GetApprover(approvedTransaction transaction.Id, approvingTransaction transaction.Id) *approver.CachedApprover {
+	keyToLoad := make([]byte, transaction.IdLength+transaction.IdLength)
+	copy(keyToLoad[:transaction.IdLength], approvedTransaction[:])
+	copy(keyToLoad[transaction.IdLength:], approvingTransaction[:])
+
+	return &approver.CachedApprover{CachedObject: tangle.approverStorage.Load(keyToLoad)}
+}
+
+func (tangle *Tangle) GetApprovers(transactionId transaction.Id) []*approver.CachedApprover {
+	approvers := make([]*approver.CachedApprover, 0)
+	tangle.approverStorage.ForEach(func(key []byte, cachedObject objectstorage.CachedObject) bool {
+		approvers = append(approvers, &approver.CachedApprover{CachedObject: cachedObject.Retain()})
+
+		return true
+	}, transactionId[:])
+
+	return approvers
 }
 
 // Deletes a transaction from the tangle (i.e. for local snapshots)
 func (tangle *Tangle) DeleteTransaction(transactionId transaction.Id) {
-	tangle.GetTransaction(transactionId).Consume(func(object objectstorage.StorableObject) {
+	tangle.tangleMutex.RLock(transactionId)
+	if !tangle.GetTransaction(transactionId).Consume(func(object objectstorage.StorableObject) {
+		tangle.tangleMutex.RUnlock(transactionId)
+		tangle.tangleMutex.Lock(transactionId)
+
 		currentTransaction := object.(*transaction.Transaction)
 
-		tangle.GetApprovers(currentTransaction.GetTrunkTransactionId()).Consume(func(object objectstorage.StorableObject) {
-			if _tmp := object.(*approvers.Approvers); _tmp.Remove(transactionId) && _tmp.Size() == 0 {
-				_tmp.Delete()
-			}
-		})
+		trunkTransactionId := currentTransaction.GetTrunkTransactionId()
+		trunkIdToDelete := make([]byte, transaction.IdLength+transaction.IdLength)
+		copy(trunkIdToDelete[:transaction.IdLength], transactionId[:])
+		copy(trunkIdToDelete[transaction.IdLength:], trunkTransactionId[:])
+		tangle.approverStorage.Delete(trunkIdToDelete)
 
-		tangle.GetApprovers(currentTransaction.GetTrunkTransactionId()).Consume(func(object objectstorage.StorableObject) {
-			if _tmp := object.(*approvers.Approvers); _tmp.Remove(transactionId) && _tmp.Size() == 0 {
-				_tmp.Delete()
-			}
-		})
-	})
+		branchTransactionId := currentTransaction.GetBranchTransactionId()
+		if branchTransactionId != trunkTransactionId {
+			branchIdToDelete := make([]byte, transaction.IdLength+transaction.IdLength)
+			copy(branchIdToDelete[:transaction.IdLength], transactionId[:])
+			copy(branchIdToDelete[transaction.IdLength:], branchTransactionId[:])
+			tangle.approverStorage.Delete(branchIdToDelete)
+		}
 
-	tangle.transactionStorage.Delete(transactionId[:])
-	tangle.transactionMetadataStorage.Delete(transactionId[:])
-	tangle.missingTransactionsStorage.Delete(transactionId[:])
+		tangle.transactionStorage.Delete(transactionId[:])
+		tangle.transactionMetadataStorage.Delete(transactionId[:])
+		tangle.missingTransactionsStorage.Delete(transactionId[:])
 
-	tangle.Events.TransactionRemoved.Trigger(transactionId)
+		tangle.tangleMutex.Unlock(transactionId)
+
+		tangle.Events.TransactionRemoved.Trigger(transactionId)
+	}) {
+		tangle.tangleMutex.RUnlock(transactionId)
+	}
 }
 
 // Marks the tangle as stopped, so it will not accept any new transactions (waits for all backgroundTasks to finish.
@@ -142,7 +172,7 @@ func (tangle *Tangle) Prune() error {
 	for _, storage := range []*objectstorage.ObjectStorage{
 		tangle.transactionStorage,
 		tangle.transactionMetadataStorage,
-		tangle.approversStorage,
+		tangle.approverStorage,
 		tangle.missingTransactionsStorage,
 	} {
 		if err := storage.Prune(); err != nil {
@@ -155,39 +185,35 @@ func (tangle *Tangle) Prune() error {
 
 // Worker that stores the transactions and calls the corresponding "Storage events"
 func (tangle *Tangle) storeTransactionWorker(tx *transaction.Transaction) {
-	addTransactionToApprovers := func(transactionId transaction.Id, approvedTransactionId transaction.Id) {
-		cachedApprovers := tangle.approversStorage.ComputeIfAbsent(approvedTransactionId[:], func([]byte) objectstorage.StorableObject {
-			result := approvers.New(approvedTransactionId)
-
-			result.SetModified()
-
-			return result
-		})
-
-		if _tmp := cachedApprovers.Get(); _tmp != nil {
-			if approversObject := _tmp.(*approvers.Approvers); approversObject != nil {
-				approversObject.Add(transactionId)
-
-				// if the approvers got "cleaned up" while being in cache, we make sure the object gets persisted again
-				approversObject.Persist()
-			}
-		}
-
-		cachedApprovers.Release()
-	}
-
 	var cachedTransaction *transaction.CachedTransaction
-	if _tmp, transactionIsNew := tangle.transactionStorage.StoreIfAbsent(tx.GetStorageKey(), tx); !transactionIsNew {
+	if _tmp, transactionIsNew := tangle.transactionStorage.StoreIfAbsent(tx); !transactionIsNew {
 		return
 	} else {
 		cachedTransaction = &transaction.CachedTransaction{CachedObject: _tmp}
 	}
 
 	transactionId := tx.GetId()
+	trunkTransactionID := tx.GetTrunkTransactionId()
+	branchTransactionID := tx.GetBranchTransactionId()
+
+	var lockBuilder syncutils.MultiMutexLockBuilder
+	if trunkTransactionID != transaction.EmptyId {
+		lockBuilder.AddLock(trunkTransactionID)
+	}
+	if branchTransactionID != transaction.EmptyId && branchTransactionID != trunkTransactionID {
+		lockBuilder.AddLock(branchTransactionID)
+	}
+	locks := lockBuilder.Build()
+
+	tangle.tangleMutex.Lock(locks...)
 
 	cachedTransactionMetadata := &transactionmetadata.CachedTransactionMetadata{CachedObject: tangle.transactionMetadataStorage.Store(transactionmetadata.New(transactionId))}
-	addTransactionToApprovers(transactionId, tx.GetTrunkTransactionId())
-	addTransactionToApprovers(transactionId, tx.GetBranchTransactionId())
+	tangle.approverStorage.Store(approver.New(trunkTransactionID, transactionId)).Release()
+	if branchTransactionID != trunkTransactionID {
+		tangle.approverStorage.Store(approver.New(branchTransactionID, transactionId)).Release()
+	}
+
+	tangle.tangleMutex.Unlock(locks...)
 
 	if tangle.missingTransactionsStorage.DeleteIfPresent(transactionId[:]) {
 		tangle.Events.MissingTransactionReceived.Trigger(transactionId)
@@ -212,7 +238,7 @@ func (tangle *Tangle) solidifyTransactionWorker(cachedTransaction *transaction.C
 			transactionMetadataCached.Release()
 
 			// if transaction is missing and was not reported as missing, yet
-			if cachedMissingTransaction, missingTransactionStored := tangle.missingTransactionsStorage.StoreIfAbsent(transactionId[:], missingtransaction.New(transactionId)); missingTransactionStored {
+			if cachedMissingTransaction, missingTransactionStored := tangle.missingTransactionsStorage.StoreIfAbsent(missingtransaction.New(transactionId)); missingTransactionStored {
 				cachedMissingTransaction.Consume(func(object objectstorage.StorableObject) {
 					tangle.monitorMissingTransactionWorker(object.(*missingtransaction.MissingTransaction).GetTransactionId())
 				})
@@ -283,14 +309,16 @@ func (tangle *Tangle) solidifyTransactionWorker(cachedTransaction *transaction.C
 		if isTransactionSolid(currentTransaction, currentTransactionMetadata) && currentTransactionMetadata.SetSolid(true) {
 			tangle.Events.TransactionSolid.Trigger(currentCachedTransaction, currentCachedTransactionMetadata)
 
-			tangle.GetApprovers(currentTransaction.GetId()).Consume(func(object objectstorage.StorableObject) {
-				for approverTransactionId := range object.(*approvers.Approvers).Get() {
+			for _, cachedApprover := range tangle.GetApprovers(currentTransaction.GetId()) {
+				cachedApprover.Consume(func(object objectstorage.StorableObject) {
+					approverTransactionId := object.(*approver.Approver).GetApprovingTransactionId()
+
 					solidificationStack.PushBack([2]interface{}{
 						tangle.GetTransaction(approverTransactionId),
 						tangle.GetTransactionMetadata(approverTransactionId),
 					})
-				}
-			})
+				})
+			}
 		}
 
 		// release cached results
@@ -310,8 +338,6 @@ func (tangle *Tangle) monitorMissingTransactionWorker(transactionId transaction.
 				if time.Since(missingTransaction.GetMissingSince()) >= MAX_MISSING_TIME_BEFORE_CLEANUP {
 					tangle.cleanupWorkerPool.Submit(func() { tangle.cleanupWorker(missingTransaction.GetTransactionId()) })
 				} else {
-					tangle.Events.TransactionMissing.Trigger(transactionId)
-
 					scheduleNextMissingCheck(transactionId)
 				}
 			})
@@ -327,17 +353,26 @@ func (tangle *Tangle) cleanupWorker(transactionId transaction.Id) {
 	cleanupStack := list.New()
 	cleanupStack.PushBack(transactionId)
 
+	processedTransactions := make(map[transaction.Id]types.Empty)
+	processedTransactions[transactionId] = types.Void
+
 	for cleanupStack.Len() >= 1 {
 		currentStackEntry := cleanupStack.Front()
 		currentTransactionId := currentStackEntry.Value.(transaction.Id)
 		cleanupStack.Remove(currentStackEntry)
 
-		tangle.GetApprovers(currentTransactionId).Consume(func(object objectstorage.StorableObject) {
-			for approverTransactionId := range object.(*approvers.Approvers).Get() {
-				tangle.DeleteTransaction(currentTransactionId)
+		tangle.DeleteTransaction(currentTransactionId)
 
-				cleanupStack.PushBack(approverTransactionId)
-			}
-		})
+		for _, cachedApprover := range tangle.GetApprovers(currentTransactionId) {
+			cachedApprover.Consume(func(object objectstorage.StorableObject) {
+				approverId := object.(*approver.Approver).GetApprovingTransactionId()
+
+				if _, transactionProcessed := processedTransactions[approverId]; !transactionProcessed {
+					cleanupStack.PushBack(approverId)
+
+					processedTransactions[approverId] = types.Void
+				}
+			})
+		}
 	}
 }

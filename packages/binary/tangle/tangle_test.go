@@ -10,6 +10,7 @@ import (
 	"github.com/iotaledger/goshimmer/packages/binary/identity"
 	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
 	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction/payload/data"
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transactionmetadata"
 )
 
 func BenchmarkTangle_AttachTransaction(b *testing.B) {
@@ -45,6 +46,14 @@ func TestTangle_AttachTransaction(t *testing.T) {
 		return
 	}
 
+	tangle.Events.TransactionAttached.Attach(events.NewClosure(func(cachedTransaction *transaction.CachedTransaction, cachedTransactionMetadata *transactionmetadata.CachedTransactionMetadata) {
+		fmt.Println("ATTACHED:", cachedTransaction.Unwrap().GetId())
+	}))
+
+	tangle.Events.TransactionSolid.Attach(events.NewClosure(func(cachedTransaction *transaction.CachedTransaction, cachedTransactionMetadata *transactionmetadata.CachedTransactionMetadata) {
+		fmt.Println("SOLID:", cachedTransaction.Unwrap().GetId())
+	}))
+
 	tangle.Events.TransactionMissing.Attach(events.NewClosure(func(transactionId transaction.Id) {
 		fmt.Println("MISSING:", transactionId)
 	}))
@@ -56,12 +65,10 @@ func TestTangle_AttachTransaction(t *testing.T) {
 	newTransaction1 := transaction.New(transaction.EmptyId, transaction.EmptyId, identity.Generate(), data.New([]byte("some data")))
 	newTransaction2 := transaction.New(newTransaction1.GetId(), newTransaction1.GetId(), identity.Generate(), data.New([]byte("some other data")))
 
-	fmt.Println("ATTACH", newTransaction2.GetId())
 	tangle.AttachTransaction(newTransaction2)
 
-	time.Sleep(37 * time.Second)
+	time.Sleep(7 * time.Second)
 
-	fmt.Println("ATTACH", newTransaction1.GetId())
 	tangle.AttachTransaction(newTransaction1)
 
 	tangle.Shutdown()

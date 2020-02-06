@@ -1,4 +1,4 @@
-package approvers
+package approvers_old
 
 import (
 	"github.com/iotaledger/hive.go/objectstorage"

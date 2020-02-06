@@ -1,6 +1,8 @@
 package reality
 
-import "github.com/iotaledger/goshimmer/packages/binary/types"
+import (
+	"github.com/iotaledger/hive.go/types"
+)
 
 type IdSet map[Id]types.Empty
 

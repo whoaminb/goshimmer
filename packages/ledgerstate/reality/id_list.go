@@ -1,7 +1,7 @@
 package reality
 
 import (
-	"github.com/iotaledger/goshimmer/packages/binary/types"
+	"github.com/iotaledger/hive.go/types"
 )
 
 type IdList []Id
