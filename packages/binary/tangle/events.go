@@ -10,8 +10,9 @@ import (
 type Events struct {
 	TransactionAttached        *events.Event
 	TransactionSolid           *events.Event
-	TransactionMissing         *events.Event
 	MissingTransactionReceived *events.Event
+	TransactionMissing         *events.Event
+	TransactionUnsolidifiable  *events.Event
 	TransactionRemoved         *events.Event
 }
 
@@ -19,21 +20,20 @@ func newEvents() *Events {
 	return &Events{
 		TransactionAttached:        events.NewEvent(cachedTransactionEvent),
 		TransactionSolid:           events.NewEvent(cachedTransactionEvent),
+		MissingTransactionReceived: events.NewEvent(cachedTransactionEvent),
 		TransactionMissing:         events.NewEvent(transactionIdEvent),
-		MissingTransactionReceived: events.NewEvent(transactionIdEvent),
+		TransactionUnsolidifiable:  events.NewEvent(transactionIdEvent),
 		TransactionRemoved:         events.NewEvent(transactionIdEvent),
 	}
 }
 
 func transactionIdEvent(handler interface{}, params ...interface{}) {
-	missingTransactionId := params[0].(transaction.Id)
-
-	handler.(func(transaction.Id))(missingTransactionId)
+	handler.(func(transaction.Id))(params[0].(transaction.Id))
 }
 
 func cachedTransactionEvent(handler interface{}, params ...interface{}) {
-	cachedTransaction := params[0].(*transaction.CachedTransaction)
-	cachedTransactionMetadata := params[1].(*transactionmetadata.CachedTransactionMetadata)
-
-	handler.(func(*transaction.CachedTransaction, *transactionmetadata.CachedTransactionMetadata))(cachedTransaction.Retain().(*transaction.CachedTransaction), cachedTransactionMetadata.Retain().(*transactionmetadata.CachedTransactionMetadata))
+	handler.(func(*transaction.CachedTransaction, *transactionmetadata.CachedTransactionMetadata))(
+		params[0].(*transaction.CachedTransaction).Retain(),
+		params[1].(*transactionmetadata.CachedTransactionMetadata).Retain().(*transactionmetadata.CachedTransactionMetadata),
+	)
 }

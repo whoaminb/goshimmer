@@ -8,8 +8,14 @@ type CachedTransaction struct {
 	objectstorage.CachedObject
 }
 
-func (cachedTransaction *CachedTransaction) Retain() objectstorage.CachedObject {
+func (cachedTransaction *CachedTransaction) Retain() *CachedTransaction {
 	return &CachedTransaction{cachedTransaction.CachedObject.Retain()}
+}
+
+func (cachedTransaction *CachedTransaction) Consume(consumer func(object *Transaction)) bool {
+	return cachedTransaction.CachedObject.Consume(func(object objectstorage.StorableObject) {
+		consumer(object.(*Transaction))
+	})
 }
 
 func (cachedTransaction *CachedTransaction) Unwrap() *Transaction {

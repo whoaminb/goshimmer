@@ -47,11 +47,19 @@ func TestTangle_AttachTransaction(t *testing.T) {
 	}
 
 	tangle.Events.TransactionAttached.Attach(events.NewClosure(func(cachedTransaction *transaction.CachedTransaction, cachedTransactionMetadata *transactionmetadata.CachedTransactionMetadata) {
-		fmt.Println("ATTACHED:", cachedTransaction.Unwrap().GetId())
+		cachedTransaction.Consume(func(transaction *transaction.Transaction) {
+			fmt.Println("ATTACHED:", transaction.GetId())
+		})
 	}))
 
 	tangle.Events.TransactionSolid.Attach(events.NewClosure(func(cachedTransaction *transaction.CachedTransaction, cachedTransactionMetadata *transactionmetadata.CachedTransactionMetadata) {
-		fmt.Println("SOLID:", cachedTransaction.Unwrap().GetId())
+		cachedTransaction.Consume(func(transaction *transaction.Transaction) {
+			fmt.Println("SOLID:", transaction.GetId())
+		})
+	}))
+
+	tangle.Events.TransactionUnsolidifiable.Attach(events.NewClosure(func(transactionId transaction.Id) {
+		fmt.Println("UNSOLIDIFIABLE:", transactionId)
 	}))
 
 	tangle.Events.TransactionMissing.Attach(events.NewClosure(func(transactionId transaction.Id) {

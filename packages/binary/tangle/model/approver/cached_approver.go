@@ -19,3 +19,15 @@ func (cachedApprover *CachedApprover) Unwrap() *Approver {
 		}
 	}
 }
+
+type CachedApprovers []*CachedApprover
+
+func (cachedApprovers CachedApprovers) Consume(consumer func(approver *Approver)) (consumed bool) {
+	for _, cachedApprover := range cachedApprovers {
+		consumed = consumed || cachedApprover.Consume(func(object objectstorage.StorableObject) {
+			consumer(object.(*Approver))
+		})
+	}
+
+	return
+}
