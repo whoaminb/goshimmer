@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iotaledger/goshimmer/packages/autopeering/peer"
-	"github.com/iotaledger/goshimmer/packages/autopeering/peer/service"
+	"github.com/iotaledger/hive.go/autopeering/peer"
+	"github.com/iotaledger/hive.go/autopeering/peer/service"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,19 +35,6 @@ func TestNeighborCloseTwice(t *testing.T) {
 	require.NoError(t, n.Close())
 }
 
-func TestNeighborWriteToClosed(t *testing.T) {
-	a, _, teardown := newPipe()
-	defer teardown()
-
-	n := newTestNeighbor("A", a)
-	n.Listen()
-	require.NoError(t, n.Close())
-
-	assert.Panics(t, func() {
-		_, _ = n.Write(testData)
-	})
-}
-
 func TestNeighborWrite(t *testing.T) {
 	a, b, teardown := newPipe()
 	defer teardown()
@@ -60,7 +47,7 @@ func TestNeighborWrite(t *testing.T) {
 	defer neighborB.Close()
 
 	var count uint32
-	neighborB.Events.ReceiveData.Attach(events.NewClosure(func(data []byte) {
+	neighborB.Events.ReceiveMessage.Attach(events.NewClosure(func(data []byte) {
 		assert.Equal(t, testData, data)
 		atomic.AddUint32(&count, 1)
 	}))
@@ -84,7 +71,7 @@ func TestNeighborParallelWrite(t *testing.T) {
 	defer neighborB.Close()
 
 	var count uint32
-	neighborB.Events.ReceiveData.Attach(events.NewClosure(func(data []byte) {
+	neighborB.Events.ReceiveMessage.Attach(events.NewClosure(func(data []byte) {
 		assert.Equal(t, testData, data)
 		atomic.AddUint32(&count, 1)
 	}))
@@ -100,8 +87,8 @@ func TestNeighborParallelWrite(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < neighborQueueSize; i++ {
-			_, err := neighborA.Write(testData)
-			if err == ErrNeighborQueueFull {
+			l, err := neighborA.Write(testData)
+			if err == ErrNeighborQueueFull || l == 0 {
 				continue
 			}
 			assert.NoError(t, err)
@@ -112,8 +99,8 @@ func TestNeighborParallelWrite(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < neighborQueueSize; i++ {
-			_, err := neighborA.Write(testData)
-			if err == ErrNeighborQueueFull {
+			l, err := neighborA.Write(testData)
+			if err == ErrNeighborQueueFull || l == 0 {
 				continue
 			}
 			assert.NoError(t, err)

@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"container/list"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -11,10 +12,11 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/iotaledger/goshimmer/packages/autopeering/peer"
-	"github.com/iotaledger/goshimmer/packages/autopeering/peer/service"
-	pb "github.com/iotaledger/goshimmer/packages/autopeering/server/proto"
-	"github.com/pkg/errors"
+	"github.com/iotaledger/hive.go/autopeering/peer"
+	"github.com/iotaledger/hive.go/autopeering/peer/service"
+	pb "github.com/iotaledger/hive.go/autopeering/server/proto"
+	"github.com/iotaledger/hive.go/backoff"
+	"github.com/iotaledger/hive.go/netutil"
 	"go.uber.org/zap"
 )
 
@@ -31,12 +33,16 @@ var (
 
 // connection timeouts
 const (
-	acceptTimeout     = 1000 * time.Millisecond
-	handshakeTimeout  = 500 * time.Millisecond
-	connectionTimeout = acceptTimeout + handshakeTimeout
+	dialTimeout       = 1 * time.Second                    // timeout for net.Dial
+	handshakeTimeout  = 500 * time.Millisecond             // read/write timeout of the handshake packages
+	acceptTimeout     = 3 * time.Second                    // timeout to accept incoming connections
+	connectionTimeout = acceptTimeout + 2*handshakeTimeout // timeout after which the connection must be established
 
 	maxHandshakePacketSize = 256
 )
+
+// retry net.Dial once, on fail after 0.5s
+var dialRetryPolicy = backoff.ConstantBackOff(500 * time.Millisecond).With(backoff.MaxRetries(1))
 
 // TCP establishes verified incoming and outgoing TCP connections to other peers.
 type TCP struct {
@@ -71,39 +77,22 @@ type accept struct {
 	conn   net.Conn // the actual network connection
 }
 
-// ListenTCP creates the object and starts listening for incoming connections.
-func ListenTCP(local *peer.Local, log *zap.SugaredLogger) (*TCP, error) {
+// ServeTCP creates the object and starts listening for incoming connections.
+func ServeTCP(local *peer.Local, listener *net.TCPListener, log *zap.SugaredLogger) *TCP {
 	t := &TCP{
 		local:            local,
+		publicAddr:       local.Services().Get(service.GossipKey),
+		listener:         listener,
 		log:              log,
 		addAcceptMatcher: make(chan *acceptMatcher),
 		acceptReceived:   make(chan accept),
 		closing:          make(chan struct{}),
 	}
-
-	t.publicAddr = local.Services().Get(service.GossipKey)
 	if t.publicAddr == nil {
-		return nil, ErrNoGossip
-	}
-	tcpAddr, err := net.ResolveTCPAddr(t.publicAddr.Network(), t.publicAddr.String())
-	if err != nil {
-		return nil, err
-	}
-	// if the ip is an external ip, set it to unspecified
-	if tcpAddr.IP.IsGlobalUnicast() {
-		if tcpAddr.IP.To4() != nil {
-			tcpAddr.IP = net.IPv4zero
-		} else {
-			tcpAddr.IP = net.IPv6unspecified
-		}
+		panic(ErrNoGossip)
 	}
 
-	listener, err := net.ListenTCP(t.publicAddr.Network(), tcpAddr)
-	if err != nil {
-		return nil, err
-	}
-	t.listener = listener
-	t.log.Debugw("listening started",
+	t.log.Debugw("server started",
 		"network", listener.Addr().Network(),
 		"address", listener.Addr().String(),
 	)
@@ -112,7 +101,7 @@ func ListenTCP(local *peer.Local, log *zap.SugaredLogger) (*TCP, error) {
 	go t.run()
 	go t.listenLoop()
 
-	return t, nil
+	return t
 }
 
 // Close stops listening on the gossip address.
@@ -139,14 +128,20 @@ func (t *TCP) DialPeer(p *peer.Peer) (net.Conn, error) {
 		return nil, ErrNoGossip
 	}
 
-	conn, err := net.DialTimeout(gossipAddr.Network(), gossipAddr.String(), acceptTimeout)
-	if err != nil {
-		return nil, errors.Wrap(err, "dial peer failed")
-	}
+	var conn net.Conn
+	if err := backoff.Retry(dialRetryPolicy, func() error {
+		var err error
+		conn, err = net.DialTimeout(gossipAddr.Network(), gossipAddr.String(), dialTimeout)
+		if err != nil {
+			return fmt.Errorf("dial %s / %s failed: %w", gossipAddr.String(), p.ID(), err)
+		}
 
-	err = t.doHandshake(p.PublicKey(), gossipAddr.String(), conn)
-	if err != nil {
-		return nil, errors.Wrap(err, "outgoing handshake failed")
+		if err = t.doHandshake(p.PublicKey(), gossipAddr.String(), conn); err != nil {
+			return fmt.Errorf("handshake %s / %s failed: %w", gossipAddr.String(), p.ID(), err)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	t.log.Debugw("outgoing connection established",
@@ -159,14 +154,15 @@ func (t *TCP) DialPeer(p *peer.Peer) (net.Conn, error) {
 // AcceptPeer awaits an incoming connection from the given peer.
 // If the peer does not establish the connection or the handshake fails, an error is returned.
 func (t *TCP) AcceptPeer(p *peer.Peer) (net.Conn, error) {
-	if p.Services().Get(service.GossipKey) == nil {
+	gossipAddr := p.Services().Get(service.GossipKey)
+	if gossipAddr == nil {
 		return nil, ErrNoGossip
 	}
 
 	// wait for the connection
 	connected := <-t.acceptPeer(p)
 	if connected.err != nil {
-		return nil, errors.Wrap(connected.err, "accept peer failed")
+		return nil, fmt.Errorf("accept %s / %s failed: %w", gossipAddr.String(), p.ID(), connected.err)
 	}
 
 	t.log.Debugw("incoming connection established",
@@ -248,6 +244,7 @@ func (t *TCP) run() {
 			for e := matcherList.Front(); e != nil; e = e.Next() {
 				m := e.Value.(*acceptMatcher)
 				if now.After(m.deadline) || now.Equal(m.deadline) {
+					t.log.Debugw("accept timeout", "id", m.peer.ID())
 					m.connected <- connect{nil, ErrTimeout}
 					matcherList.Remove(e)
 				}
@@ -269,7 +266,7 @@ func (t *TCP) matchAccept(m *acceptMatcher, req []byte, conn net.Conn) {
 	defer t.wg.Done()
 
 	if err := t.writeHandshakeResponse(req, conn); err != nil {
-		m.connected <- connect{nil, errors.Wrap(err, "incoming handshake failed")}
+		m.connected <- connect{nil, fmt.Errorf("incoming handshake failed: %w", err)}
 		t.closeConnection(conn)
 		return
 	}
@@ -281,10 +278,11 @@ func (t *TCP) listenLoop() {
 
 	for {
 		conn, err := t.listener.AcceptTCP()
-		if err, ok := err.(net.Error); ok && err.Temporary() {
+		if netutil.IsTemporaryError(err) {
 			t.log.Debugw("temporary read error", "err", err)
 			continue
-		} else if err != nil {
+		}
+		if err != nil {
 			// return from the loop on all other errors
 			if err != io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
 				t.log.Warnw("listen error", "err", err)
@@ -375,7 +373,7 @@ func (t *TCP) readHandshakeRequest(conn net.Conn) (peer.PublicKey, []byte, error
 	b := make([]byte, maxHandshakePacketSize)
 	n, err := conn.Read(b)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, ErrInvalidHandshake.Error())
+		return nil, nil, fmt.Errorf("%w: %s", ErrInvalidHandshake, err.Error())
 	}
 
 	pkt := &pb.Packet{}

@@ -1,16 +1,18 @@
 package gossip
 
 import (
+	"errors"
+	"fmt"
 	"net"
 	"sync"
 
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
+
 	"github.com/golang/protobuf/proto"
-	"github.com/iotaledger/goshimmer/packages/autopeering/peer"
-	"github.com/iotaledger/goshimmer/packages/autopeering/peer/service"
 	pb "github.com/iotaledger/goshimmer/packages/gossip/proto"
 	"github.com/iotaledger/goshimmer/packages/gossip/server"
+	"github.com/iotaledger/hive.go/autopeering/peer"
 	"github.com/iotaledger/hive.go/events"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -18,8 +20,13 @@ const (
 	maxPacketSize = 2048
 )
 
+var (
+	ErrNeighborManagerNotRunning = errors.New("neighbor manager is not running")
+	ErrNeighborAlreadyConnected  = errors.New("neighbor is already connected")
+)
+
 // GetTransaction defines a function that returns the transaction data with the given hash.
-type GetTransaction func(txHash []byte) ([]byte, error)
+type GetTransaction func(transactionId transaction.Id) ([]byte, error)
 
 type Manager struct {
 	local          *peer.Local
@@ -71,16 +78,15 @@ func (m *Manager) stop() {
 	}
 }
 
-// LocalAddr returns the public address of the gossip service.
-func (m *Manager) LocalAddr() net.Addr {
-	return m.local.Services().Get(service.GossipKey)
-}
-
 // AddOutbound tries to add a neighbor by connecting to that peer.
 func (m *Manager) AddOutbound(p *peer.Peer) error {
+	if p.ID() == m.local.ID() {
+		return ErrLoopback
+	}
 	var srv *server.TCP
 	m.mu.RLock()
 	if m.srv == nil {
+		m.mu.RUnlock()
 		return ErrNotStarted
 	}
 	srv = m.srv
@@ -91,9 +97,13 @@ func (m *Manager) AddOutbound(p *peer.Peer) error {
 
 // AddInbound tries to add a neighbor by accepting an incoming connection from that peer.
 func (m *Manager) AddInbound(p *peer.Peer) error {
+	if p.ID() == m.local.ID() {
+		return ErrLoopback
+	}
 	var srv *server.TCP
 	m.mu.RLock()
 	if m.srv == nil {
+		m.mu.RUnlock()
 		return ErrNotStarted
 	}
 	srv = m.srv
@@ -104,15 +114,11 @@ func (m *Manager) AddInbound(p *peer.Peer) error {
 
 // NeighborRemoved disconnects the neighbor with the given ID.
 func (m *Manager) DropNeighbor(id peer.ID) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, ok := m.neighbors[id]; !ok {
-		return ErrNotANeighbor
+	n, err := m.removeNeighbor(id)
+	if err != nil {
+		return err
 	}
-	n := m.neighbors[id]
-	delete(m.neighbors, id)
-
-	err := n.Close()
+	err = n.Close()
 	Events.NeighborRemoved.Trigger(n.Peer)
 	return err
 }
@@ -123,6 +129,7 @@ func (m *Manager) RequestTransaction(txHash []byte, to ...peer.ID) {
 	req := &pb.TransactionRequest{
 		Hash: txHash,
 	}
+	m.log.Debugw("send message", "type", "TRANSACTION_REQUEST", "to", to)
 	m.send(marshal(req), to...)
 }
 
@@ -132,38 +139,37 @@ func (m *Manager) SendTransaction(txData []byte, to ...peer.ID) {
 	tx := &pb.Transaction{
 		Data: txData,
 	}
+	m.log.Debugw("send message", "type", "TRANSACTION", "to", to)
 	m.send(marshal(tx), to...)
+}
+
+func (m *Manager) GetAllNeighbors() []*Neighbor {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make([]*Neighbor, 0, len(m.neighbors))
+	for _, n := range m.neighbors {
+		result = append(result, n)
+	}
+	return result
 }
 
 func (m *Manager) getNeighbors(ids ...peer.ID) []*Neighbor {
 	if len(ids) > 0 {
 		return m.getNeighborsById(ids)
 	}
-	return m.getAllNeighbors()
-}
-
-func (m *Manager) getAllNeighbors() []*Neighbor {
-	m.mu.RLock()
-	result := make([]*Neighbor, 0, len(m.neighbors))
-	for _, n := range m.neighbors {
-		result = append(result, n)
-	}
-	m.mu.RUnlock()
-
-	return result
+	return m.GetAllNeighbors()
 }
 
 func (m *Manager) getNeighborsById(ids []peer.ID) []*Neighbor {
 	result := make([]*Neighbor, 0, len(ids))
 
 	m.mu.RLock()
+	defer m.mu.RUnlock()
 	for _, id := range ids {
 		if n, ok := m.neighbors[id]; ok {
 			result = append(result, n)
 		}
 	}
-	m.mu.RUnlock()
-
 	return result
 }
 
@@ -172,7 +178,7 @@ func (m *Manager) send(b []byte, to ...peer.ID) {
 
 	for _, nbr := range neighbors {
 		if _, err := nbr.Write(b); err != nil {
-			m.log.Warnw("send error", "err", err)
+			m.log.Warnw("send error", "err", err, "neighbor", nbr.Peer.Address())
 		}
 	}
 }
@@ -180,7 +186,7 @@ func (m *Manager) send(b []byte, to ...peer.ID) {
 func (m *Manager) addNeighbor(peer *peer.Peer, connectorFunc func(*peer.Peer) (net.Conn, error)) error {
 	conn, err := connectorFunc(peer)
 	if err != nil {
-		Events.ConnectionFailed.Trigger(peer)
+		Events.ConnectionFailed.Trigger(peer, err)
 		return err
 	}
 
@@ -188,19 +194,19 @@ func (m *Manager) addNeighbor(peer *peer.Peer, connectorFunc func(*peer.Peer) (n
 	defer m.mu.Unlock()
 	if !m.running {
 		_ = conn.Close()
-		Events.ConnectionFailed.Trigger(peer)
+		Events.ConnectionFailed.Trigger(peer, ErrNeighborManagerNotRunning)
 		return ErrClosed
 	}
 	if _, ok := m.neighbors[peer.ID()]; ok {
 		_ = conn.Close()
-		Events.ConnectionFailed.Trigger(peer)
+		Events.ConnectionFailed.Trigger(peer, ErrNeighborAlreadyConnected)
 		return ErrDuplicateNeighbor
 	}
 
 	// create and add the neighbor
 	n := NewNeighbor(peer, conn, m.log)
 	n.Events.Close.Attach(events.NewClosure(func() { _ = m.DropNeighbor(peer.ID()) }))
-	n.Events.ReceiveData.Attach(events.NewClosure(func(data []byte) {
+	n.Events.ReceiveMessage.Attach(events.NewClosure(func(data []byte) {
 		if err := m.handlePacket(data, peer); err != nil {
 			m.log.Debugw("error handling packet", "err", err)
 		}
@@ -211,6 +217,17 @@ func (m *Manager) addNeighbor(peer *peer.Peer, connectorFunc func(*peer.Peer) (n
 	Events.NeighborAdded.Trigger(n)
 
 	return nil
+}
+
+func (m *Manager) removeNeighbor(id peer.ID) (*Neighbor, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.neighbors[id]; !ok {
+		return nil, ErrNotANeighbor
+	}
+	n := m.neighbors[id]
+	delete(m.neighbors, id)
+	return n, nil
 }
 
 func (m *Manager) handlePacket(data []byte, p *peer.Peer) error {
@@ -225,24 +242,28 @@ func (m *Manager) handlePacket(data []byte, p *peer.Peer) error {
 	case pb.MTransaction:
 		msg := new(pb.Transaction)
 		if err := proto.Unmarshal(data[1:], msg); err != nil {
-			return errors.Wrap(err, "invalid packet")
+			return fmt.Errorf("invalid packet: %w", err)
 		}
-		m.log.Debugw("Received Transaction", "data", msg.GetData())
+		m.log.Debugw("received message", "type", "TRANSACTION", "id", p.ID())
 		Events.TransactionReceived.Trigger(&TransactionReceivedEvent{Data: msg.GetData(), Peer: p})
 
 	// Incoming Transaction request
 	case pb.MTransactionRequest:
+
 		msg := new(pb.TransactionRequest)
 		if err := proto.Unmarshal(data[1:], msg); err != nil {
-			return errors.Wrap(err, "invalid packet")
+			return fmt.Errorf("invalid packet: %w", err)
 		}
-		m.log.Debugw("Received Tx Req", "data", msg.GetHash())
+		m.log.Debugw("received message", "type", "TRANSACTION_REQUEST", "id", p.ID())
 		// do something
-		tx, err := m.getTransaction(msg.GetHash())
+		txId, err, _ := transaction.IdFromBytes(msg.GetHash())
 		if err != nil {
-			m.log.Debugw("Tx not available", "tx", msg.GetHash())
+			m.log.Debugw("error getting transaction", "hash", msg.GetHash(), "err", err)
+		}
+		tx, err := m.getTransaction(txId)
+		if err != nil {
+			m.log.Debugw("error getting transaction", "hash", msg.GetHash(), "err", err)
 		} else {
-			m.log.Debugw("Tx found", "tx", tx)
 			m.SendTransaction(tx, p.ID())
 		}
 

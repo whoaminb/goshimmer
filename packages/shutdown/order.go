@@ -1,19 +1,16 @@
 package shutdown
 
 const (
-	ShutdownPriorityTangle = iota
-	ShutdownPrioritySolidifier
-	ShutdownPriorityBundleProcessor
+	ShutdownPriorityDatabase = iota
+	ShutdownPriorityTangle
+	ShutdownPriorityRemoteLog
 	ShutdownPriorityAnalysis
 	ShutdownPriorityMetrics
-	ShutdownPriorityWebAPI
-	ShutdownPriorityGossip
-	ShutdownPriorityZMQ
-	ShutdownPriorityFPC
 	ShutdownPriorityAutopeering
+	ShutdownPriorityGossip
+	ShutdownPriorityWebAPI
+	ShutdownPrioritySPA
 	ShutdownPriorityGraph
-	ShutdownPriorityUI
-	ShutdownPriorityDashboard
-	ShutdownPriorityTangleSpammer
-	ShutdownPriorityStatusScreen
+	ShutdownPrioritySpammer
+	ShutdownPriorityBadgerGarbageCollection
 )

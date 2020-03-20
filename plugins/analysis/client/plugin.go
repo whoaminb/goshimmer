@@ -1,13 +1,20 @@
 package client
 
 import (
+	"encoding/hex"
 	"net"
+	"sync"
 	"time"
 
-	"github.com/iotaledger/goshimmer/packages/autopeering/discover"
-	"github.com/iotaledger/goshimmer/packages/autopeering/selection"
-	"github.com/iotaledger/goshimmer/packages/network"
-	"github.com/iotaledger/goshimmer/packages/parameter"
+	"github.com/iotaledger/hive.go/autopeering/discover"
+	"github.com/iotaledger/hive.go/autopeering/selection"
+	"github.com/iotaledger/hive.go/daemon"
+	"github.com/iotaledger/hive.go/events"
+	"github.com/iotaledger/hive.go/logger"
+	"github.com/iotaledger/hive.go/network"
+	"github.com/iotaledger/hive.go/node"
+	"github.com/iotaledger/hive.go/timeutil"
+
 	"github.com/iotaledger/goshimmer/packages/shutdown"
 	"github.com/iotaledger/goshimmer/plugins/analysis/types/addnode"
 	"github.com/iotaledger/goshimmer/plugins/analysis/types/connectnodes"
@@ -16,14 +23,11 @@ import (
 	"github.com/iotaledger/goshimmer/plugins/analysis/types/removenode"
 	"github.com/iotaledger/goshimmer/plugins/autopeering"
 	"github.com/iotaledger/goshimmer/plugins/autopeering/local"
-	"github.com/iotaledger/hive.go/daemon"
-	"github.com/iotaledger/hive.go/events"
-	"github.com/iotaledger/hive.go/logger"
-	"github.com/iotaledger/hive.go/node"
-	"github.com/iotaledger/hive.go/timeutil"
+	"github.com/iotaledger/goshimmer/plugins/config"
 )
 
 var log *logger.Logger
+var connLock sync.Mutex
 
 func Run(plugin *node.Plugin) {
 	log = logger.NewLogger("Analysis-Client")
@@ -36,7 +40,7 @@ func Run(plugin *node.Plugin) {
 				return
 
 			default:
-				if conn, err := net.Dial("tcp", parameter.NodeConfig.GetString(CFG_SERVER_ADDRESS)); err != nil {
+				if conn, err := net.Dial("tcp", config.Node.GetString(CFG_SERVER_ADDRESS)); err != nil {
 					log.Debugf("Could not connect to reporting server: %s", err.Error())
 
 					timeutil.Sleep(1*time.Second, shutdownSignal)
@@ -57,20 +61,28 @@ func Run(plugin *node.Plugin) {
 func getEventDispatchers(conn *network.ManagedConnection) *EventDispatchers {
 	return &EventDispatchers{
 		AddNode: func(nodeId []byte) {
-			log.Debugw("AddNode", "nodeId", nodeId)
+			log.Debugw("AddNode", "nodeId", hex.EncodeToString(nodeId))
+			connLock.Lock()
 			_, _ = conn.Write((&addnode.Packet{NodeId: nodeId}).Marshal())
+			connLock.Unlock()
 		},
 		RemoveNode: func(nodeId []byte) {
-			log.Debugw("RemoveNode", "nodeId", nodeId)
+			log.Debugw("RemoveNode", "nodeId", hex.EncodeToString(nodeId))
+			connLock.Lock()
 			_, _ = conn.Write((&removenode.Packet{NodeId: nodeId}).Marshal())
+			connLock.Unlock()
 		},
 		ConnectNodes: func(sourceId []byte, targetId []byte) {
-			log.Debugw("ConnectNodes", "sourceId", sourceId, "targetId", targetId)
+			log.Debugw("ConnectNodes", "sourceId", hex.EncodeToString(sourceId), "targetId", hex.EncodeToString(targetId))
+			connLock.Lock()
 			_, _ = conn.Write((&connectnodes.Packet{SourceId: sourceId, TargetId: targetId}).Marshal())
+			connLock.Unlock()
 		},
 		DisconnectNodes: func(sourceId []byte, targetId []byte) {
-			log.Debugw("DisconnectNodes", "sourceId", sourceId, "targetId", targetId)
+			log.Debugw("DisconnectNodes", "sourceId", hex.EncodeToString(sourceId), "targetId", hex.EncodeToString(targetId))
+			connLock.Lock()
 			_, _ = conn.Write((&disconnectnodes.Packet{SourceId: sourceId, TargetId: targetId}).Marshal())
+			connLock.Unlock()
 		},
 	}
 }
@@ -80,7 +92,9 @@ func reportCurrentStatus(eventDispatchers *EventDispatchers) {
 		eventDispatchers.AddNode(local.GetInstance().ID().Bytes())
 	}
 
+	reportKnownPeers(eventDispatchers)
 	reportChosenNeighbors(eventDispatchers)
+	reportAcceptedNeighbors(eventDispatchers)
 }
 
 func setupHooks(plugin *node.Plugin, conn *network.ManagedConnection, eventDispatchers *EventDispatchers) {
@@ -123,6 +137,7 @@ func setupHooks(plugin *node.Plugin, conn *network.ManagedConnection, eventDispa
 	var onClose *events.Closure
 	onClose = events.NewClosure(func() {
 		discover.Events.PeerDiscovered.Detach(onDiscoverPeer)
+		discover.Events.PeerDeleted.Detach(onDeletePeer)
 		selection.Events.IncomingPeering.Detach(onAddAcceptedNeighbor)
 		selection.Events.OutgoingPeering.Detach(onAddChosenNeighbor)
 		selection.Events.Dropped.Detach(onRemoveNeighbor)
@@ -132,11 +147,28 @@ func setupHooks(plugin *node.Plugin, conn *network.ManagedConnection, eventDispa
 	conn.Events.Close.Attach(onClose)
 }
 
+func reportKnownPeers(dispatchers *EventDispatchers) {
+	if autopeering.Discovery != nil {
+		for _, peer := range autopeering.Discovery.GetVerifiedPeers() {
+			dispatchers.AddNode(peer.ID().Bytes())
+		}
+	}
+}
+
 func reportChosenNeighbors(dispatchers *EventDispatchers) {
 	if autopeering.Selection != nil {
 		for _, chosenNeighbor := range autopeering.Selection.GetOutgoingNeighbors() {
-			dispatchers.AddNode(chosenNeighbor.ID().Bytes())
+			//dispatchers.AddNode(chosenNeighbor.ID().Bytes())
 			dispatchers.ConnectNodes(local.GetInstance().ID().Bytes(), chosenNeighbor.ID().Bytes())
+		}
+	}
+}
+
+func reportAcceptedNeighbors(dispatchers *EventDispatchers) {
+	if autopeering.Selection != nil {
+		for _, acceptedNeighbor := range autopeering.Selection.GetIncomingNeighbors() {
+			//dispatchers.AddNode(acceptedNeighbor.ID().Bytes())
+			dispatchers.ConnectNodes(acceptedNeighbor.ID().Bytes(), local.GetInstance().ID().Bytes())
 		}
 	}
 }
@@ -151,9 +183,12 @@ func keepConnectionAlive(conn *network.ManagedConnection, shutdownSignal <-chan 
 			return true
 
 		case <-ticker.C:
+			connLock.Lock()
 			if _, err := conn.Write((&ping.Packet{}).Marshal()); err != nil {
+				connLock.Unlock()
 				return false
 			}
+			connLock.Unlock()
 		}
 	}
 }

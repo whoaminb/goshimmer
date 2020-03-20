@@ -1,46 +1,32 @@
 module github.com/iotaledger/goshimmer
 
-go 1.13
+go 1.14
 
 require (
-	github.com/AndreasBriese/bbloom v0.0.0-20190825152654-46b345b51c96 // indirect
-	github.com/dgraph-io/badger v1.6.0
+	github.com/dgraph-io/badger/v2 v2.0.2
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
-	github.com/dgryski/go-farm v0.0.0-20191112170834-c2139c5d712b // indirect
-	github.com/gdamore/tcell v1.3.0
-	github.com/go-zeromq/zmq4 v0.7.0
-	github.com/golang/protobuf v1.3.2
-	github.com/google/uuid v1.1.1
+	github.com/drand/drand v0.5.3
+	github.com/gobuffalo/packr/v2 v2.7.1
+	github.com/golang/protobuf v1.3.4
 	github.com/googollee/go-engine.io v1.4.3-0.20190924125625-798118fc0dd2
 	github.com/googollee/go-socket.io v1.4.3-0.20191204093753-683f8725b6d0
 	github.com/gorilla/websocket v1.4.1
-	github.com/iotaledger/hive.go v0.0.0-20200110132858-ea86cdb9d91e
+	github.com/iotaledger/hive.go v0.0.0-20200316213914-76b7a4169e64
 	github.com/iotaledger/iota.go v1.0.0-beta.14
 	github.com/labstack/echo v3.3.10+incompatible
-	github.com/labstack/gommon v0.3.0
-	github.com/lucasb-eyer/go-colorful v1.0.3 // indirect
+	github.com/labstack/gommon v0.3.0 // indirect
 	github.com/magiconair/properties v1.8.1
-	github.com/mattn/go-colorable v0.1.4 // indirect
-	github.com/mattn/go-isatty v0.0.11 // indirect
-	github.com/mattn/go-runewidth v0.0.7 // indirect
-	github.com/pelletier/go-toml v1.6.0 // indirect
+	github.com/mr-tron/base58 v1.1.3
+	github.com/oasislabs/ed25519 v0.0.0-20200302143042-29f6767a7c3e
+	github.com/panjf2000/ants/v2 v2.2.2
 	github.com/pkg/errors v0.9.1
-	github.com/rivo/tview v0.0.0-20191229165609-1ee8d9874dcf
-	github.com/spf13/afero v1.2.2 // indirect
-	github.com/spf13/cast v1.3.1 // indirect
-	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5
-	github.com/spf13/viper v1.6.1
-	github.com/stretchr/objx v0.2.0 // indirect
+	github.com/spf13/viper v1.6.2
 	github.com/stretchr/testify v1.4.0
 	github.com/valyala/fasttemplate v1.1.0 // indirect
-	go.uber.org/zap v1.13.0
-	golang.org/x/crypto v0.0.0-20191227163750-53104e6ec876
-	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553
-	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
-	golang.org/x/sys v0.0.0-20191228213918-04cbcbbfeed8 // indirect
-	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 // indirect
-	google.golang.org/grpc v1.21.0
-	gopkg.in/ini.v1 v1.51.1 // indirect
-	gopkg.in/yaml.v2 v2.2.7 // indirect
+	go.uber.org/atomic v1.6.0
+	go.uber.org/zap v1.14.0
+	golang.org/x/crypto v0.0.0-20200302210943-78000ba7a073
+	golang.org/x/net v0.0.0-20200301022130-244492dfa37a
+	gopkg.in/src-d/go-git.v4 v4.13.1
 )

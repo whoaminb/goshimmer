@@ -2,27 +2,31 @@ package server
 
 import (
 	"encoding/hex"
+	"errors"
 	"math"
 
-	"github.com/iotaledger/goshimmer/packages/network"
-	"github.com/iotaledger/goshimmer/packages/network/tcp"
-	"github.com/iotaledger/goshimmer/packages/parameter"
+	"github.com/iotaledger/hive.go/daemon"
+	"github.com/iotaledger/hive.go/events"
+	"github.com/iotaledger/hive.go/logger"
+	"github.com/iotaledger/hive.go/network"
+	"github.com/iotaledger/hive.go/network/tcp"
+	"github.com/iotaledger/hive.go/node"
+
 	"github.com/iotaledger/goshimmer/packages/shutdown"
 	"github.com/iotaledger/goshimmer/plugins/analysis/types/addnode"
 	"github.com/iotaledger/goshimmer/plugins/analysis/types/connectnodes"
 	"github.com/iotaledger/goshimmer/plugins/analysis/types/disconnectnodes"
 	"github.com/iotaledger/goshimmer/plugins/analysis/types/ping"
 	"github.com/iotaledger/goshimmer/plugins/analysis/types/removenode"
-	"github.com/iotaledger/hive.go/daemon"
-	"github.com/iotaledger/hive.go/events"
-	"github.com/iotaledger/hive.go/logger"
-	"github.com/iotaledger/hive.go/node"
-	"github.com/pkg/errors"
+	"github.com/iotaledger/goshimmer/plugins/config"
 )
 
-var server *tcp.Server
-
-var log *logger.Logger
+var (
+	ErrInvalidPackageHeader          = errors.New("invalid package header")
+	ErrExpectedInitialAddNodePackage = errors.New("expected initial add node package")
+	server                           *tcp.TCPServer
+	log                              *logger.Logger
+)
 
 func Configure(plugin *node.Plugin) {
 	log = logger.NewLogger("Analysis-Server")
@@ -33,7 +37,7 @@ func Configure(plugin *node.Plugin) {
 		log.Errorf("error in server: %s", err.Error())
 	}))
 	server.Events.Start.Attach(events.NewClosure(func() {
-		log.Infof("Starting Server (port %d) ... done", parameter.NodeConfig.GetInt(CFG_SERVER_PORT))
+		log.Infof("Starting Server (port %d) ... done", config.Node.GetInt(CFG_SERVER_PORT))
 	}))
 	server.Events.Shutdown.Attach(events.NewClosure(func() {
 		log.Info("Stopping Server ... done")
@@ -42,8 +46,8 @@ func Configure(plugin *node.Plugin) {
 
 func Run(plugin *node.Plugin) {
 	daemon.BackgroundWorker("Analysis Server", func(shutdownSignal <-chan struct{}) {
-		log.Infof("Starting Server (port %d) ... done", parameter.NodeConfig.GetInt(CFG_SERVER_PORT))
-		go server.Listen(parameter.NodeConfig.GetInt(CFG_SERVER_PORT))
+		log.Infof("Starting Server (port %d) ... done", config.Node.GetInt(CFG_SERVER_PORT))
+		go server.Listen("0.0.0.0", config.Node.GetInt(CFG_SERVER_PORT))
 		<-shutdownSignal
 		Shutdown()
 	}, shutdown.ShutdownPriorityAnalysis)
@@ -136,7 +140,7 @@ func processIncomingPacket(connectionState *byte, receiveBuffer *[]byte, conn *n
 
 	if firstPackage {
 		if *connectionState != STATE_ADD_NODE {
-			Events.Error.Trigger(errors.New("expected initial add node package"))
+			Events.Error.Trigger(ErrExpectedInitialAddNodePackage)
 		} else {
 			*connectionState = STATE_INITIAL_ADDNODE
 		}
@@ -194,7 +198,7 @@ func parsePackageHeader(data []byte) (ConnectionState, []byte, error) {
 		connectionState = STATE_REMOVE_NODE
 
 	default:
-		return 0, nil, errors.New("invalid package header")
+		return 0, nil, ErrInvalidPackageHeader
 	}
 
 	return connectionState, receiveBuffer, nil

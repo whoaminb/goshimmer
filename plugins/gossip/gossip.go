@@ -5,75 +5,92 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/iotaledger/goshimmer/packages/autopeering/peer/service"
-	"github.com/iotaledger/goshimmer/packages/errors"
+	"github.com/iotaledger/hive.go/autopeering/peer/service"
+	"github.com/iotaledger/hive.go/logger"
+
+	"github.com/iotaledger/goshimmer/packages/binary/tangle/model/transaction"
 	gp "github.com/iotaledger/goshimmer/packages/gossip"
 	"github.com/iotaledger/goshimmer/packages/gossip/server"
-	"github.com/iotaledger/goshimmer/packages/parameter"
 	"github.com/iotaledger/goshimmer/plugins/autopeering/local"
+	"github.com/iotaledger/goshimmer/plugins/config"
 	"github.com/iotaledger/goshimmer/plugins/tangle"
-	"github.com/iotaledger/hive.go/logger"
-	"github.com/iotaledger/hive.go/typeutils"
-	"github.com/iotaledger/iota.go/trinary"
 )
 
 var (
 	log *logger.Logger
 	mgr *gp.Manager
+	srv *server.TCP
 )
 
 func configureGossip() {
 	lPeer := local.GetInstance()
 
-	port := strconv.Itoa(parameter.NodeConfig.GetInt(GOSSIP_PORT))
-
-	host, _, err := net.SplitHostPort(lPeer.Address())
+	peeringAddr := lPeer.Services().Get(service.PeeringKey)
+	external, _, err := net.SplitHostPort(peeringAddr.String())
 	if err != nil {
-		log.Fatalf("invalid peering address: %v", err)
-	}
-	err = lPeer.UpdateService(service.GossipKey, "tcp", net.JoinHostPort(host, port))
-	if err != nil {
-		log.Fatalf("could not update services: %v", err)
+		panic(err)
 	}
 
-	mgr = gp.NewManager(lPeer, loadTransaction, log)
+	// announce the gossip service
+	gossipPort := strconv.Itoa(config.Node.GetInt(GOSSIP_PORT))
+	err = lPeer.UpdateService(service.GossipKey, "tcp", net.JoinHostPort(external, gossipPort))
+	if err != nil {
+		log.Fatalf("could not update services: %s", err)
+	}
+
+	mgr = gp.NewManager(lPeer, getTransaction, log)
 }
 
 func start(shutdownSignal <-chan struct{}) {
-	defer log.Info("Stopping Gossip ... done")
+	defer log.Info("Stopping " + name + " ... done")
 
-	srv, err := server.ListenTCP(local.GetInstance(), log)
+	lPeer := local.GetInstance()
+	// use the port of the gossip service
+	gossipAddr := lPeer.Services().Get(service.GossipKey)
+	_, gossipPort, err := net.SplitHostPort(gossipAddr.String())
 	if err != nil {
-		log.Fatalf("ListenTCP: %v", err)
+		panic(err)
 	}
+	// resolve the bind address
+	address := net.JoinHostPort(config.Node.GetString(local.CFG_BIND), gossipPort)
+	localAddr, err := net.ResolveTCPAddr(gossipAddr.Network(), address)
+	if err != nil {
+		log.Fatalf("Error resolving %s: %v", local.CFG_BIND, err)
+	}
+
+	listener, err := net.ListenTCP(gossipAddr.Network(), localAddr)
+	if err != nil {
+		log.Fatalf("Error listening: %v", err)
+	}
+	defer listener.Close()
+
+	srv = server.ServeTCP(lPeer, listener, log)
 	defer srv.Close()
 
 	mgr.Start(srv)
 	defer mgr.Close()
 
-	log.Infof("Gossip started: address=%v", mgr.LocalAddr())
+	log.Infof("%s started: Address=%s/%s", name, gossipAddr.String(), gossipAddr.Network())
 
 	<-shutdownSignal
-	log.Info("Stopping Gossip ...")
+	log.Info("Stopping " + name + " ...")
 }
 
-func loadTransaction(hash []byte) ([]byte, error) {
-	log.Infof("Retrieving tx: hash=%s", hash)
+func getTransaction(transactionId transaction.Id) (bytes []byte, err error) {
+	log.Debugw("get tx from db", "id", transactionId.String())
 
-	tx, err := tangle.GetTransaction(typeutils.BytesToString(hash))
-	if err != nil {
-		return nil, errors.Wrap(err, "could not get transaction")
+	if !tangle.Instance.GetTransaction(transactionId).Consume(func(transaction *transaction.Transaction) {
+		bytes = transaction.Bytes()
+	}) {
+		err = fmt.Errorf("transaction not found: hash=%s", transactionId)
 	}
-	if tx == nil {
-		return nil, fmt.Errorf("transaction not found: hash=%s", hash)
-	}
-	return tx.GetBytes(), nil
+
+	return
 }
 
-func requestTransaction(hash trinary.Hash) {
-	if contains, _ := tangle.ContainsTransaction(hash); contains {
-		// Do not request tx that we already know
-		return
+func GetAllNeighbors() []*gp.Neighbor {
+	if mgr == nil {
+		return nil
 	}
-	mgr.RequestTransaction(typeutils.StringToBytes(hash))
+	return mgr.GetAllNeighbors()
 }

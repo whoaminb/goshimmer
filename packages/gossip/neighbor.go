@@ -7,23 +7,31 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/iotaledger/goshimmer/packages/autopeering/peer"
+	"github.com/iotaledger/hive.go/autopeering/peer"
 	"github.com/iotaledger/hive.go/logger"
-	"github.com/iotaledger/hive.go/network"
+	"github.com/iotaledger/hive.go/netutil"
+	"github.com/iotaledger/hive.go/netutil/buffconn"
+	"go.uber.org/atomic"
 )
 
 var (
+	// ErrNeighborQueueFull is returned when the send queue is already full.
 	ErrNeighborQueueFull = errors.New("send queue is full")
 )
 
-const neighborQueueSize = 1000
+const (
+	neighborQueueSize        = 5000
+	maxNumReadErrors         = 10
+	droppedMessagesThreshold = 1000
+)
 
 type Neighbor struct {
 	*peer.Peer
-	*network.ManagedConnection
+	*buffconn.BufferedConnection
 
-	log   *logger.Logger
-	queue chan []byte
+	log             *logger.Logger
+	queue           chan []byte
+	messagesDropped atomic.Int32
 
 	wg             sync.WaitGroup
 	closing        chan struct{}
@@ -44,11 +52,11 @@ func NewNeighbor(peer *peer.Peer, conn net.Conn, log *logger.Logger) *Neighbor {
 	)
 
 	return &Neighbor{
-		Peer:              peer,
-		ManagedConnection: network.NewManagedConnection(conn),
-		log:               log,
-		queue:             make(chan []byte, neighborQueueSize),
-		closing:           make(chan struct{}),
+		Peer:               peer,
+		BufferedConnection: buffconn.NewBufferedConnection(conn),
+		log:                log,
+		queue:              make(chan []byte, neighborQueueSize),
+		closing:            make(chan struct{}),
 	}
 }
 
@@ -67,23 +75,19 @@ func (n *Neighbor) Close() error {
 	// wait for everything to finish
 	n.wg.Wait()
 
-	n.log.Infow("Connection closed",
-		"read", n.BytesRead,
-		"written", n.BytesWritten,
-	)
+	n.log.Info("Connection closed")
 	return err
 }
 
 // IsOutbound returns true if the neighbor is an outbound neighbor.
 func (n *Neighbor) IsOutbound() bool {
-	return GetAddress(n.Peer) == n.Conn.RemoteAddr().String()
+	return GetAddress(n.Peer) == n.RemoteAddr().String()
 }
 
 func (n *Neighbor) disconnect() (err error) {
 	n.disconnectOnce.Do(func() {
 		close(n.closing)
-		close(n.queue)
-		err = n.ManagedConnection.Close()
+		err = n.BufferedConnection.Close()
 	})
 	return
 }
@@ -97,8 +101,10 @@ func (n *Neighbor) writeLoop() {
 			if len(msg) == 0 {
 				continue
 			}
-			if _, err := n.ManagedConnection.Write(msg); err != nil {
-				n.log.Warn("write error", "err", err)
+			if _, err := n.BufferedConnection.Write(msg); err != nil {
+				n.log.Warnw("Write error", "err", err)
+				_ = n.BufferedConnection.Close()
+				return
 			}
 		case <-n.closing:
 			return
@@ -109,21 +115,26 @@ func (n *Neighbor) writeLoop() {
 func (n *Neighbor) readLoop() {
 	defer n.wg.Done()
 
-	// create a buffer for the packages
-	b := make([]byte, maxPacketSize)
-
+	var numReadErrors uint
 	for {
-		_, err := n.ManagedConnection.Read(b)
-		if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
+		err := n.Read()
+		if netutil.IsTemporaryError(err) {
 			// ignore temporary read errors.
 			n.log.Debugw("temporary read error", "err", err)
+			numReadErrors++
+			if numReadErrors > maxNumReadErrors {
+				n.log.Warnw("Too many read errors", "err", err)
+				_ = n.BufferedConnection.Close()
+				return
+			}
 			continue
-		} else if err != nil {
+		}
+		if err != nil {
 			// return from the loop on all other errors
 			if err != io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
-				n.log.Warnw("read error", "err", err)
+				n.log.Warnw("Permanent error", "err", err)
 			}
-			_ = n.ManagedConnection.Close()
+			_ = n.BufferedConnection.Close()
 			return
 		}
 	}
@@ -132,14 +143,20 @@ func (n *Neighbor) readLoop() {
 func (n *Neighbor) Write(b []byte) (int, error) {
 	l := len(b)
 	if l > maxPacketSize {
-		n.log.Errorw("message too large", "len", l, "max", maxPacketSize)
+		n.log.Panicw("message too large", "len", l, "max", maxPacketSize)
 	}
 
 	// add to queue
 	select {
 	case n.queue <- b:
 		return l, nil
+	case <-n.closing:
+		return 0, nil
 	default:
-		return 0, ErrNeighborQueueFull
+		if n.messagesDropped.Inc() >= droppedMessagesThreshold {
+			n.messagesDropped.Store(0)
+			return 0, ErrNeighborQueueFull
+		}
+		return 0, nil
 	}
 }
