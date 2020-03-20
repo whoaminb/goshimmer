@@ -2,15 +2,13 @@ package fpc
 
 import (
 	"net"
-	"strconv"
 
-	"github.com/iotaledger/goshimmer/packages/autopeering/peer/service"
 	"github.com/iotaledger/goshimmer/packages/fpc"
-	"github.com/iotaledger/goshimmer/packages/parameter"
 	"github.com/iotaledger/goshimmer/plugins/autopeering/local"
 	"github.com/iotaledger/goshimmer/plugins/fpc/network"
 	"github.com/iotaledger/goshimmer/plugins/fpc/network/server"
 	"github.com/iotaledger/goshimmer/plugins/fpc/prng/client"
+	"github.com/iotaledger/hive.go/autopeering/peer/service"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/logger"
 )
@@ -29,7 +27,7 @@ func configureFPC() {
 
 	lPeer := local.GetInstance()
 
-	port := strconv.Itoa(parameter.NodeConfig.GetInt(FPC_PORT))
+	port := "7000" //strconv.Itoa(parameter.NodeConfig.GetInt(FPC_PORT))
 
 	host, _, err := net.SplitHostPort(lPeer.Address())
 	if err != nil {
@@ -55,7 +53,7 @@ func start(shutdownSignal <-chan struct{}) {
 	server.RunServer(config)
 
 	ticker := client.NewTicker()
-	ticker.Connect(parameter.NodeConfig.GetString(PRNG_ADDRESS) + ":" + strconv.Itoa(parameter.NodeConfig.GetInt(PRNG_PORT)))
+	//ticker.Connect(parameter.NodeConfig.GetString(PRNG_ADDRESS) + ":" + strconv.Itoa(parameter.NodeConfig.GetInt(PRNG_PORT)))
 
 	for {
 		select {

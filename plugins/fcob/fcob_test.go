@@ -3,7 +3,6 @@ package fcob
 import (
 	"testing"
 
-	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/fpc"
 	"github.com/iotaledger/goshimmer/packages/model/transactionmetadata"
 	"github.com/iotaledger/goshimmer/packages/model/value_transaction"
@@ -22,11 +21,11 @@ type mockedTangle struct {
 	hashToID map[trinary.Trytes]trinary.Trytes
 }
 
-func (m mockedTangle) GetTransaction(transactionHash trinary.Trytes, computeIfAbsent ...func(trinary.Trytes) *value_transaction.ValueTransaction) (result *value_transaction.ValueTransaction, err errors.IdentifiableError) {
+func (m mockedTangle) GetTransaction(transactionHash trinary.Trytes, computeIfAbsent ...func(trinary.Trytes) *value_transaction.ValueTransaction) (result *value_transaction.ValueTransaction, err error) {
 	return m.tangle[m.hashToID[transactionHash]], nil
 }
 
-func (m mockedTangle) GetTransactionMetadata(transactionHash trinary.Trytes, computeIfAbsent ...func(trinary.Trytes) *transactionmetadata.TransactionMetadata) (result *transactionmetadata.TransactionMetadata, err errors.IdentifiableError) {
+func (m mockedTangle) GetTransactionMetadata(transactionHash trinary.Trytes, computeIfAbsent ...func(trinary.Trytes) *transactionmetadata.TransactionMetadata) (result *transactionmetadata.TransactionMetadata, err error) {
 	return m.metadata[m.hashToID[transactionHash]], nil
 }
 

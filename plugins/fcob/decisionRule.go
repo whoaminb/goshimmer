@@ -1,12 +1,11 @@
 package fcob
 
 import (
-	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/iota.go/trinary"
 )
 
 // decision rule for setting initial opinion
-func decideInitialOpinion(txHash trinary.Trytes, tangle tangleAPI) (opinion Opinion, conflictSet map[trinary.Trytes]bool, err errors.IdentifiableError) {
+func decideInitialOpinion(txHash trinary.Trytes, tangle tangleAPI) (opinion Opinion, conflictSet map[trinary.Trytes]bool, err error) {
 	// dislikes tx if its past is disliked
 	txPastLiked, err := getApproveeLikeStatus(txHash, tangle)
 	if err != nil {
@@ -29,7 +28,7 @@ func decideInitialOpinion(txHash trinary.Trytes, tangle tangleAPI) (opinion Opin
 	return Opinion{LIKED, UNVOTED}, conflictSet, nil
 }
 
-func getApproveeLikeStatus(txHash trinary.Trytes, tangle tangleAPI) (liked bool, err errors.IdentifiableError) {
+func getApproveeLikeStatus(txHash trinary.Trytes, tangle tangleAPI) (liked bool, err error) {
 	// Check branch and trunk voted like status
 	// if at least one is voted disliked, returns disliked voted
 	txObject, err := tangle.GetTransaction(txHash)

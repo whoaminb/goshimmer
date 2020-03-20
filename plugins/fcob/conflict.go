@@ -1,13 +1,12 @@
 package fcob
 
 import (
-	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/iota.go/trinary"
 )
 
 // getConflictSet triggers a (fake) new conflict if the tx's value is equal to 73798465
 // including only 1 conflicting tx in the returned conflict set
-func getConflictSet(transaction trinary.Trytes, tangle tangleAPI) (conflictSet map[trinary.Trytes]bool, err errors.IdentifiableError) {
+func getConflictSet(transaction trinary.Trytes, tangle tangleAPI) (conflictSet map[trinary.Trytes]bool, err error) {
 
 	conflictSet = make(map[trinary.Trytes]bool)
 

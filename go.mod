@@ -8,6 +8,7 @@ require (
 	github.com/drand/drand v0.5.3
 	github.com/gobuffalo/packr/v2 v2.7.1
 	github.com/golang/protobuf v1.3.4
+	github.com/google/uuid v1.1.1
 	github.com/googollee/go-engine.io v1.4.3-0.20190924125625-798118fc0dd2
 	github.com/googollee/go-socket.io v1.4.3-0.20191204093753-683f8725b6d0
 	github.com/gorilla/websocket v1.4.1
@@ -28,5 +29,6 @@ require (
 	go.uber.org/zap v1.14.0
 	golang.org/x/crypto v0.0.0-20200302210943-78000ba7a073
 	golang.org/x/net v0.0.0-20200301022130-244492dfa37a
+	google.golang.org/grpc v1.26.0
 	gopkg.in/src-d/go-git.v4 v4.13.1
 )

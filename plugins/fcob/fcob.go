@@ -1,7 +1,6 @@
 package fcob
 
 import (
-	"github.com/iotaledger/goshimmer/packages/errors"
 	"github.com/iotaledger/goshimmer/packages/fpc"
 	"github.com/iotaledger/goshimmer/packages/model/value_transaction"
 	"github.com/iotaledger/hive.go/events"
@@ -100,13 +99,13 @@ func configureUpdateTxsVoted(plugin *node.Plugin, tangle tangleAPI) *events.Clos
 		for _, tx := range txs {
 			err := setOpinion(trinary.Trytes(tx.TxHash), Opinion{tx.Opinion, VOTED}, tangle)
 			if err != nil {
-				log.Error(err.Error())
+				log.Error(err)
 			}
 		}
 	})
 }
 
-func getOpinion(transactionHash trinary.Trytes, tangle tangleAPI) (opinion Opinion, err errors.IdentifiableError) {
+func getOpinion(transactionHash trinary.Trytes, tangle tangleAPI) (opinion Opinion, err error) {
 	md, err := tangle.GetTransactionMetadata(transactionHash)
 	if err != nil {
 		return Opinion{}, err
@@ -114,7 +113,7 @@ func getOpinion(transactionHash trinary.Trytes, tangle tangleAPI) (opinion Opini
 	return Opinion{md.GetLiked(), md.GetFinalized()}, nil
 }
 
-func setOpinion(transactionHash trinary.Trytes, opinion Opinion, tangle tangleAPI) (err errors.IdentifiableError) {
+func setOpinion(transactionHash trinary.Trytes, opinion Opinion, tangle tangleAPI) (err error) {
 	md, err := tangle.GetTransactionMetadata(transactionHash)
 	if err != nil {
 		return err

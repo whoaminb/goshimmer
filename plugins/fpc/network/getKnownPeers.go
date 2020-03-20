@@ -1,8 +1,8 @@
 package network
 
 import (
-	"github.com/iotaledger/goshimmer/packages/autopeering/peer/service"
 	"github.com/iotaledger/goshimmer/plugins/autopeering"
+	"github.com/iotaledger/hive.go/autopeering/peer/service"
 )
 
 func GetKnownPeers() []string {

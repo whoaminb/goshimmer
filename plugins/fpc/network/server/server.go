@@ -7,9 +7,7 @@ import (
 
 	"github.com/iotaledger/goshimmer/packages/fpc"
 	pb "github.com/iotaledger/goshimmer/plugins/fpc/network/query"
-	"github.com/iotaledger/goshimmer/plugins/tangle"
 	"github.com/iotaledger/hive.go/logger"
-	"github.com/iotaledger/iota.go/trinary"
 	"google.golang.org/grpc"
 )
 
@@ -54,10 +52,10 @@ func (s *queryServer) retrieveOpinion(tx fpc.ID) (opinion fpc.Opinion) {
 		return opinion
 	}
 	//DB lookup
-	txMetadata, err := tangle.GetTransactionMetadata(trinary.Trytes(tx))
-	if err == nil && (txMetadata.GetFinalized() || txMetadata.GetReceivedTime().Add(C).Before(time.Now())) {
-		return txMetadata.GetLiked()
-	}
+	// txMetadata, err := tangle.GetTransactionMetadata(trinary.Trytes(tx))
+	// if err == nil && (txMetadata.GetFinalized() || txMetadata.GetReceivedTime().Add(C).Before(time.Now())) {
+	// 	return txMetadata.GetLiked()
+	// }
 
 	return fpc.Dislike
 }
