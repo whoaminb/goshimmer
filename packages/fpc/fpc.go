@@ -77,6 +77,7 @@ func (fpc *Instance) GetInterimOpinion(tx ID) (opinion Opinion, ok bool) {
 type ID = string
 
 // Opinion is the like/dislike opinion of a given tx
+// TODO: change this to byte
 type Opinion = bool
 
 // TxOpinion defines the current opinion of a tx
@@ -90,6 +91,7 @@ type TxOpinion struct {
 const (
 	Like    = true
 	Dislike = false
+	//Nd
 )
 
 // etaMap is a mapping of the ID to the EtaResult
@@ -162,7 +164,7 @@ func (fpc *Instance) updateOpinion() {
 				threshold = runif(fpc.state.tick.x, fpc.state.parameters.beta, 1-fpc.state.parameters.beta)
 			}
 
-			newOpinion := eta.value > threshold
+			newOpinion := eta.value >= threshold
 			fpc.state.opinionHistory.Store(tx, newOpinion)
 		}
 	}
@@ -229,6 +231,7 @@ func querySample(txs []ID, k int, nodes []string, qn QueryNode) etaMap {
 
 // process the responses by calclulating etas
 // for all the votes
+// TODO change eta to some name more clear and descriptive
 func calculateEtas(votes []TxOpinion) etaMap {
 	allEtas := make(map[ID]*etaResult)
 	for _, vote := range votes {

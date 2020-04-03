@@ -1,12 +1,12 @@
-# FPC
+ # FPC
 
 This package implements the Fast Probabilistic Consensus protocol.
 
 ## Dependencies
 
 
-* `GetKnownPeers func() -> []int` TODO: change int to node
-* `QueryNode func([]Hash, int) -> []Opinion` TODO: change int to node
+* `Queryables func() -> []queryable` It should provide an interface for querying the nodes
+* `(queryable).Query func(context, []Hash) -> []Opinion` Add a context for canceling after timeout expires
 
 ## Interfaces
 
