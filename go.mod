@@ -32,3 +32,6 @@ require (
 	golang.org/x/tools v0.0.0-20200330040139-fa3cc9eebcfe // indirect
 	gopkg.in/src-d/go-git.v4 v4.13.1
 )
+
+
+replace github.com/iotaledger/hive.go => ./hive.go

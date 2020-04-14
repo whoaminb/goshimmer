@@ -14,6 +14,7 @@ WORKDIR /goshimmer
 # Use Go Modules
 COPY go.mod .
 COPY go.sum .
+COPY hive.go .
 
 ENV GO111MODULE=on
 RUN go mod download

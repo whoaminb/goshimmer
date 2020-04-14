@@ -8,7 +8,8 @@ import (
 )
 
 const (
-	routeGetNeighbors = "autopeering/neighbors"
+	routeGetNeighbors       = "autopeering/neighbors"
+	routeGetGossipNeighbors = "getGossipNeighbors"
 )
 
 // GetNeighbors gets the chosen/accepted neighbors.
@@ -21,6 +22,14 @@ func (api *GoShimmerAPI) GetNeighbors(knownPeers bool) (*webapi_autopeering.Resp
 		}
 		return fmt.Sprintf("%s?known=1", routeGetNeighbors)
 	}(), nil, res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (api *GoShimmerAPI) GetGossipNeighbors() (*webapi_autopeering.GossipResponse, error) {
+	res := &webapi_autopeering.GossipResponse{}
+	if err := api.do(http.MethodGet, routeGetGossipNeighbors, nil, res); err != nil {
 		return nil, err
 	}
 	return res, nil

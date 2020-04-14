@@ -1,12 +1,13 @@
 package autopeering
 
 import (
-	"encoding/base64"
+	"fmt"
 	"net"
 	"net/http"
 	"strconv"
 
 	"github.com/iotaledger/goshimmer/plugins/autopeering"
+	"github.com/iotaledger/goshimmer/plugins/gossip"
 	"github.com/iotaledger/goshimmer/plugins/webapi"
 	"github.com/iotaledger/hive.go/autopeering/peer"
 	"github.com/iotaledger/hive.go/autopeering/peer/service"
@@ -18,6 +19,7 @@ var PLUGIN = node.NewPlugin("WebAPI autopeering Endpoint", node.Enabled, configu
 
 func configure(plugin *node.Plugin) {
 	webapi.Server.GET("autopeering/neighbors", getNeighbors)
+	webapi.Server.GET("getGossipNeighbors", getGossipNeighbors)
 }
 
 // getNeighbors returns the chosen and accepted neighbors of the node
@@ -39,7 +41,7 @@ func getNeighbors(c echo.Context) error {
 		for _, peer := range autopeering.Discovery.GetVerifiedPeers() {
 			n := Neighbor{
 				ID:        peer.ID().String(),
-				PublicKey: base64.StdEncoding.EncodeToString(peer.PublicKey().Bytes()),
+				PublicKey: peer.PublicKey().String(),
 			}
 			n.Services = getServices(peer)
 			knownPeers = append(knownPeers, n)
@@ -49,7 +51,7 @@ func getNeighbors(c echo.Context) error {
 	for _, peer := range autopeering.Selection.GetOutgoingNeighbors() {
 		n := Neighbor{
 			ID:        peer.ID().String(),
-			PublicKey: base64.StdEncoding.EncodeToString(peer.PublicKey().Bytes()),
+			PublicKey: peer.PublicKey().String(),
 		}
 		n.Services = getServices(peer)
 		chosen = append(chosen, n)
@@ -57,13 +59,33 @@ func getNeighbors(c echo.Context) error {
 	for _, peer := range autopeering.Selection.GetIncomingNeighbors() {
 		n := Neighbor{
 			ID:        peer.ID().String(),
-			PublicKey: base64.StdEncoding.EncodeToString(peer.PublicKey().Bytes()),
+			PublicKey: peer.PublicKey().String(),
 		}
 		n.Services = getServices(peer)
 		accepted = append(accepted, n)
 	}
 
 	return c.JSON(http.StatusOK, Response{KnownPeers: knownPeers, Chosen: chosen, Accepted: accepted})
+}
+
+func getGossipNeighbors(c echo.Context) error {
+	neighbors := gossip.GetAllNeighbors()
+	if neighbors == nil {
+		return c.JSON(http.StatusBadRequest, GossipResponse{Error: "Gossip not enabled."})
+	}
+
+	neighborsResp := make([]Neighbor, len(neighbors))
+	for _, n := range neighbors {
+		neighborsResp = append(
+			neighborsResp,
+			Neighbor{
+				ID:        n.ID().String(),
+				PublicKey: n.PublicKey().String(),
+				Services:  nil,
+			})
+	}
+
+	return c.JSON(http.StatusOK, GossipResponse{Neighbors: neighborsResp})
 }
 
 type Response struct {
@@ -73,10 +95,19 @@ type Response struct {
 	Error      string     `json:"error,omitempty"`
 }
 
+type GossipResponse struct {
+	Neighbors []Neighbor `json:"neighbors,omitempty"`
+	Error     string     `json:"error,omitempty"`
+}
+
 type Neighbor struct {
 	ID        string        `json:"id"`        // comparable node identifier
 	PublicKey string        `json:"publicKey"` // public key used to verify signatures
 	Services  []peerService `json:"services,omitempty"`
+}
+
+func (n *Neighbor) String() string {
+	return fmt.Sprintf("Neighbor{ID: %s, PublicKey: %s}", n.ID, n.PublicKey)
 }
 
 type peerService struct {

@@ -97,3 +97,11 @@ func (f *Framework) Peers() []*Peer {
 func (f *Framework) RandomPeer() *Peer {
 	return f.peers[rand.Intn(len(f.peers))]
 }
+
+//TODO:
+//func (f *Framework) GetPeerByID(id string) *Peer {
+//	for _, p := range f.peers {
+//		if p.
+//	}
+//	return nil
+//}
