@@ -1,0 +1,28 @@
+{
+ "hosts": [
+  {
+   "port": 9090,
+   "addr": "127.0.0.1"
+  },
+  {
+   "port": 9091,
+   "addr": "127.0.0.1"
+  },
+  {
+   "port": 9092,
+   "addr": "127.0.0.1"
+  },
+  {
+   "port": 9093,
+   "addr": "127.0.0.1"
+  }
+ ],
+ "n": 4,
+ "t": 3,
+ "num_keys": 3,
+ "addresses": [
+  "8kg1HVpSv7Ff5hy7nhgZGymCJaDY42YADHswQqyB678H",
+  "2uffGTk1dJBNVPpZE56BdBEw1iC7S4tWfhc399WwbgXa",
+  "H8jC5kH9GYCt3RumTGAMvB5c6uZuwb1APNA1iaswz5Zz"
+ ]
+}

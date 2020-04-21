@@ -7,13 +7,13 @@ type PortAddr struct {
 	Addr string `json:"addr"`
 }
 
-func (oa *PortAddr) AdjustedIP() (string, int) {
-	if oa.Addr == "localhost" {
-		return "127.0.0.1", oa.Port
+func (pa *PortAddr) AdjustedIP() (string, int) {
+	if pa.Addr == "localhost" {
+		return "127.0.0.1", pa.Port
 	}
-	return oa.Addr, oa.Port
+	return pa.Addr, pa.Port
 }
 
-func (oa *PortAddr) String() string {
-	return fmt.Sprintf("%s:%d", oa.Addr, oa.Port)
+func (pa *PortAddr) String() string {
+	return fmt.Sprintf("%s:%d", pa.Addr, pa.Port)
 }

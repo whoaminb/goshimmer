@@ -1,15 +1,21 @@
 package tcrypto
 
 import (
-	"github.com/iotaledger/goshimmer/plugins/qnode/hashing"
+	"bytes"
+	"github.com/iotaledger/goshimmer/packages/binary/valuetransfer/address"
 	"github.com/iotaledger/goshimmer/plugins/qnode/util"
+	"github.com/pkg/errors"
 	"go.dedis.ch/kyber/v3"
 	"go.dedis.ch/kyber/v3/pairing/bn256"
 	"io"
 )
 
 func (ks *DKShare) Write(w io.Writer) error {
-	err := util.WriteUint16(w, ks.N)
+	_, err := w.Write(ks.Address.Bytes())
+	if err != nil {
+		return err
+	}
+	err = util.WriteUint16(w, ks.N)
 	if err != nil {
 		return err
 	}
@@ -18,14 +24,6 @@ func (ks *DKShare) Write(w io.Writer) error {
 		return err
 	}
 	err = util.WriteUint16(w, ks.Index)
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(ks.Address.Bytes())
-	if err != nil {
-		return err
-	}
-	err = util.WriteUint64(w, uint64(ks.Created))
 	if err != nil {
 		return err
 	}
@@ -43,7 +41,7 @@ func (ks *DKShare) Write(w io.Writer) error {
 			return err
 		}
 	}
-	pkdata, err := ks.PriKey.MarshalBinary()
+	pkdata, err := ks.priKey.MarshalBinary()
 	if err != nil {
 		return err
 	}
@@ -55,11 +53,18 @@ func (ks *DKShare) Write(w io.Writer) error {
 }
 
 func (ks *DKShare) Read(r io.Reader) error {
-	*ks = DKShare{}
-	ks.Suite = bn256.NewSuite()
+	*ks = DKShare{Suite: bn256.NewSuite()}
 
+	var addr address.Address
+	_, err := r.Read(addr.Bytes())
+	if err != nil {
+		return err
+	}
+	if addr.Version() != address.VERSION_BLS {
+		return errors.New("not a BLS address")
+	}
 	var n, t, index uint16
-	err := util.ReadUint16(r, &n)
+	err = util.ReadUint16(r, &n)
 	if err != nil {
 		return err
 	}
@@ -68,16 +73,6 @@ func (ks *DKShare) Read(r io.Reader) error {
 		return err
 	}
 	err = util.ReadUint16(r, &index)
-	if err != nil {
-		return err
-	}
-	var account hashing.HashValue
-	_, err = r.Read(account.Bytes())
-	if err != nil {
-		return err
-	}
-	var created uint64
-	err = util.ReadUint64(r, &created)
 	if err != nil {
 		return err
 	}
@@ -110,9 +105,42 @@ func (ks *DKShare) Read(r io.Reader) error {
 	ks.N = n
 	ks.T = t
 	ks.Index = index
-	ks.Address = &account
-	ks.Created = int64(created)
+	ks.Address = &addr
 	ks.PubKeys = pubKeys
-	ks.PriKey = priKey
+	ks.priKey = priKey
 	return nil
+}
+
+// UnmarshalDKShare parses DKShare, validates and calculates master public key
+func UnmarshalDKShare(data []byte, maskPrivate bool) (*DKShare, error) {
+	ret := &DKShare{}
+
+	err := ret.Read(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	ret.Aggregated = true
+	ret.Committed = true
+	ret.PubPoly, err = RecoverPubPoly(ret.Suite, ret.PubKeys, ret.T, ret.N)
+	if err != nil {
+		return nil, err
+	}
+	pubKeyOwn := ret.Suite.G2().Point().Mul(ret.priKey, nil)
+	if !pubKeyOwn.Equal(ret.PubKeys[ret.Index]) {
+		return nil, errors.New("crosscheck I: inconsistency while calculating public key")
+	}
+	ret.PubKeyOwn = ret.PubKeys[ret.Index]
+	ret.PubKeyMaster = ret.PubPoly.Commit()
+	if maskPrivate {
+		ret.priKey = nil
+	}
+	binPK, err := ret.PubKeyMaster.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	addrFromBin := address.FromBLSPubKey(binPK)
+	if !bytes.Equal(addrFromBin.Bytes(), ret.Address.Bytes()) {
+		return nil, errors.New("crosscheck II: !HashData(binPK).Equal(ret.Address)")
+	}
+	return ret, nil
 }

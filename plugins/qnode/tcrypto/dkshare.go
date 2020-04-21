@@ -2,14 +2,13 @@ package tcrypto
 
 import (
 	"fmt"
-	. "github.com/iotaledger/goshimmer/plugins/qnode/hashing"
+	"github.com/iotaledger/goshimmer/packages/binary/valuetransfer/address"
 	"github.com/iotaledger/goshimmer/plugins/qnode/tcrypto/tbdn"
 	"github.com/pkg/errors"
 	"go.dedis.ch/kyber/v3"
 	"go.dedis.ch/kyber/v3/pairing/bn256"
 	"go.dedis.ch/kyber/v3/share"
 	"go.dedis.ch/kyber/v3/sign/bdn"
-	"time"
 )
 
 // Distributed key set for (T,N) threshold signatures, T out f N
@@ -19,9 +18,8 @@ type DKShare struct {
 	N       uint16
 	T       uint16
 	Index   uint16
-	Address *HashValue // used as permanent id = hash(pubkey)
+	Address *address.Address
 
-	Created    int64
 	Aggregated bool
 	Committed  bool
 	//
@@ -29,7 +27,7 @@ type DKShare struct {
 	//
 	PubKeys      []kyber.Point // all public shares by peers
 	PubPoly      *share.PubPoly
-	PriKey       kyber.Scalar // own private key (sum of private shares)
+	priKey       kyber.Scalar // own private key (sum of private shares)
 	PubKeyOwn    kyber.Point  // public key from own private key
 	PubKeyMaster kyber.Point
 }
@@ -59,7 +57,6 @@ func NewRndDKShare(t, n, index uint16) (*DKShare, error) {
 	shares := priPoly.Shares(int(n))
 	ret := &DKShare{
 		Suite:     suite,
-		Created:   time.Now().UnixNano(),
 		N:         n,
 		T:         t,
 		Index:     index,
@@ -73,16 +70,16 @@ func (ks *DKShare) AggregateDKS(priShares []kyber.Scalar) error {
 		return errors.New("already Aggregated")
 	}
 	// aggregate (add up) secret shares
-	ks.PriKey = ks.Suite.G2().Scalar().Zero()
+	ks.priKey = ks.Suite.G2().Scalar().Zero()
 	for i, pshare := range priShares {
 		if uint16(i) == ks.Index {
-			ks.PriKey = ks.PriKey.Add(ks.PriKey, ks.PriShares[ks.Index].V)
+			ks.priKey = ks.priKey.Add(ks.priKey, ks.PriShares[ks.Index].V)
 			continue
 		}
-		ks.PriKey = ks.PriKey.Add(ks.PriKey, pshare)
+		ks.priKey = ks.priKey.Add(ks.priKey, pshare)
 	}
 	// calculate own public key
-	ks.PubKeyOwn = ks.Suite.G2().Point().Mul(ks.PriKey, nil)
+	ks.PubKeyOwn = ks.Suite.G2().Point().Mul(ks.priKey, nil)
 	ks.Aggregated = true
 	return nil
 }
@@ -103,7 +100,8 @@ func (ks *DKShare) FinalizeDKS(pubKeys []kyber.Point) error {
 		return err
 	}
 	// calculate address, the permanent key ID
-	ks.Address = HashData(pubKeyBin)
+	a := address.FromBLSPubKey(pubKeyBin)
+	ks.Address = &a
 
 	ks.PriShares = nil // not needed anymore
 	ks.Committed = true
@@ -113,7 +111,7 @@ func (ks *DKShare) FinalizeDKS(pubKeys []kyber.Point) error {
 func (ks *DKShare) SignShare(data []byte) (tbdn.SigShare, error) {
 	priShare := share.PriShare{
 		I: int(ks.Index),
-		V: ks.PriKey,
+		V: ks.priKey,
 	}
 	return tbdn.Sign(ks.Suite, &priShare, data)
 }
