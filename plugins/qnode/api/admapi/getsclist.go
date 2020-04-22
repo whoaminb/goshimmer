@@ -13,7 +13,7 @@ type GetScListResponse struct {
 }
 
 func HandlerGetSCList(c echo.Context) error {
-	sclist, ok := registry.GetFullSCDataList()
+	sclist, ok := registry.GetSCDataList()
 	if !ok {
 		return utils.ToJSON(c, http.StatusOK, &GetScListResponse{Error: "not found"})
 	}

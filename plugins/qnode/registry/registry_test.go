@@ -10,6 +10,7 @@ func TestBasic(t *testing.T) {
 		Port: 1000,
 		Addr: "127.0.0.1",
 	}
-	err := RefreshSCDataCache(&ownAddr)
+	list, err := GetSCDataList(&ownAddr)
 	assert.Equal(t, err, nil)
+	assert.Equal(t, len(list), 0)
 }

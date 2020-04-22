@@ -13,12 +13,6 @@ import (
 	. "github.com/iotaledger/goshimmer/plugins/qnode/hashing"
 	"github.com/iotaledger/goshimmer/plugins/qnode/transaction"
 	"github.com/iotaledger/hive.go/database"
-	"sync"
-)
-
-var (
-	scDataCache map[transaction.ScId]*SCData
-	scDataMutex = &sync.RWMutex{}
 )
 
 // SCData represents information on the SC and the committee, available to the node
@@ -31,86 +25,59 @@ type SCData struct {
 	NodeLocations []*PortAddr       `json:"node_locations"`
 }
 
-// RefreshSCDataCache reads all available SCDataRecords and puts them into the cache
-// It filters out records which doesn't contain own address
-func RefreshSCDataCache(ownAddr *PortAddr) error {
-	scDataMutex.Lock()
-	defer scDataMutex.Unlock()
-
-	// clear or create the cache
-	scDataCache = make(map[transaction.ScId]*SCData)
-	dbase, err := db.Get()
-	if err != nil {
-		return err
-	}
-	err = dbase.ForEachPrefix(dbSCDataGroupPrefix(), func(entry database.Entry) bool {
-		scdata := &SCData{}
-		if err = json.Unmarshal(entry.Value, scdata); err == nil {
-			validateAndAddToCache(scdata, ownAddr)
-		}
-		return false
-	})
-	return err
-}
-
-// validates and adds SCData record to cache
-func validateAndAddToCache(scdata *SCData, ownAddr *PortAddr) {
-	addr := scdata.ScId.Address()
-	dkshare, ok, _ := GetDKShare(&addr)
-	if !ok {
-		// failed to load dkshare of the sc address
-		return
-	}
-	if int(dkshare.Index) >= len(scdata.NodeLocations) {
-		// shouldn't be
-		return
-	}
-	if ownAddr.String() != scdata.NodeLocations[dkshare.Index].String() {
-		// if own address is not consistent with the one at the index in the list of nodes
-		// this node is not interested in the SC
-		return
-	}
-	scDataCache[*scdata.ScId] = scdata
-}
-
-// GetScData retrieves SCdata from the cache if it is there
-func GetScData(scid *transaction.ScId) (*SCData, bool) {
-	scDataMutex.RLock()
-	defer scDataMutex.RUnlock()
-	ret, ok := scDataCache[*scid]
-	if !ok {
-		return nil, false
-	}
-	return ret, true
-}
-
-// GetScList retrieves all SCdata records from the cache
-// in arbitrary ket/value map order and returns a list
-func GetFullSCDataList() ([]*SCData, error) {
+// GetScList retrieves all SCdata records from the registry
+// in arbitrary key/value map order and returns a list
+// if ownPortAddr is not nil, it only includes those SCData records which are processed
+// by his node
+func GetSCDataList(ownAddr *PortAddr) ([]*SCData, error) {
 	dbase, err := db.Get()
 	if err != nil {
 		return nil, err
 	}
 	ret := make([]*SCData, 0)
-	err = dbase.ForEachPrefix(dbSCDataGroupPrefix(), func(entry database.Entry) bool {
+	err = dbase.ForEachPrefix(dbSCDataGroupPrefix, func(entry database.Entry) bool {
 		scdata := &SCData{}
 		if err = json.Unmarshal(entry.Value, scdata); err == nil {
-			ret = append(ret, scdata)
+			if validate(scdata, ownAddr) {
+				ret = append(ret, scdata)
+			}
 		}
 		return false
 	})
-	return ret, nil
+	return ret, err
+}
+
+// checks if SCData record is valid
+// if ownAddr != nil checks if it is of interest to the current node
+func validate(scdata *SCData, ownAddr *PortAddr) bool {
+	addr := scdata.ScId.Address()
+	dkshare, ok, _ := GetDKShare(&addr)
+	if !ok {
+		// failed to load dkshare of the sc address
+		return false
+	}
+	if int(dkshare.Index) >= len(scdata.NodeLocations) {
+		// shouldn't be
+		return false
+	}
+	if ownAddr == nil {
+		return true
+	}
+	if ownAddr.String() != scdata.NodeLocations[dkshare.Index].String() {
+		// if own address is not consistent with the one at the index in the list of nodes
+		// this node is not interested in the SC
+		return false
+	}
+	return true
 }
 
 // prefix of the SCData entry key
-func dbSCDataGroupPrefix() []byte {
-	return []byte("sc_")
-}
+var dbSCDataGroupPrefix = HashStrings("scdata").Bytes()
 
 // key of the entry
 func dbSCDataKey(scid *transaction.ScId) []byte {
 	var buf bytes.Buffer
-	buf.Write(dbSCDataGroupPrefix())
+	buf.Write(dbSCDataGroupPrefix)
 	buf.Write(scid.Bytes())
 	return buf.Bytes()
 }
