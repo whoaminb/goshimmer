@@ -68,8 +68,8 @@ func main() {
 		}
 		resps := apilib.GetPublicKeyInfo(params.Hosts, &a)
 		for i, r := range resps {
-			if r.Address != addr || r.N != params.N || r.T != params.T || int(r.Index) != i {
-				fmt.Printf("%s --> returned wrong values\n", params.Hosts[i])
+			if r == nil || r.Address != addr || r.N != params.N || r.T != params.T || int(r.Index) != i {
+				fmt.Printf("%s --> returned none or wrong values\n", params.Hosts[i])
 			} else {
 				fmt.Printf("%s --> master pub key: %s\n", params.Hosts[i], r.PubKeyMaster)
 			}

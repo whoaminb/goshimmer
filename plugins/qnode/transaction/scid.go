@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/iotaledger/goshimmer/packages/binary/valuetransfer/address"
@@ -41,7 +42,7 @@ func (id *ScId) String() string {
 }
 
 func (id *ScId) Short() string {
-	return fmt.Sprintf("%s../%s..", id.Address().String()[:4], id.Color().String())
+	return fmt.Sprintf("%s../%s..", id.Address().String()[:4], id.Color().String()[:4])
 }
 
 func ScIdFromString(s string) (*ScId, error) {
@@ -55,6 +56,13 @@ func ScIdFromString(s string) (*ScId, error) {
 	var ret ScId
 	copy(ret[:], b)
 	return &ret, nil
+}
+
+func (id *ScId) Equal(id1 *ScId) bool {
+	if id == id1 {
+		return true
+	}
+	return bytes.Equal(id.Bytes(), id1.Bytes())
 }
 
 func (id *ScId) MarshalJSON() ([]byte, error) {
