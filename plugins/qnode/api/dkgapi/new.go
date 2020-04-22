@@ -1,20 +1,17 @@
 package dkgapi
 
 import (
-	"encoding/hex"
 	"github.com/iotaledger/goshimmer/plugins/qnode/api/utils"
-	. "github.com/iotaledger/goshimmer/plugins/qnode/hashing"
-	"github.com/iotaledger/goshimmer/plugins/qnode/registry"
 	"github.com/iotaledger/goshimmer/plugins/qnode/tcrypto"
 	"github.com/labstack/echo"
+	"github.com/mr-tron/base58"
 	"net/http"
 )
 
 //----------------------------------------------------------
 // The POST handler implements 'adm/newdks' API
 // Parameters (see NewDKSRequest struct):
-//     assembly_id: assembly id: hex encoded 32 bytes of hash value
-//     id:          distributed key set id, hex encoded 32 bytes of hash value
+//     tmpId:       int value, tmp id for the key set. Should be unique during DKG session
 //     n:           size of the assembly
 //     t:           required quorum: normally t=floor( 2*n/3)+1
 //	   index:       index of the node in the quorum
@@ -54,14 +51,14 @@ func HandlerNewDks(c echo.Context) error {
 }
 
 type NewDKSRequest struct {
-	Id    *HashValue `json:"id"`
-	N     uint16     `json:"n"`
-	T     uint16     `json:"t"`
-	Index uint16     `json:"index"` // 0 to N-1
+	TmpId int    `json:"tmpId"`
+	N     uint16 `json:"n"`
+	T     uint16 `json:"t"`
+	Index uint16 `json:"index"` // 0 to N-1
 }
 
 type NewDKSResponse struct {
-	PriShares []string `json:"pri_shares"`
+	PriShares []string `json:"pri_shares"` // base58
 	Err       string   `json:"err"`
 }
 
@@ -69,16 +66,14 @@ func NewDKSetReq(req *NewDKSRequest) *NewDKSResponse {
 	if err := tcrypto.ValidateDKSParams(req.T, req.N, req.Index); err != nil {
 		return &NewDKSResponse{Err: err.Error()}
 	}
-	_, ok, err := registry.GetDKShare(req.Id)
+	ks, err := tcrypto.NewRndDKShare(req.T, req.N, req.Index)
 	if err != nil {
 		return &NewDKSResponse{Err: err.Error()}
 	}
-	if ok {
-		return &NewDKSResponse{Err: "key set already exist"}
+	err = putToDkgCache(req.TmpId, ks)
+	if err != nil {
+		return &NewDKSResponse{Err: err.Error()}
 	}
-	ks := tcrypto.NewRndDKShare(req.T, req.N, req.Index)
-	registry.CacheDKShare(ks, req.Id)
-
 	resp := NewDKSResponse{
 		PriShares: make([]string, ks.N),
 	}
@@ -88,7 +83,7 @@ func NewDKSetReq(req *NewDKSRequest) *NewDKSResponse {
 			if err != nil {
 				return &NewDKSResponse{Err: err.Error()}
 			}
-			resp.PriShares[i] = hex.EncodeToString(data)
+			resp.PriShares[i] = base58.Encode(data)
 		}
 	}
 	return &resp

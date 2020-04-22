@@ -58,8 +58,7 @@ func LoadDKShare(address *address.Address, maskPrivate bool) (*tcrypto.DKShare, 
 	if err != nil {
 		return nil, err
 	}
-	dbkey := dbKey(address)
-	entry, err := dbase.Get(dbkey)
+	entry, err := dbase.Get(dbKey(address))
 	if err != nil {
 		return nil, err
 	}

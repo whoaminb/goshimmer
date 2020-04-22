@@ -1,11 +1,12 @@
 package dkgapi
 
 import (
-	"encoding/hex"
+	"github.com/iotaledger/goshimmer/packages/binary/valuetransfer/address"
 	"github.com/iotaledger/goshimmer/plugins/qnode/api/utils"
 	"github.com/iotaledger/goshimmer/plugins/qnode/hashing"
 	"github.com/iotaledger/goshimmer/plugins/qnode/registry"
 	"github.com/labstack/echo"
+	"github.com/mr-tron/base58"
 	"net/http"
 )
 
@@ -21,8 +22,7 @@ func HandlerSignDigest(c echo.Context) error {
 }
 
 type SignDigestRequest struct {
-	AssemblyId *hashing.HashValue `json:"assembly_id"`
-	Id         *hashing.HashValue `json:"id"`
+	Address    string             `json:"address"`
 	DataDigest *hashing.HashValue `json:"data_digest"`
 }
 
@@ -32,7 +32,14 @@ type SignDigestResponse struct {
 }
 
 func SignDigestReq(req *SignDigestRequest) *SignDigestResponse {
-	ks, ok, err := registry.GetDKShare(req.Id)
+	addr, err := address.FromBase58(req.Address)
+	if err != nil {
+		return &SignDigestResponse{Err: err.Error()}
+	}
+	if addr.Version() != address.VERSION_BLS {
+		return &SignDigestResponse{Err: "expected BLS address"}
+	}
+	ks, ok, err := registry.GetDKShare(&addr)
 	if err != nil {
 		return &SignDigestResponse{Err: err.Error()}
 	}
@@ -47,6 +54,6 @@ func SignDigestReq(req *SignDigestRequest) *SignDigestResponse {
 		return &SignDigestResponse{Err: err.Error()}
 	}
 	return &SignDigestResponse{
-		SigShare: hex.EncodeToString(signature),
+		SigShare: base58.Encode(signature),
 	}
 }

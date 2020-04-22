@@ -2,13 +2,21 @@ package admapi
 
 import (
 	"github.com/iotaledger/goshimmer/plugins/qnode/api/utils"
+	"github.com/iotaledger/goshimmer/plugins/qnode/hashing"
 	"github.com/iotaledger/goshimmer/plugins/qnode/registry"
 	"github.com/labstack/echo"
 	"net/http"
 )
 
+type PutSCDataRequest struct {
+	ScId          string             `json:"sc_id"` // base58
+	OwnerPubkey   *hashing.HashValue `json:"owner_pubkey"`
+	Description   string             `json:"description"`
+	NodeLocations []*registry.PortAddr
+}
+
 //----------------------------------------------------------
-func HandlerSCData(c echo.Context) error {
+func HandlerPutSCData(c echo.Context) error {
 	var req registry.SCData
 
 	if err := c.Bind(&req); err != nil {
@@ -16,16 +24,11 @@ func HandlerSCData(c echo.Context) error {
 			Error: err.Error(),
 		})
 	}
-
-	if err := req.Save(); err != nil {
-		log.Errorf("failed to save assembly data: %v", err)
+	if err := registry.SaveSCData(&req); err != nil {
+		log.Errorf("failed to save SC data: %v", err)
 		return utils.ToJSON(c, http.StatusOK, &utils.SimpleResponse{Error: err.Error()})
 	}
-	log.Infof("SC data saved: id = %s descr = '%s'",
-		req.Scid.Short(), req.Description)
+	log.Infof("SC data saved: scid = %s descr = '%s'", req.ScId.Short(), req.Description)
 
-	if err := registry.RefreshSCDataCache(); err != nil {
-		return utils.ToJSON(c, http.StatusOK, &utils.SimpleResponse{Error: err.Error()})
-	}
 	return utils.ToJSON(c, http.StatusOK, &utils.SimpleResponse{})
 }

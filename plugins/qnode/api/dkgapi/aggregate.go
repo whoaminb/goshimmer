@@ -1,12 +1,10 @@
 package dkgapi
 
 import (
-	"encoding/hex"
 	"fmt"
 	"github.com/iotaledger/goshimmer/plugins/qnode/api/utils"
-	"github.com/iotaledger/goshimmer/plugins/qnode/hashing"
-	"github.com/iotaledger/goshimmer/plugins/qnode/registry"
 	"github.com/labstack/echo"
+	"github.com/mr-tron/base58"
 	"go.dedis.ch/kyber/v3"
 	"net/http"
 )
@@ -14,8 +12,7 @@ import (
 //----------------------------------------------------------
 // The POST handler implements 'adm/aggregatedks' API
 // Parameters(see AggregateDKSRequest struct):
-//     assembly_id: assembly id: hex encoded 32 bytes of hash value
-//     id:          distributed key set id, hex encoded 32 bytes of hash value
+//     tmpId:       temporary numeric id during DKG
 //     index:       index of the node in the assembly
 //         (node knows it from the previous adm/newdks call, ths parameter is for control only)
 //     pri_shares: values P1(j), P2(j), ...., Pn(j) EXCEPT Pj(j), the diagonal
@@ -47,23 +44,20 @@ func HandlerAggregateDks(c echo.Context) error {
 }
 
 type AggregateDKSRequest struct {
-	Id        *hashing.HashValue `json:"id"`
-	Index     uint16             `json:"index"` // 0 to N-1
-	PriShares []string           `json:"pri_shares"`
+	TmpId     int      `     json:"tmpId"`
+	Index     uint16   `json:"index"`      // 0 to N-1
+	PriShares []string `json:"pri_shares"` // base58
 }
 
 type AggregateDKSResponse struct {
-	PubShare string `json:"pub_share"`
+	PubShare string `json:"pub_share"` // base58
 	Err      string `json:"err"`
 }
 
 func AggregateDKSReq(req *AggregateDKSRequest) *AggregateDKSResponse {
-	ks, ok, err := registry.GetDKShare(req.Id)
-	if err != nil {
-		return &AggregateDKSResponse{Err: err.Error()}
-	}
-	if !ok {
-		return &AggregateDKSResponse{Err: "unknown key set"}
+	ks := getFromDkgCache(req.TmpId)
+	if ks == nil {
+		return &AggregateDKSResponse{Err: fmt.Sprintf("wrong tmpId %d", req.TmpId)}
 	}
 	if ks.Aggregated {
 		return &AggregateDKSResponse{Err: "key set already aggregated"}
@@ -80,7 +74,7 @@ func AggregateDKSReq(req *AggregateDKSRequest) *AggregateDKSResponse {
 		if uint16(i) == ks.Index {
 			continue
 		}
-		pkb, err := hex.DecodeString(pks)
+		pkb, err := base58.Decode(pks)
 		if err != nil {
 			return &AggregateDKSResponse{Err: fmt.Sprintf("decode error: %v", err)}
 		}
@@ -97,6 +91,6 @@ func AggregateDKSReq(req *AggregateDKSRequest) *AggregateDKSResponse {
 		return &AggregateDKSResponse{Err: fmt.Sprintf("marshal error 2: %v", err)}
 	}
 	return &AggregateDKSResponse{
-		PubShare: hex.EncodeToString(pkb),
+		PubShare: base58.Encode(pkb),
 	}
 }

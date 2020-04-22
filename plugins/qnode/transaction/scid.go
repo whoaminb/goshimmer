@@ -15,8 +15,8 @@ type ScId [ScIdLength]byte
 
 func NewScId(addr *address.Address, color *balance.Color) *ScId {
 	var ret ScId
-	copy(ret.Address().Bytes(), addr.Bytes())
-	copy(ret.Color().Bytes(), color.Bytes())
+	copy(ret[:address.Length], addr.Bytes())
+	copy(ret[address.Length:], color.Bytes())
 	return &ret
 }
 
@@ -24,14 +24,16 @@ func (id *ScId) Bytes() []byte {
 	return id[:]
 }
 
-func (id *ScId) Address() (ret address.Address) {
-	copy(ret.Bytes(), id.Bytes()[:address.Length])
-	return
+func (id *ScId) Address() *address.Address {
+	var ret address.Address
+	copy(ret[:], id[:address.Length])
+	return &ret
 }
 
-func (id *ScId) Color() (ret balance.Color) {
-	copy(ret.Bytes(), id.Bytes()[address.Length:])
-	return
+func (id *ScId) Color() *balance.Color {
+	var ret balance.Color
+	copy(ret[:], id[address.Length:])
+	return &ret
 }
 
 func (id *ScId) String() string {
@@ -39,12 +41,11 @@ func (id *ScId) String() string {
 }
 
 func (id *ScId) Short() string {
-	return fmt.Sprintf("%s../%s..", id.Address().String()[:4])
+	return fmt.Sprintf("%s../%s..", id.Address().String()[:4], id.Color().String())
 }
 
 func ScIdFromString(s string) (*ScId, error) {
 	b, err := base58.Decode(s)
-	//b, err := hex.DecodeString(s)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +53,7 @@ func ScIdFromString(s string) (*ScId, error) {
 		return nil, errors.New("wrong hex encoded string. Can't convert to ScId")
 	}
 	var ret ScId
-	copy(ret.Bytes(), b)
+	copy(ret[:], b)
 	return &ret, nil
 }
 

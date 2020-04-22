@@ -1,19 +1,18 @@
 package dkgapi
 
 import (
-	"encoding/hex"
+	"fmt"
 	"github.com/iotaledger/goshimmer/plugins/qnode/api/utils"
-	"github.com/iotaledger/goshimmer/plugins/qnode/hashing"
 	"github.com/iotaledger/goshimmer/plugins/qnode/registry"
 	"github.com/labstack/echo"
+	"github.com/mr-tron/base58"
 	"go.dedis.ch/kyber/v3"
 	"net/http"
 )
 
 // The POST handler implements 'adm/commitdks' API
 // Parameters(see CommitDKSRequest struct):
-//     assembly_id: assembly id: hex encoded 32 bytes of hash value
-//     id:          distributed key set id, hex encoded 32 bytes of hash value
+//     tmpId:      tmp num id during DKG process
 //     pub_shares: all public chares collected from all nodes
 //
 // Node does the following:
@@ -40,33 +39,30 @@ func HandlerCommitDks(c echo.Context) error {
 }
 
 type CommitDKSRequest struct {
-	Id        *hashing.HashValue `json:"id"`
-	PubShares []string           `json:"pub_shares"`
+	TmpId     int      `json:"tmpId"`
+	PubShares []string `json:"pub_shares"` // base58
 }
 
 type CommitDKSResponse struct {
-	Address *hashing.HashValue `json:"address"`
-	Err     string             `json:"err"`
+	Address string `json:"address"` //base58
+	Err     string `json:"err"`
 }
 
 func CommitDKSReq(req *CommitDKSRequest) *CommitDKSResponse {
-	ks, ok, err := registry.GetDKShare(req.Id)
-	if err != nil {
-		return &CommitDKSResponse{Err: err.Error()}
-	}
-	if !ok {
-		return &CommitDKSResponse{Err: "unknown key set"}
+	ks := getFromDkgCache(req.TmpId)
+	if ks == nil {
+		return &CommitDKSResponse{Err: fmt.Sprintf("wrong tmpId %d", req.TmpId)}
 	}
 	if ks.Committed {
 		return &CommitDKSResponse{Err: "key set is already committed"}
 	}
 	if len(req.PubShares) != int(ks.N) {
-		return &CommitDKSResponse{Err: "CommitDKSReq: wrong number of private shares"}
+		return &CommitDKSResponse{Err: "wrong number of private shares"}
 	}
 
 	pubKeys := make([]kyber.Point, len(req.PubShares))
 	for i, s := range req.PubShares {
-		b, err := hex.DecodeString(s)
+		b, err := base58.Decode(s)
 		if err != nil {
 			return &CommitDKSResponse{Err: err.Error()}
 		}
@@ -76,11 +72,13 @@ func CommitDKSReq(req *CommitDKSRequest) *CommitDKSResponse {
 		}
 		pubKeys[i] = p
 	}
-	err = registry.CommitDKShare(ks, pubKeys)
+	err := registry.CommitDKShare(ks, pubKeys)
 	if err != nil {
 		return &CommitDKSResponse{Err: err.Error()}
 	}
-	registry.UncacheDKShare(req.Id)
+	// delete from the DKG cache
+	_ = putToDkgCache(req.TmpId, nil)
+
 	log.Infow("Created new key share",
 		"address", ks.Address.String(),
 		"N", ks.N,
@@ -88,6 +86,6 @@ func CommitDKSReq(req *CommitDKSRequest) *CommitDKSResponse {
 		"Index", ks.Index,
 	)
 	return &CommitDKSResponse{
-		Address: ks.Address,
+		Address: ks.Address.String(),
 	}
 }

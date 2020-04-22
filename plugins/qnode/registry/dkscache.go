@@ -11,18 +11,8 @@ var (
 	dkscacheMutex = &sync.RWMutex{}
 )
 
-func CacheDKShare(dkshare *tcrypto.DKShare) {
-	dkscacheMutex.Lock()
-	defer dkscacheMutex.Unlock()
-	dkscache[*dkshare.Address] = dkshare
-}
-
-func UncacheDKShare(addr *address.Address) {
-	dkscacheMutex.Lock()
-	defer dkscacheMutex.Unlock()
-	delete(dkscache, *addr)
-}
-
+// GetDKShare retrieves distributed key share from registry or the cache
+// returns dkshare, exists flag and error
 func GetDKShare(addr *address.Address) (*tcrypto.DKShare, bool, error) {
 	dkscacheMutex.RLock()
 	ret, ok := dkscache[*addr]
@@ -33,7 +23,7 @@ func GetDKShare(addr *address.Address) (*tcrypto.DKShare, bool, error) {
 	// switching to write lock
 	dkscacheMutex.RUnlock()
 	dkscacheMutex.Lock()
-	defer dkscacheMutex.Lock()
+	defer dkscacheMutex.Unlock()
 
 	var err error
 	ok, err = ExistDKShareInRegistry(addr)

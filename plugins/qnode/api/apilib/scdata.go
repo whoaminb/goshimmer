@@ -7,17 +7,18 @@ import (
 	"fmt"
 	"github.com/iotaledger/goshimmer/plugins/qnode/api/admapi"
 	"github.com/iotaledger/goshimmer/plugins/qnode/api/utils"
-	"github.com/iotaledger/goshimmer/plugins/qnode/hashing"
 	"github.com/iotaledger/goshimmer/plugins/qnode/registry"
+	"github.com/iotaledger/goshimmer/plugins/qnode/transaction"
 	"net/http"
 )
 
+// calls node  to wright SCData record
 func PutSCData(addr string, port int, adata *registry.SCData) error {
 	data, err := json.Marshal(adata)
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("http://%s:%d/adm/scdata", addr, port)
+	url := fmt.Sprintf("http://%s:%d/adm/putscdata", addr, port)
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return err
@@ -34,13 +35,14 @@ func PutSCData(addr string, port int, adata *registry.SCData) error {
 	return err
 }
 
-func GetSCdata(addr string, port int, schash *hashing.HashValue) (*registry.SCData, error) {
-	req := admapi.GetScDataRequest{Id: schash}
+// calls the nodes to get SCData record by scid
+func GetSCdata(addr string, port int, scid *transaction.ScId) (*registry.SCData, error) {
+	req := admapi.GetSCDataRequest{ScId: scid}
 	data, err := json.Marshal(&req)
 	if err != nil {
 		return nil, err
 	}
-	url := fmt.Sprintf("http://%s:%d/adm/getsc", addr, port)
+	url := fmt.Sprintf("http://%s:%d/adm/getscdata", addr, port)
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return nil, err
@@ -48,7 +50,7 @@ func GetSCdata(addr string, port int, schash *hashing.HashValue) (*registry.SCDa
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("response status %d", resp.StatusCode)
 	}
-	var dresp admapi.GetScDataResponse
+	var dresp admapi.GetSCDataResponse
 	err = json.NewDecoder(resp.Body).Decode(&dresp)
 	if err != nil {
 		return nil, err
@@ -59,8 +61,9 @@ func GetSCdata(addr string, port int, schash *hashing.HashValue) (*registry.SCDa
 	return &dresp.SCData, err
 }
 
-func GetSClist(url string) ([]*registry.SCData, error) {
-	resp, err := http.Get(fmt.Sprintf("http://%s/adm/sclist", url))
+// gets list of all SCs from the node
+func GetSCList(url string) ([]*registry.SCData, error) {
+	resp, err := http.Get(fmt.Sprintf("http://%s/adm/getsclist", url))
 	if err != nil {
 		return nil, err
 	}
@@ -75,5 +78,5 @@ func GetSClist(url string) ([]*registry.SCData, error) {
 	if lresp.Error != "" {
 		return nil, errors.New(lresp.Error)
 	}
-	return lresp.SCList, nil
+	return lresp.SCDataList, nil
 }

@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/iotaledger/goshimmer/packages/binary/valuetransfer/address"
 	"github.com/iotaledger/goshimmer/plugins/qnode/api/dkgapi"
-	"github.com/iotaledger/goshimmer/plugins/qnode/hashing"
 	"github.com/pkg/errors"
 	"net/http"
 )
@@ -52,7 +52,7 @@ func callAggregate(addr string, port int, params dkgapi.AggregateDKSRequest) (*d
 	return nil, errors.New(result.Err)
 }
 
-func callCommit(addr string, port int, params dkgapi.CommitDKSRequest) (*hashing.HashValue, error) {
+func callCommit(addr string, port int, params dkgapi.CommitDKSRequest) (*address.Address, error) {
 	data, err := json.Marshal(params)
 	if err != nil {
 		return nil, err
@@ -68,7 +68,29 @@ func callCommit(addr string, port int, params dkgapi.CommitDKSRequest) (*hashing
 		return nil, err
 	}
 	if result.Err == "" {
-		return result.Address, nil
+		addrRet, err := address.FromBase58(result.Address)
+		if err != nil {
+			return nil, err
+		}
+		return &addrRet, nil
 	}
 	return nil, errors.New(result.Err)
+}
+
+func callGetPubKeyInfo(addr string, port int, params dkgapi.GetPubKeyInfoRequest) *dkgapi.GetPubKeyInfoResponse {
+	data, err := json.Marshal(params)
+	if err != nil {
+		return &dkgapi.GetPubKeyInfoResponse{Err: err.Error()}
+	}
+	url := fmt.Sprintf("http://%s:%d/adm/getpubkeyinfo", addr, port)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		return &dkgapi.GetPubKeyInfoResponse{Err: err.Error()}
+	}
+	result := &dkgapi.GetPubKeyInfoResponse{}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		return &dkgapi.GetPubKeyInfoResponse{Err: err.Error()}
+	}
+	return result
 }

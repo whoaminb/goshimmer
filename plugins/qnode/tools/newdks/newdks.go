@@ -3,8 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/iotaledger/goshimmer/packages/binary/valuetransfer/address"
 	"github.com/iotaledger/goshimmer/plugins/qnode/api/apilib"
-	"github.com/iotaledger/goshimmer/plugins/qnode/hashing"
 	"github.com/iotaledger/goshimmer/plugins/qnode/registry"
 	"io/ioutil"
 	"os"
@@ -15,7 +15,7 @@ type ioParams struct {
 	N         uint16               `json:"n"`
 	T         uint16               `json:"t"`
 	NumKeys   uint16               `json:"num_keys"`
-	Addresses []*hashing.HashValue `json:"addresses"`
+	Addresses []string             `json:"addresses"` //base58
 }
 
 func main() {
@@ -37,12 +37,12 @@ func main() {
 		panic("wrong assembly size parameters or number rof hosts")
 	}
 
-	params.Addresses = make([]*hashing.HashValue, 0, params.NumKeys)
+	params.Addresses = make([]string, 0, params.NumKeys)
 	for i := 0; i < int(params.NumKeys); i++ {
 		addr, err := apilib.GenerateNewDistributedKeySet(params.Hosts, params.N, params.T)
-		params.Addresses = append(params.Addresses, addr)
 		if err == nil {
-			fmt.Printf("generated new keys. Address = %s\n", addr.String())
+			params.Addresses = append(params.Addresses, addr.String())
+			fmt.Printf("generated new key. Address: %s\n", addr.String())
 		} else {
 			fmt.Printf("error: %v\n", err)
 		}
@@ -56,5 +56,23 @@ func main() {
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return
+	}
+	//----- crosscheck
+	fmt.Printf("crosschecking. Reading public keys back\n")
+	for _, addr := range params.Addresses {
+		fmt.Printf("crosschecking. Address %s\n", addr)
+		a, err := address.FromBase58(addr)
+		if err != nil {
+			fmt.Printf("%s --> %v\n", addr, err)
+			continue
+		}
+		resps := apilib.GetPublicKeyInfo(params.Hosts, &a)
+		for i, r := range resps {
+			if r.Address != addr || r.N != params.N || r.T != params.T || int(r.Index) != i {
+				fmt.Printf("%s --> returned wrong values\n", params.Hosts[i])
+			} else {
+				fmt.Printf("%s --> master pub key: %s\n", params.Hosts[i], r.PubKeyMaster)
+			}
+		}
 	}
 }

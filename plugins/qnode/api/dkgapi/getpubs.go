@@ -1,81 +1,80 @@
 package dkgapi
 
 import (
-	"encoding/hex"
+	"github.com/iotaledger/goshimmer/packages/binary/valuetransfer/address"
 	"github.com/iotaledger/goshimmer/plugins/qnode/api/utils"
-	"github.com/iotaledger/goshimmer/plugins/qnode/hashing"
 	"github.com/iotaledger/goshimmer/plugins/qnode/registry"
 	"github.com/labstack/echo"
-	"go.dedis.ch/kyber/v3/share"
+	"github.com/mr-tron/base58"
 	"net/http"
 )
 
 // The POST handler implements 'adm/getpubs' API
-// Parameters(see GetPubsRequest struct):
-//     assembly_id: assembly id: hex encoded 32 bytes of hash value
-//     id:          distributed key set id, hex encoded 32 bytes of hash value
-// API responds with:
-// - pub_keys: list of public keys of corresponding nodes. This can be used to check individual signatures
-//   of the particular node
-// - pub_key_master: master public key, which allows to check BLS signatures by the quorum
+// Parameters(see GetPubKeyInfoRequest struct):
+//     Address:   address of the DKShare
+// API responds with public info of DKShare:
 
-func HandlerGetPubs(c echo.Context) error {
-	var req GetPubsRequest
+func HandlerGetKeyPubInfo(c echo.Context) error {
+	var req GetPubKeyInfoRequest
 
 	if err := c.Bind(&req); err != nil {
-		return utils.ToJSON(c, http.StatusOK, &GetPubsResponse{
+		return utils.ToJSON(c, http.StatusOK, &GetPubKeyInfoResponse{
 			Err: err.Error(),
 		})
 	}
-	return utils.ToJSON(c, http.StatusOK, GetPubsReq(&req))
+	return utils.ToJSON(c, http.StatusOK, GetKeyPubInfoReq(&req))
 }
 
-type GetPubsRequest struct {
-	AssemblyId *hashing.HashValue `json:"assembly_id"`
-	Id         *hashing.HashValue `json:"id"`
+type GetPubKeyInfoRequest struct {
+	Address string `json:"address"` //base58
 }
 
-type GetPubsResponse struct {
-	PubKeys      []string `json:"pub_keys"`
-	PubKeyMaster string   `json:"pub_key_master"`
+type GetPubKeyInfoResponse struct {
+	Address      string   `json:"address"` //base58
+	N            uint16   `json:"n"`
+	T            uint16   `json:"t"`
+	Index        uint16   `json:"index"`
+	PubKeys      []string `json:"pub_keys"`       // base58
+	PubKeyMaster string   `json:"pub_key_master"` // base58
 	Err          string   `json:"err"`
 }
 
-func GetPubsReq(req *GetPubsRequest) *GetPubsResponse {
-	ks, ok, err := registry.GetDKShare(req.Id)
+func GetKeyPubInfoReq(req *GetPubKeyInfoRequest) *GetPubKeyInfoResponse {
+	addr, err := address.FromBase58(req.Address)
 	if err != nil {
-		return &GetPubsResponse{Err: err.Error()}
+		return &GetPubKeyInfoResponse{Err: err.Error()}
+	}
+	if addr.Version() != address.VERSION_BLS {
+		return &GetPubKeyInfoResponse{Err: "not a BLS address"}
+	}
+	ks, ok, err := registry.GetDKShare(&addr)
+	if err != nil {
+		return &GetPubKeyInfoResponse{Err: err.Error()}
 	}
 	if !ok {
-		return &GetPubsResponse{Err: "unknown key share"}
+		return &GetPubKeyInfoResponse{Err: "unknown key share"}
 	}
 	if !ks.Committed {
-		return &GetPubsResponse{Err: "uncommitted key set"}
+		return &GetPubKeyInfoResponse{Err: "inconsistency: uncommitted key share"}
 	}
 	pubkeys := make([]string, len(ks.PubKeys))
 	for i, pk := range ks.PubKeys {
 		pkb, err := pk.MarshalBinary()
 		if err != nil {
-			return &GetPubsResponse{Err: err.Error()}
+			return &GetPubKeyInfoResponse{Err: err.Error()}
 		}
-		pubkeys[i] = hex.EncodeToString(pkb)
+		pubkeys[i] = base58.Encode(pkb)
 	}
-	pubShares := make([]*share.PubShare, len(ks.PubKeys))
-	for i, v := range ks.PubKeys {
-		pubShares[i] = &share.PubShare{
-			I: i,
-			V: v,
-		}
-	}
-	pubPoly, err := share.RecoverPubPoly(ks.Suite.G2(), pubShares, int(ks.T), int(ks.N))
+	pkm, err := ks.PubKeyMaster.MarshalBinary()
 	if err != nil {
-		panic(err)
+		return &GetPubKeyInfoResponse{Err: err.Error()}
 	}
-	pubKeyMaster := pubPoly.Commit()
-	pkb, _ := pubKeyMaster.MarshalBinary()
-
-	return &GetPubsResponse{
+	return &GetPubKeyInfoResponse{
+		Address:      req.Address,
+		N:            ks.N,
+		T:            ks.T,
+		Index:        ks.Index,
 		PubKeys:      pubkeys,
-		PubKeyMaster: hex.EncodeToString(pkb),
+		PubKeyMaster: base58.Encode(pkm),
 	}
 }

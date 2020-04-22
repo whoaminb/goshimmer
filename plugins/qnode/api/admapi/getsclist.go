@@ -8,14 +8,14 @@ import (
 )
 
 type GetScListResponse struct {
-	registry.SCList
-	Error string `json:"err"`
+	SCDataList []*registry.SCData `json:"sc_data_list"`
+	Error      string             `json:"err"`
 }
 
 func HandlerGetSCList(c echo.Context) error {
-	sclist, ok := registry.GetSCDataList()
-	if !ok {
-		return utils.ToJSON(c, http.StatusOK, &GetScListResponse{Error: "not found"})
+	sclist, err := registry.GetSCDataList(nil)
+	if err != nil {
+		return utils.ToJSON(c, http.StatusOK, &GetScListResponse{Error: err.Error()})
 	}
-	return utils.ToJSON(c, http.StatusOK, &GetScListResponse{SCList: sclist})
+	return utils.ToJSON(c, http.StatusOK, &GetScListResponse{SCDataList: sclist})
 }

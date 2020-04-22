@@ -1,22 +1,27 @@
 package apilib
 
 import (
-	"fmt"
+	"bytes"
+	"github.com/iotaledger/goshimmer/packages/binary/valuetransfer/address"
 	"github.com/iotaledger/goshimmer/plugins/qnode/api/dkgapi"
-	. "github.com/iotaledger/goshimmer/plugins/qnode/hashing"
 	"github.com/iotaledger/goshimmer/plugins/qnode/registry"
+	"github.com/iotaledger/goshimmer/plugins/qnode/tcrypto"
 	"github.com/pkg/errors"
-	"time"
+	"math/rand"
 )
 
-func GenerateNewDistributedKeySet(nodes []*registry.PortAddr, n, t uint16) (*HashValue, error) {
-	params := dkgapi.NewDKSRequest{
-		N:  n,
-		T:  t,
-		Id: HashStrings(fmt.Sprintf("%v", time.Now())), // temporary id
+func GenerateNewDistributedKeySet(nodes []*registry.PortAddr, n, t uint16) (*address.Address, error) {
+	if len(nodes) != int(n) {
+		return nil, errors.New("wrong params")
 	}
-	if len(nodes) != int(params.N) {
-		return nil, errors.New("len(nodes) != int(params.N)")
+	if err := tcrypto.ValidateDKSParams(t, n, 0); err != nil {
+		return nil, err
+	}
+	// temporary numeric id during DKG
+	params := dkgapi.NewDKSRequest{
+		TmpId: rand.Int(),
+		N:     n,
+		T:     t,
 	}
 	// generate new key shares
 	// results in the matrix
@@ -42,7 +47,7 @@ func GenerateNewDistributedKeySet(nodes []*registry.PortAddr, n, t uint16) (*Has
 			priSharesCol[row] = priSharesMatrix[row][col]
 		}
 		resp, err := callAggregate(pa.Addr, pa.Port, dkgapi.AggregateDKSRequest{
-			Id:        params.Id,
+			TmpId:     params.TmpId,
 			Index:     uint16(col),
 			PriShares: priSharesCol,
 		})
@@ -53,19 +58,34 @@ func GenerateNewDistributedKeySet(nodes []*registry.PortAddr, n, t uint16) (*Has
 	}
 
 	// commit keys
-	var accountRet *HashValue
+	var addrRet *address.Address
 	for _, pa := range nodes {
-		account, err := callCommit(pa.Addr, pa.Port, dkgapi.CommitDKSRequest{
-			Id:        params.Id,
+		addr, err := callCommit(pa.Addr, pa.Port, dkgapi.CommitDKSRequest{
+			TmpId:     params.TmpId,
 			PubShares: pubShares,
 		})
 		if err != nil {
 			return nil, err
 		}
-		if accountRet != nil && !accountRet.Equal(account) {
-			return nil, errors.New("key commit return different hashes of master public key")
+		if addrRet != nil && !bytes.Equal(addrRet.Bytes(), addr.Bytes()) {
+			return nil, errors.New("key commit returned different addresses from different nodes")
 		}
-		accountRet = account
+		if addr.Version() != address.VERSION_BLS {
+			return nil, errors.New("key commit returned non-BLS address")
+		}
+		addrRet = addr
 	}
-	return accountRet, nil
+	return addrRet, nil
+}
+
+// retrieves public info about key with specific address
+func GetPublicKeyInfo(nodes []*registry.PortAddr, address *address.Address) []*dkgapi.GetPubKeyInfoResponse {
+	params := dkgapi.GetPubKeyInfoRequest{
+		Address: address.String(),
+	}
+	ret := make([]*dkgapi.GetPubKeyInfoResponse, len(nodes))
+	for i, pa := range nodes {
+		ret[i] = callGetPubKeyInfo(pa.Addr, pa.Port, params)
+	}
+	return ret
 }

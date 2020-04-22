@@ -50,8 +50,7 @@ func GetSCDataList(ownAddr *PortAddr) ([]*SCData, error) {
 // checks if SCData record is valid
 // if ownAddr != nil checks if it is of interest to the current node
 func validate(scdata *SCData, ownAddr *PortAddr) bool {
-	addr := scdata.ScId.Address()
-	dkshare, ok, _ := GetDKShare(&addr)
+	dkshare, ok, _ := GetDKShare(scdata.ScId.Address())
 	if !ok {
 		// failed to load dkshare of the sc address
 		return false
@@ -98,4 +97,20 @@ func SaveSCData(scd *SCData) error {
 		Key:   dbSCDataKey(scd.ScId),
 		Value: jsonData,
 	})
+}
+
+func GetSCData(scid *transaction.ScId) (*SCData, error) {
+	dbase, err := db.Get()
+	if err != nil {
+		return nil, err
+	}
+	entry, err := dbase.Get(dbSCDataKey(scid))
+	if err != nil {
+		return nil, err
+	}
+	var ret SCData
+	if err := json.Unmarshal(entry.Value, &ret); err != nil {
+		return nil, err
+	}
+	return &ret, nil
 }

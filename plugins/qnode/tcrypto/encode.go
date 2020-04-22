@@ -56,7 +56,7 @@ func (ks *DKShare) Read(r io.Reader) error {
 	*ks = DKShare{Suite: bn256.NewSuite()}
 
 	var addr address.Address
-	_, err := r.Read(addr.Bytes())
+	_, err := r.Read(addr[:])
 	if err != nil {
 		return err
 	}
