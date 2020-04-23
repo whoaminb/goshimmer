@@ -1,4 +1,4 @@
-package transaction
+package sctransaction
 
 import (
 	"crypto/rand"

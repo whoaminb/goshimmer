@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"github.com/mr-tron/base58"
+	"io"
 
 	// github.com/mr-tron/base58
 	"encoding/json"
@@ -139,4 +140,20 @@ func HashInList(h *HashValue, list []*HashValue) bool {
 		}
 	}
 	return false
+}
+
+func (h *HashValue) Write(w io.Writer) error {
+	_, err := w.Write(h.Bytes())
+	return err
+}
+
+func (h *HashValue) Read(r io.Reader) error {
+	n, err := r.Read(h.Bytes())
+	if err != nil {
+		return err
+	}
+	if n != HashSize {
+		return errors.New("not enough bytes for HashValue")
+	}
+	return nil
 }

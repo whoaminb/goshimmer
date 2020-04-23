@@ -1,4 +1,4 @@
-package transaction
+package sctransaction
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"github.com/iotaledger/goshimmer/packages/binary/valuetransfer/balance"
 	"github.com/mr-tron/base58"
 	"github.com/pkg/errors"
+	"io"
 )
 
 const ScIdLength = address.Length + balance.ColorLength
@@ -80,5 +81,21 @@ func (id *ScId) UnmarshalJSON(buf []byte) error {
 		return err
 	}
 	copy(id.Bytes(), ret.Bytes())
+	return nil
+}
+
+func (id *ScId) Write(w io.Writer) error {
+	_, err := w.Write(id.Bytes())
+	return err
+}
+
+func (id *ScId) Read(r io.Reader) error {
+	n, err := r.Read(id.Bytes())
+	if err != nil {
+		return err
+	}
+	if n != ScIdLength {
+		return errors.New("not enough bytes for scid")
+	}
 	return nil
 }

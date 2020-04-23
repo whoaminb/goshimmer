@@ -1,4 +1,4 @@
-package transaction
+package sctransaction
 
 import (
 	"bytes"
@@ -32,10 +32,11 @@ func TestRandScid(t *testing.T) {
 	assert.Equal(t, addr.Version(), address.VERSION_BLS)
 
 	scid := RandomScId(&addr)
-	assert.Equal(t, bytes.Equal(scid.Address().Bytes(), addr[:]), true)
-	t.Logf("scid = %s", scid.String())
+	a := scid.Address().Bytes()
+	assert.Equal(t, bytes.Equal(a, addr[:]), true)
+	//t.Logf("scid = %s", scid.String())
 
-	scid1, err := ScIdFromString(testScid)
+	scid1, err := ScIdFromString(scid.String())
 	assert.Equal(t, err, nil)
 	assert.Equal(t, scid.Equal(scid1), true)
 

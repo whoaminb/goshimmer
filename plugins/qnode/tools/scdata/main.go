@@ -19,7 +19,7 @@ type ioParams struct {
 
 type ioGetParams struct {
 	Hosts []*registry.PortAddr `json:"hosts"`
-	ScId  *transaction.ScId    `json:"scid"`
+	ScId  *sctransaction.ScId  `json:"scid"`
 }
 
 func main() {
