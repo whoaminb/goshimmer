@@ -73,7 +73,6 @@ func FromED25519PubKey(key ed25519.PublicKey) (address Address) {
 
 // FromBLSPubKey creates an address from marshaled BLS public key
 // unmarshaled BLS public key conforms to interface kyber.Point
-
 func FromBLSPubKey(pubKey []byte) (address Address) {
 	digest := blake2b.Sum256(pubKey)
 
