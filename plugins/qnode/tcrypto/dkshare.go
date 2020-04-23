@@ -1,3 +1,4 @@
+// wrapper package for BLS threshold cryptography used in the qnode plugin
 package tcrypto
 
 import (
@@ -11,25 +12,47 @@ import (
 	"go.dedis.ch/kyber/v3/sign/bdn"
 )
 
-// Distributed key set for (T,N) threshold signatures, T out f N
-
+// Distributed key share for (T,N) threshold signatures based on BLS
+// DKShare structure represents partial share owned by the node to participate in the
+// commitee. The only 'priKey' part is secret, the rest is public
 type DKShare struct {
-	Suite   *bn256.Suite
-	N       uint16
-	T       uint16
-	Index   uint16
+	// interface for the BN256 bilinear pairing for the underlying BLS cryptography
+	Suite *bn256.Suite
+	// size of the committee
+	N uint16
+	// threshold factor, 1 <= T <= N
+	T uint16
+	// peer index of the owner of this share in he committee
+	// all N peers are indexed 0..N-1
+	Index uint16
+	// BLS address represented by the set of shares. It is used as a key to find the DKShare
+	// all nodes in the committee have DKShare records with same address
+	// Address is blake2 hash of master public key prefixed with one byte of signature type
 	Address *address.Address
 
-	Aggregated bool
-	Committed  bool
-	//
-	PriShares []*share.PriShare // nil after commit
-	//
-	PubKeys      []kyber.Point // all public shares by peers
-	PubPoly      *share.PubPoly
-	priKey       kyber.Scalar // own private key (sum of private shares)
-	PubKeyOwn    kyber.Point  // public key from own private key
+	// partial public keys of all committee nodes for this DKS
+	// may be used to identify and authenticate individual committee node
+	PubKeys []kyber.Point // all public shares by peers
+	// must be same same as PubKeys[Index]
+	// TODO cleanup. remove redundant information, plus tests
+	PubKeyOwn kyber.Point
+	// public polynomial, recovered form public keys according to BDN
+	PubPoly *share.PubPoly
+	// public key from own private key. It corresponds to address
 	PubKeyMaster kyber.Point
+	// secret partial private key
+	// it is a sum of private shares, generated during DKG
+	// partial private key not known to anyone
+	// TODO however owner can reconstruct master secret from the information gathered during DKG
+	// make that optional during DKG
+	priKey kyber.Scalar
+
+	// temporary fields used during DKG process
+	// not used after
+	// TODO refactor during cleanup, remove tmp fields from the permanent structure
+	Aggregated bool              // true after DKG
+	Committed  bool              // true after DKG
+	PriShares  []*share.PriShare // nil after DKG
 }
 
 func ValidateDKSParams(t, n, index uint16) error {
