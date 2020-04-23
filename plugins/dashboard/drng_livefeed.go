@@ -1,16 +1,15 @@
-package spa
+package dashboard
 
 import (
 	"encoding/hex"
 	"time"
 
-	"github.com/iotaledger/hive.go/daemon"
-	"github.com/iotaledger/hive.go/events"
-	"github.com/iotaledger/hive.go/workerpool"
-
 	"github.com/iotaledger/goshimmer/packages/binary/drng/state"
 	"github.com/iotaledger/goshimmer/packages/shutdown"
 	"github.com/iotaledger/goshimmer/plugins/drng"
+	"github.com/iotaledger/hive.go/daemon"
+	"github.com/iotaledger/hive.go/events"
+	"github.com/iotaledger/hive.go/workerpool"
 )
 
 var drngLiveFeedWorkerCount = 1
@@ -42,14 +41,14 @@ func runDrngLiveFeed() {
 		}
 	})
 
-	daemon.BackgroundWorker("SPA[DRNGUpdater]", func(shutdownSignal <-chan struct{}) {
+	daemon.BackgroundWorker("Dashboard[DRNGUpdater]", func(shutdownSignal <-chan struct{}) {
 		drng.Instance.Events.Randomness.Attach(notifyNewRandomness)
 		drngLiveFeedWorkerPool.Start()
 		<-shutdownSignal
-		log.Info("Stopping SPA[DRNGUpdater] ...")
+		log.Info("Stopping Dashboard[DRNGUpdater] ...")
 		drng.Instance.Events.Randomness.Detach(notifyNewRandomness)
 		newMsgRateLimiter.Stop()
 		drngLiveFeedWorkerPool.Stop()
-		log.Info("Stopping SPA[DRNGUpdater] ... done")
-	}, shutdown.PrioritySPA)
+		log.Info("Stopping Dashboard[DRNGUpdater] ... done")
+	}, shutdown.PriorityDashboard)
 }

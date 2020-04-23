@@ -1,16 +1,15 @@
-package spa
+package dashboard
 
 import (
 	"time"
-
-	"github.com/iotaledger/hive.go/daemon"
-	"github.com/iotaledger/hive.go/events"
-	"github.com/iotaledger/hive.go/workerpool"
 
 	"github.com/iotaledger/goshimmer/packages/binary/messagelayer/message"
 	"github.com/iotaledger/goshimmer/packages/binary/messagelayer/tangle"
 	"github.com/iotaledger/goshimmer/packages/shutdown"
 	"github.com/iotaledger/goshimmer/plugins/messagelayer"
+	"github.com/iotaledger/hive.go/daemon"
+	"github.com/iotaledger/hive.go/events"
+	"github.com/iotaledger/hive.go/workerpool"
 )
 
 var liveFeedWorkerCount = 1
@@ -40,14 +39,14 @@ func runLiveFeed() {
 		}
 	})
 
-	daemon.BackgroundWorker("SPA[MsgUpdater]", func(shutdownSignal <-chan struct{}) {
+	daemon.BackgroundWorker("Dashboard[MsgUpdater]", func(shutdownSignal <-chan struct{}) {
 		messagelayer.Tangle.Events.MessageAttached.Attach(notifyNewMsg)
 		liveFeedWorkerPool.Start()
 		<-shutdownSignal
-		log.Info("Stopping SPA[MsgUpdater] ...")
+		log.Info("Stopping Dashboard[MsgUpdater] ...")
 		messagelayer.Tangle.Events.MessageAttached.Detach(notifyNewMsg)
 		newMsgRateLimiter.Stop()
 		liveFeedWorkerPool.Stop()
-		log.Info("Stopping SPA[MsgUpdater] ... done")
-	}, shutdown.PrioritySPA)
+		log.Info("Stopping Dashboard[MsgUpdater] ... done")
+	}, shutdown.PriorityDashboard)
 }
