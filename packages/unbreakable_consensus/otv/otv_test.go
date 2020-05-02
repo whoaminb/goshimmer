@@ -117,6 +117,11 @@ func TestTipSelector_GetTipsToApprove(t *testing.T) {
 	node1.GossipTransaction(conflictingTransaction1)
 	node2.GossipTransaction(conflictingTransaction0)
 
+	// check if nodes have different initial opinions
+	assert.Equal(t, node0.favoredReality, 1)
+	assert.Equal(t, node1.favoredReality, 2)
+	assert.Equal(t, node2.favoredReality, 1)
+
 	// endregion ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	// issue a few transactions
