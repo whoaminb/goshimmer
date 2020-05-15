@@ -3,7 +3,7 @@ package waspconn
 import (
 	"flag"
 	"fmt"
-	valuetransaction "github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
+	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/iotaledger/goshimmer/plugins/config"
 	"github.com/iotaledger/hive.go/daemon"
 	"github.com/iotaledger/hive.go/events"
@@ -30,7 +30,7 @@ func configPlugin(_ *node.Plugin) {
 	flag.Int(WaspConnPort, 5000, "port for Wasp connections")
 
 	EventValueTransactionReceived = events.NewEvent(func(handler interface{}, params ...interface{}) {
-		handler.(func(_ *valuetransaction.Transaction))(params[0].(*valuetransaction.Transaction))
+		handler.(func(_ *transaction.Transaction))(params[0].(*transaction.Transaction))
 	})
 }
 
