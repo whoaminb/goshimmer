@@ -5,12 +5,13 @@ import (
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
 	valuetransaction "github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
+	"github.com/iotaledger/goshimmer/packages/waspconn"
 )
 
 func (wconn *WaspConnector) sendTransactionToWasp(vtx *valuetransaction.Transaction) error {
-	msg := WaspRecvTransactionMsg{vtx}
+	msg := waspconn.WaspRecvTransactionMsg{vtx}
 	var buf bytes.Buffer
-	buf.WriteByte(WaspRecvTransactionCode)
+	buf.WriteByte(waspconn.WaspRecvTransactionCode)
 	buf.Write(msg.Encode())
 
 	_, err := wconn.bconn.Write(buf.Bytes())
@@ -18,12 +19,12 @@ func (wconn *WaspConnector) sendTransactionToWasp(vtx *valuetransaction.Transact
 }
 
 func (wconn *WaspConnector) sendBalancesToWasp(address *address.Address, balances map[valuetransaction.ID][]*balance.Balance) error {
-	msg := WaspRecvBalancesMsg{
+	msg := waspconn.WaspRecvBalancesMsg{
 		Address:  address,
 		Balances: balances,
 	}
 	var buf bytes.Buffer
-	buf.WriteByte(WaspRecvBalancesCode)
+	buf.WriteByte(waspconn.WaspRecvBalancesCode)
 	buf.Write(msg.Encode())
 
 	_, err := wconn.bconn.Write(buf.Bytes())

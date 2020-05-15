@@ -7,33 +7,10 @@ import (
 	"time"
 )
 
-func WriteByte(w io.Writer, val byte) error {
-	b := []byte{val}
-	_, err := w.Write(b[:])
-	return err
-}
-
-func ReadByte(r io.Reader) (byte, error) {
-	var b [1]byte
-	_, err := r.Read(b[:])
-	if err != nil {
-		return 0, err
-	}
-	return b[0], nil
-}
-
 func Uint16To2Bytes(val uint16) []byte {
 	var tmp2 [2]byte
 	binary.LittleEndian.PutUint16(tmp2[:], val)
 	return tmp2[:]
-}
-
-func Uint16From2Bytes(b []byte) uint16 {
-	if len(b) != 2 {
-		panic("len(b) != 2")
-	}
-	return binary.LittleEndian.Uint16(b[:])
-
 }
 
 func Uint32To4Bytes(val uint32) []byte {
@@ -47,13 +24,6 @@ func Uint32From4Bytes(b []byte) uint32 {
 		panic("len(b) != 4")
 	}
 	return binary.LittleEndian.Uint32(b[:])
-}
-
-func Uint64From8Bytes(b []byte) uint64 {
-	if len(b) != 8 {
-		panic("len(b) != 8")
-	}
-	return binary.LittleEndian.Uint64(b[:])
 }
 
 func Uint64To8Bytes(val uint64) []byte {
@@ -107,57 +77,6 @@ func ReadUint64(r io.Reader, pval *uint64) error {
 	return nil
 }
 
-func WriteBytes16(w io.Writer, data []byte) error {
-	err := WriteUint16(w, uint16(len(data)))
-	if err != nil {
-		return err
-	}
-	if len(data) != 0 {
-		_, err = w.Write(data)
-	}
-	return err
-}
-
-func ReadBytes16(r io.Reader) ([]byte, error) {
-	var length uint16
-	err := ReadUint16(r, &length)
-	if err != nil {
-		return nil, err
-	}
-	if length != 0 {
-		ret := make([]byte, length)
-		_, err = r.Read(ret)
-		if err != nil {
-			return nil, err
-		}
-		return ret, nil
-	}
-	return nil, nil
-}
-
-func WriteBytes32(w io.Writer, data []byte) error {
-	err := WriteUint32(w, uint32(len(data)))
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(data)
-	return err
-}
-
-func ReadBytes32(r io.Reader) ([]byte, error) {
-	var length uint32
-	err := ReadUint32(r, &length)
-	if err != nil {
-		return nil, err
-	}
-	ret := make([]byte, length)
-	_, err = r.Read(ret)
-	if err != nil {
-		return nil, err
-	}
-	return ret, nil
-}
-
 func WriteBoolByte(w io.Writer, cond bool) error {
 	var b [1]byte
 	if cond {
@@ -178,15 +97,6 @@ func ReadBoolByte(r io.Reader, cond *bool) error {
 		return errors.New("ReadBoolByte: unexpected value")
 	}
 	return nil
-}
-
-func Uint16InList(v uint16, lst []uint16) bool {
-	for _, vl := range lst {
-		if v == vl {
-			return true
-		}
-	}
-	return false
 }
 
 func WriteTime(w io.Writer, ts time.Time) error {

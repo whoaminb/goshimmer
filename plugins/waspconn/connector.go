@@ -3,7 +3,7 @@ package waspconn
 import (
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
-	valuetransaction "github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
+	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/iotaledger/hive.go/daemon"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/netutil/buffconn"
@@ -14,7 +14,7 @@ type WaspConnector struct {
 	id                             string
 	bconn                          *buffconn.BufferedConnection
 	subscriptions                  map[address.Address]int
-	inTxChan                       chan *valuetransaction.Transaction
+	inTxChan                       chan *transaction.Transaction
 	exitConnChan                   chan struct{}
 	receiveValueTransactionClosure *events.Closure
 	receiveWaspMessageClosure      *events.Closure
@@ -50,9 +50,9 @@ func Run(conn net.Conn) {
 
 func (wconn *WaspConnector) attach() {
 	wconn.subscriptions = make(map[address.Address]int)
-	wconn.inTxChan = make(chan *valuetransaction.Transaction)
+	wconn.inTxChan = make(chan *transaction.Transaction)
 
-	wconn.receiveValueTransactionClosure = events.NewClosure(func(vtx *valuetransaction.Transaction) {
+	wconn.receiveValueTransactionClosure = events.NewClosure(func(vtx *transaction.Transaction) {
 		wconn.inTxChan <- vtx
 	})
 
@@ -111,7 +111,7 @@ func (wconn *WaspConnector) isSubscribed(addr *address.Address) bool {
 
 // process parsed SC transaction incoming from the node.
 // Forward to wasp if subscribed
-func (wconn *WaspConnector) processIncomingTransaction(vtx *valuetransaction.Transaction) {
+func (wconn *WaspConnector) processIncomingTransaction(vtx *transaction.Transaction) {
 	// determine if transaction contains any of subscribed addresses in its outputs
 
 	isSubscribed := false
@@ -132,7 +132,7 @@ func (wconn *WaspConnector) processIncomingTransaction(vtx *valuetransaction.Tra
 }
 
 // find transaction async, parse it to SCTransaction and send to Wasp
-func (wconn *WaspConnector) getTransaction(txid *valuetransaction.ID) {
+func (wconn *WaspConnector) getTransaction(txid *transaction.ID) {
 
 }
 
