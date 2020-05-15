@@ -31,10 +31,10 @@ func Run(conn net.Conn) {
 		select {
 		case <-shutdownSignal:
 
-			log.Info("shutdown waspconn %s", wconn.id)
+			log.Infof("shutdown waspconn %s", wconn.id)
 
 		case <-wconn.exitConnChan:
-			log.Info("closing waspconn %s", wconn.id)
+			log.Infof("closing waspconn %s", wconn.id)
 		}
 
 		go wconn.detach()
