@@ -1,6 +1,9 @@
 package waspconn
 
-import "github.com/iotaledger/goshimmer/packages/waspconn"
+import (
+	"bytes"
+	"github.com/iotaledger/goshimmer/packages/waspconn"
+)
 
 // process messages received from the Wasp
 func (wconn *WaspConnector) processMsgDataFromWasp(data []byte) {
@@ -8,7 +11,7 @@ func (wconn *WaspConnector) processMsgDataFromWasp(data []byte) {
 
 	case waspconn.WaspSendTransactionCode:
 		msg := waspconn.WaspSendTransactionMsg{}
-		if err := msg.Decode(data[1:]); err != nil {
+		if err := msg.Read(bytes.NewReader(data[1:])); err != nil {
 			log.Errorf("wrong 'WaspSendTransactionMsg' message from %s", wconn.id)
 			return
 		}
@@ -16,7 +19,7 @@ func (wconn *WaspConnector) processMsgDataFromWasp(data []byte) {
 
 	case waspconn.WaspSendSubscribeCode:
 		msg := waspconn.WaspSendSubscribeMsg{}
-		if err := msg.Decode(data[1:]); err != nil {
+		if err := msg.Read(bytes.NewReader(data[1:])); err != nil {
 			log.Errorf("wrong 'WaspSendSubscribeMsg' message from %s", wconn.id)
 			return
 		}
@@ -26,7 +29,7 @@ func (wconn *WaspConnector) processMsgDataFromWasp(data []byte) {
 
 	case waspconn.WaspSendGetTransactionCode:
 		msg := waspconn.WaspSendGetTransactionMsg{}
-		if err := msg.Decode(data[1:]); err != nil {
+		if err := msg.Read(bytes.NewReader(data[1:])); err != nil {
 			log.Errorf("wrong 'WaspSendGetBalancesMsg' message from %s", wconn.id)
 			return
 		}
@@ -34,7 +37,7 @@ func (wconn *WaspConnector) processMsgDataFromWasp(data []byte) {
 
 	case waspconn.WaspSendGetBalancesCode:
 		msg := waspconn.WaspSendGetBalancesMsg{}
-		if err := msg.Decode(data[1:]); err != nil {
+		if err := msg.Read(bytes.NewReader(data[1:])); err != nil {
 			log.Errorf("wrong 'WaspSendGetBalancesMsg' message from %s", wconn.id)
 			return
 		}

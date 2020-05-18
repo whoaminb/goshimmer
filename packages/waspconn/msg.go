@@ -1,7 +1,6 @@
 package waspconn
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
@@ -47,35 +46,40 @@ type WaspRecvBalancesMsg struct {
 	Balances map[transaction.ID][]*balance.Balance
 }
 
-func (msg *WaspSendTransactionMsg) Encode() []byte {
-	return msg.Tx.Bytes()
+func (msg *WaspSendTransactionMsg) Write(w io.Writer) error {
+	return WriteBytes32(w, msg.Tx.Bytes())
 }
 
-func (msg *WaspSendTransactionMsg) Decode(data []byte) error {
+func (msg *WaspSendTransactionMsg) Read(r io.Reader) error {
 	var err error
+	data, err := ReadBytes32(r)
+	if err != nil {
+		return err
+	}
 	msg.Tx, _, err = transaction.FromBytes(data)
 	return err
 }
 
-func (msg *WaspSendSubscribeMsg) Encode() []byte {
-	var buf bytes.Buffer
-	_ = WriteUint16(&buf, uint16(len(msg.Addresses)))
-	for _, col := range msg.Addresses {
-		_, _ = buf.Write(col.Bytes())
+func (msg *WaspSendSubscribeMsg) Write(w io.Writer) error {
+	if err := WriteUint16(w, uint16(len(msg.Addresses))); err != nil {
+		return err
 	}
-	_ = WriteBoolByte(&buf, msg.PullBacklog)
-	return buf.Bytes()
+	for _, addr := range msg.Addresses {
+		if _, err := w.Write(addr.Bytes()); err != nil {
+			return err
+		}
+	}
+	return WriteBoolByte(w, msg.PullBacklog)
 }
 
-func (msg *WaspSendSubscribeMsg) Decode(data []byte) error {
-	rdr := bytes.NewReader(data)
+func (msg *WaspSendSubscribeMsg) Read(r io.Reader) error {
 	var size uint16
-	if err := ReadUint16(rdr, &size); err != nil {
+	if err := ReadUint16(r, &size); err != nil {
 		return err
 	}
 	msg.Addresses = make([]address.Address, size)
 	for i := range msg.Addresses {
-		n, err := rdr.Read(msg.Addresses[i].Bytes())
+		n, err := r.Read(msg.Addresses[i][:])
 		if err != nil {
 			return err
 		}
@@ -83,19 +87,20 @@ func (msg *WaspSendSubscribeMsg) Decode(data []byte) error {
 			return fmt.Errorf("error while reading 'subscribe' message")
 		}
 	}
-	if err := ReadBoolByte(rdr, &msg.PullBacklog); err != nil {
+	if err := ReadBoolByte(r, &msg.PullBacklog); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (msg *WaspSendGetTransactionMsg) Encode() []byte {
-	return msg.TxId.Bytes()
+func (msg *WaspSendGetTransactionMsg) Write(w io.Writer) error {
+	_, err := w.Write(msg.TxId.Bytes())
+	return err
 }
 
-func (msg *WaspSendGetTransactionMsg) Decode(data []byte) error {
+func (msg *WaspSendGetTransactionMsg) Read(r io.Reader) error {
 	msg.TxId = new(transaction.ID)
-	n, err := bytes.NewReader(data).Read(msg.TxId.Bytes())
+	n, err := r.Read(msg.TxId[:])
 	if err != nil {
 		return err
 	}
@@ -105,48 +110,54 @@ func (msg *WaspSendGetTransactionMsg) Decode(data []byte) error {
 	return nil
 }
 
-func (msg *WaspSendGetBalancesMsg) Encode() []byte {
-	return msg.Address.Bytes()
+func (msg *WaspSendGetBalancesMsg) Write(w io.Writer) error {
+	_, err := w.Write(msg.Address.Bytes())
+	return err
 }
 
-func (msg *WaspSendGetBalancesMsg) Decode(data []byte) error {
-	a, _, err := address.FromBytes(data)
+func (msg *WaspSendGetBalancesMsg) Read(r io.Reader) error {
+	msg.Address = new(address.Address)
+	n, err := r.Read(msg.Address[:])
 	if err != nil {
 		return err
 	}
-	msg.Address = &a
+	if n != address.Length {
+		return fmt.Errorf("error while reading 'get balances' message")
+	}
 	return nil
 }
 
-func (msg *WaspRecvTransactionMsg) Encode() []byte {
-	return msg.Tx.Bytes()
+func (msg *WaspRecvTransactionMsg) Write(w io.Writer) error {
+	return WriteBytes32(w, msg.Tx.Bytes())
 }
 
-func (msg *WaspRecvTransactionMsg) Decode(data []byte) error {
-	var err error
+func (msg *WaspRecvTransactionMsg) Read(r io.Reader) error {
+	data, err := ReadBytes32(r)
+	if err != nil {
+		return err
+	}
 	msg.Tx, _, err = transaction.FromBytes(data)
 	return err
 }
 
-func (msg *WaspRecvBalancesMsg) Encode() []byte {
-	var buf bytes.Buffer
-	_, _ = buf.Write(msg.Address.Bytes())
-	_ = WriteBalances(&buf, msg.Balances)
-	return buf.Bytes()
+func (msg *WaspRecvBalancesMsg) Write(w io.Writer) error {
+	_, err := w.Write(msg.Address.Bytes())
+	if err != nil {
+		return err
+	}
+	return WriteBalances(w, msg.Balances)
 }
 
-func (msg *WaspRecvBalancesMsg) Decode(data []byte) error {
-	rdr := bytes.NewReader(data)
+func (msg *WaspRecvBalancesMsg) Read(r io.Reader) error {
 	msg.Address = new(address.Address)
-	n, err := rdr.Read(msg.Address.Bytes())
+	n, err := r.Read(msg.Address[:])
 	if err != nil {
 		return err
 	}
 	if n != address.Length {
 		return fmt.Errorf("error while decoding 'recv balance' message")
 	}
-
-	if msg.Balances, err = ReadBalances(rdr); err != nil {
+	if msg.Balances, err = ReadBalances(r); err != nil {
 		return err
 	}
 	return nil

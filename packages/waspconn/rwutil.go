@@ -112,3 +112,59 @@ func ReadTime(r io.Reader, ts *time.Time) error {
 	*ts = time.Unix(0, int64(nano))
 	return nil
 }
+
+const MaxUint16 = int(^uint16(0))
+
+func WriteBytes16(w io.Writer, data []byte) error {
+	if len(data) > MaxUint16 {
+		panic("WriteBytes16: too long data")
+	}
+	err := WriteUint16(w, uint16(len(data)))
+	if err != nil {
+		return err
+	}
+	if len(data) != 0 {
+		_, err = w.Write(data)
+	}
+	return err
+}
+
+func ReadBytes16(r io.Reader) ([]byte, error) {
+	var length uint16
+	err := ReadUint16(r, &length)
+	if err != nil {
+		return nil, err
+	}
+	if length != 0 {
+		ret := make([]byte, length)
+		_, err = r.Read(ret)
+		if err != nil {
+			return nil, err
+		}
+		return ret, nil
+	}
+	return nil, nil
+}
+
+func WriteBytes32(w io.Writer, data []byte) error {
+	err := WriteUint32(w, uint32(len(data)))
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(data)
+	return err
+}
+
+func ReadBytes32(r io.Reader) ([]byte, error) {
+	var length uint32
+	err := ReadUint32(r, &length)
+	if err != nil {
+		return nil, err
+	}
+	ret := make([]byte, length)
+	_, err = r.Read(ret)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
+}

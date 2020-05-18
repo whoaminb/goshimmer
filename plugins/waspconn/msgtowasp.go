@@ -11,8 +11,12 @@ import (
 func (wconn *WaspConnector) sendTransactionToWasp(vtx *transaction.Transaction) error {
 	msg := waspconn.WaspRecvTransactionMsg{vtx}
 	var buf bytes.Buffer
-	buf.WriteByte(waspconn.WaspRecvTransactionCode)
-	buf.Write(msg.Encode())
+	if err := buf.WriteByte(waspconn.WaspRecvTransactionCode); err != nil {
+		return err
+	}
+	if err := msg.Write(&buf); err != nil {
+		return err
+	}
 
 	_, err := wconn.bconn.Write(buf.Bytes())
 	return err
@@ -24,9 +28,12 @@ func (wconn *WaspConnector) sendBalancesToWasp(address *address.Address, balance
 		Balances: balances,
 	}
 	var buf bytes.Buffer
-	buf.WriteByte(waspconn.WaspRecvBalancesCode)
-	buf.Write(msg.Encode())
-
+	if err := buf.WriteByte(waspconn.WaspRecvBalancesCode); err != nil {
+		return err
+	}
+	if err := msg.Write(&buf); err != nil {
+		return err
+	}
 	_, err := wconn.bconn.Write(buf.Bytes())
 	return err
 
