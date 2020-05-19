@@ -81,7 +81,7 @@ func (wconn *WaspConnector) attach() {
 	// read incoming pre-filtered transactions from node
 	go func() {
 		for vtx := range wconn.inTxChan {
-			wconn.processIncomingTransaction(vtx)
+			wconn.processTransactionFromNode(vtx)
 		}
 	}()
 }
@@ -111,7 +111,7 @@ func (wconn *WaspConnector) isSubscribed(addr *address.Address) bool {
 
 // process parsed SC transaction incoming from the node.
 // Forward to wasp if subscribed
-func (wconn *WaspConnector) processIncomingTransaction(vtx *transaction.Transaction) {
+func (wconn *WaspConnector) processTransactionFromNode(vtx *transaction.Transaction) {
 	// determine if transaction contains any of subscribed addresses in its outputs
 
 	isSubscribed := false
@@ -133,9 +133,9 @@ func (wconn *WaspConnector) processIncomingTransaction(vtx *transaction.Transact
 
 // find transaction async, parse it to SCTransaction and send to Wasp
 func (wconn *WaspConnector) getTransaction(txid *transaction.ID) {
-
+	// TODO
 }
 
 func (wconn *WaspConnector) getAddressBalance(addr *address.Address) {
-
+	// TODO
 }

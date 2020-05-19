@@ -1,49 +1,33 @@
 package waspconn
 
 import (
-	"bytes"
 	"github.com/iotaledger/goshimmer/packages/waspconn"
 )
 
 // process messages received from the Wasp
 func (wconn *WaspConnector) processMsgDataFromWasp(data []byte) {
-	switch data[0] {
-
-	case waspconn.WaspSendTransactionCode:
-		msg := waspconn.WaspSendTransactionMsg{}
-		if err := msg.Read(bytes.NewReader(data[1:])); err != nil {
-			log.Errorf("wrong 'WaspSendTransactionMsg' message from %s", wconn.id)
-			return
-		}
+	var msg interface{}
+	var err error
+	if msg, err = waspconn.DecodeMsg(data, false); err != nil {
+		log.Errorf("DecodeMsg id %s, error: %v", wconn.id, err)
+		return
+	}
+	switch msgt := msg.(type) {
+	case *waspconn.WaspToNodeTransactionMsg:
 		// TODO post value transaction to the tangle
 
-	case waspconn.WaspSendSubscribeCode:
-		msg := waspconn.WaspSendSubscribeMsg{}
-		if err := msg.Read(bytes.NewReader(data[1:])); err != nil {
-			log.Errorf("wrong 'WaspSendSubscribeMsg' message from %s", wconn.id)
-			return
-		}
-		for _, addr := range msg.Addresses {
+	case *waspconn.WaspToNodeSubscribeMsg:
+		for _, addr := range msgt.Addresses {
 			wconn.subscribe(&addr)
 		}
 
-	case waspconn.WaspSendGetTransactionCode:
-		msg := waspconn.WaspSendGetTransactionMsg{}
-		if err := msg.Read(bytes.NewReader(data[1:])); err != nil {
-			log.Errorf("wrong 'WaspSendGetBalancesMsg' message from %s", wconn.id)
-			return
-		}
-		wconn.getTransaction(msg.TxId)
+	case *waspconn.WaspToNodeGetTransactionMsg:
+		wconn.getTransaction(msgt.TxId)
 
-	case waspconn.WaspSendGetBalancesCode:
-		msg := waspconn.WaspSendGetBalancesMsg{}
-		if err := msg.Read(bytes.NewReader(data[1:])); err != nil {
-			log.Errorf("wrong 'WaspSendGetBalancesMsg' message from %s", wconn.id)
-			return
-		}
-		wconn.getAddressBalance(msg.Address)
+	case *waspconn.WaspToNodeGetBalancesMsg:
+		wconn.getAddressBalance(msgt.Address)
 
 	default:
-		log.Errorf("wrong message code from Wasp: %d", data[0])
+		panic("wrong msg type")
 	}
 }

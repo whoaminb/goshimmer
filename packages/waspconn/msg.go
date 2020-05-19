@@ -1,6 +1,7 @@
 package waspconn
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
@@ -9,48 +10,170 @@ import (
 )
 
 const (
+	WaspPing = iota
 	// wasp -> node
-	WaspSendTransactionCode    = byte(1)
-	WaspSendSubscribeCode      = byte(2)
-	WaspSendGetTransactionCode = byte(3)
-	WaspSendGetBalancesCode    = byte(4)
+	WaspToNodeTransaction
+	WaspToNodeSubscribe
+	WaspToNodeGetTransaction
+	WaspToNodeGetBalances
 
 	// node -> wasp
-	WaspRecvTransactionCode = byte(5)
-	WaspRecvBalancesCode    = byte(6)
+	WaspFromNodeTransaction
+	WaspFromNodeBalances
 )
 
-type WaspSendTransactionMsg struct {
+type WaspPingMsg struct {
+	id        uint32
+	timestamp int64
+}
+
+type WaspToNodeTransactionMsg struct {
 	Tx *transaction.Transaction
 }
 
-type WaspSendSubscribeMsg struct {
+type WaspToNodeSubscribeMsg struct {
 	Addresses   []address.Address
 	PullBacklog bool
 }
 
-type WaspSendGetTransactionMsg struct {
+type WaspToNodeGetTransactionMsg struct {
 	TxId *transaction.ID
 }
 
-type WaspSendGetBalancesMsg struct {
+type WaspToNodeGetBalancesMsg struct {
 	Address *address.Address
 }
 
-type WaspRecvTransactionMsg struct {
+type WaspFromNodeTransactionMsg struct {
 	Tx *transaction.Transaction
 }
 
-type WaspRecvBalancesMsg struct {
+type WaspFromNodeBalancesMsg struct {
 	Address  *address.Address
 	Balances map[transaction.ID][]*balance.Balance
 }
 
-func (msg *WaspSendTransactionMsg) Write(w io.Writer) error {
+func typeToCode(msg interface{ Write(writer io.Writer) error }) byte {
+	switch msg.(type) {
+	case *WaspPingMsg:
+		return WaspPing
+
+	case *WaspToNodeTransactionMsg:
+		return WaspToNodeTransaction
+
+	case *WaspToNodeSubscribeMsg:
+		return WaspToNodeSubscribe
+
+	case *WaspToNodeGetTransactionMsg:
+		return WaspToNodeGetTransaction
+
+	case *WaspToNodeGetBalancesMsg:
+		return WaspToNodeGetBalances
+
+	case *WaspFromNodeTransactionMsg:
+		return WaspFromNodeTransaction
+
+	case *WaspFromNodeBalancesMsg:
+		return WaspFromNodeBalances
+	}
+	panic("wrong type")
+}
+
+func EncodeMsg(msg interface{ Write(writer io.Writer) error }) ([]byte, error) {
+	msgCode := typeToCode(msg)
+	var buf bytes.Buffer
+
+	if err := buf.WriteByte(msgCode); err != nil {
+		return nil, err
+	}
+	if err := msg.Write(&buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func DecodeMsg(data []byte, waspSide bool) (interface{}, error) {
+	if len(data) < 1 {
+		return nil, fmt.Errorf("wrong message")
+	}
+	var ret interface{ Read(io.Reader) error }
+
+	switch data[0] {
+	case WaspPing:
+		ret = &WaspPingMsg{}
+
+	case WaspToNodeTransaction:
+		if waspSide {
+			return nil, fmt.Errorf("wrong message")
+		}
+		ret = &WaspToNodeTransactionMsg{}
+
+	case WaspToNodeSubscribe:
+		if waspSide {
+			return nil, fmt.Errorf("wrong message")
+		}
+		ret = &WaspToNodeSubscribeMsg{}
+
+	case WaspToNodeGetTransaction:
+		if waspSide {
+			return nil, fmt.Errorf("wrong message")
+		}
+		ret = &WaspToNodeGetTransactionMsg{}
+
+	case WaspToNodeGetBalances:
+		if waspSide {
+			return nil, fmt.Errorf("wrong message")
+		}
+		ret = &WaspToNodeGetBalancesMsg{}
+
+	case WaspFromNodeTransaction:
+		if !waspSide {
+			return nil, fmt.Errorf("wrong message")
+		}
+		ret = &WaspFromNodeTransactionMsg{}
+
+	case WaspFromNodeBalances:
+		if !waspSide {
+			return nil, fmt.Errorf("wrong message")
+		}
+		ret = &WaspFromNodeBalancesMsg{}
+
+	default:
+		return nil, fmt.Errorf("wrong message code")
+	}
+	if err := ret.Read(bytes.NewReader(data[1:])); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+func (msg *WaspPingMsg) Write(w io.Writer) error {
+	if err := WriteUint32(w, msg.id); err != nil {
+		return err
+	}
+	if err := WriteUint64(w, uint64(msg.timestamp)); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (msg *WaspPingMsg) Read(r io.Reader) error {
+	if err := ReadUint32(r, &msg.id); err != nil {
+		return err
+	}
+	var ts uint64
+	if err := ReadUint64(r, &ts); err != nil {
+		return err
+	}
+	msg.timestamp = int64(ts)
+	return nil
+}
+
+func (msg *WaspToNodeTransactionMsg) Write(w io.Writer) error {
 	return WriteBytes32(w, msg.Tx.Bytes())
 }
 
-func (msg *WaspSendTransactionMsg) Read(r io.Reader) error {
+func (msg *WaspToNodeTransactionMsg) Read(r io.Reader) error {
 	var err error
 	data, err := ReadBytes32(r)
 	if err != nil {
@@ -60,7 +183,7 @@ func (msg *WaspSendTransactionMsg) Read(r io.Reader) error {
 	return err
 }
 
-func (msg *WaspSendSubscribeMsg) Write(w io.Writer) error {
+func (msg *WaspToNodeSubscribeMsg) Write(w io.Writer) error {
 	if err := WriteUint16(w, uint16(len(msg.Addresses))); err != nil {
 		return err
 	}
@@ -72,7 +195,7 @@ func (msg *WaspSendSubscribeMsg) Write(w io.Writer) error {
 	return WriteBoolByte(w, msg.PullBacklog)
 }
 
-func (msg *WaspSendSubscribeMsg) Read(r io.Reader) error {
+func (msg *WaspToNodeSubscribeMsg) Read(r io.Reader) error {
 	var size uint16
 	if err := ReadUint16(r, &size); err != nil {
 		return err
@@ -93,12 +216,12 @@ func (msg *WaspSendSubscribeMsg) Read(r io.Reader) error {
 	return nil
 }
 
-func (msg *WaspSendGetTransactionMsg) Write(w io.Writer) error {
+func (msg *WaspToNodeGetTransactionMsg) Write(w io.Writer) error {
 	_, err := w.Write(msg.TxId.Bytes())
 	return err
 }
 
-func (msg *WaspSendGetTransactionMsg) Read(r io.Reader) error {
+func (msg *WaspToNodeGetTransactionMsg) Read(r io.Reader) error {
 	msg.TxId = new(transaction.ID)
 	n, err := r.Read(msg.TxId[:])
 	if err != nil {
@@ -110,12 +233,12 @@ func (msg *WaspSendGetTransactionMsg) Read(r io.Reader) error {
 	return nil
 }
 
-func (msg *WaspSendGetBalancesMsg) Write(w io.Writer) error {
+func (msg *WaspToNodeGetBalancesMsg) Write(w io.Writer) error {
 	_, err := w.Write(msg.Address.Bytes())
 	return err
 }
 
-func (msg *WaspSendGetBalancesMsg) Read(r io.Reader) error {
+func (msg *WaspToNodeGetBalancesMsg) Read(r io.Reader) error {
 	msg.Address = new(address.Address)
 	n, err := r.Read(msg.Address[:])
 	if err != nil {
@@ -127,11 +250,11 @@ func (msg *WaspSendGetBalancesMsg) Read(r io.Reader) error {
 	return nil
 }
 
-func (msg *WaspRecvTransactionMsg) Write(w io.Writer) error {
+func (msg *WaspFromNodeTransactionMsg) Write(w io.Writer) error {
 	return WriteBytes32(w, msg.Tx.Bytes())
 }
 
-func (msg *WaspRecvTransactionMsg) Read(r io.Reader) error {
+func (msg *WaspFromNodeTransactionMsg) Read(r io.Reader) error {
 	data, err := ReadBytes32(r)
 	if err != nil {
 		return err
@@ -140,7 +263,7 @@ func (msg *WaspRecvTransactionMsg) Read(r io.Reader) error {
 	return err
 }
 
-func (msg *WaspRecvBalancesMsg) Write(w io.Writer) error {
+func (msg *WaspFromNodeBalancesMsg) Write(w io.Writer) error {
 	_, err := w.Write(msg.Address.Bytes())
 	if err != nil {
 		return err
@@ -148,7 +271,7 @@ func (msg *WaspRecvBalancesMsg) Write(w io.Writer) error {
 	return WriteBalances(w, msg.Balances)
 }
 
-func (msg *WaspRecvBalancesMsg) Read(r io.Reader) error {
+func (msg *WaspFromNodeBalancesMsg) Read(r io.Reader) error {
 	msg.Address = new(address.Address)
 	n, err := r.Read(msg.Address[:])
 	if err != nil {
