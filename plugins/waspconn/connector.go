@@ -6,6 +6,7 @@ import (
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/iotaledger/hive.go/daemon"
 	"github.com/iotaledger/hive.go/events"
+	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/hive.go/netutil/buffconn"
 	"net"
 )
@@ -19,22 +20,24 @@ type WaspConnector struct {
 	receiveValueTransactionClosure *events.Closure
 	receiveWaspMessageClosure      *events.Closure
 	closeClosure                   *events.Closure
+	log                            *logger.Logger
 }
 
-func Run(conn net.Conn) {
+func Run(conn net.Conn, log *logger.Logger) {
 	wconn := &WaspConnector{
 		id:           "wasp_" + conn.RemoteAddr().String(),
 		bconn:        buffconn.NewBufferedConnection(conn),
 		exitConnChan: make(chan struct{}),
+		log:          log.Named(conn.RemoteAddr().String()),
 	}
 	err := daemon.BackgroundWorker(wconn.id, func(shutdownSignal <-chan struct{}) {
 		select {
 		case <-shutdownSignal:
 
-			log.Infof("shutdown waspconn %s", wconn.id)
+			wconn.log.Infof("shutdown")
 
 		case <-wconn.exitConnChan:
-			log.Infof("closing waspconn %s", wconn.id)
+			wconn.log.Infof("closing..")
 		}
 
 		go wconn.detach()
@@ -42,7 +45,7 @@ func Run(conn net.Conn) {
 
 	if err != nil {
 		close(wconn.exitConnChan)
-		log.Errorf("can't start a deamon %s", wconn.id)
+		wconn.log.Errorf("can't start a deamon")
 		return
 	}
 	wconn.attach()
@@ -61,7 +64,7 @@ func (wconn *WaspConnector) attach() {
 	})
 
 	wconn.closeClosure = events.NewClosure(func() {
-		log.Info("Wasp connection %s closed", wconn.id)
+		wconn.log.Info("Wasp connection closed")
 	})
 
 	// attach connector to the flow of incoming value transactions
@@ -73,7 +76,7 @@ func (wconn *WaspConnector) attach() {
 	// read connection thread
 	go func() {
 		if err := wconn.bconn.Read(); err != nil {
-			log.Errorf("error while reading socket from %s: %v", wconn.id, err)
+			wconn.log.Errorf("error while reading socket: %v", err)
 		}
 		close(wconn.exitConnChan)
 	}()
@@ -94,7 +97,7 @@ func (wconn *WaspConnector) detach() {
 	close(wconn.inTxChan)
 	_ = wconn.bconn.Close()
 
-	log.Debugf("detached waspconn %s", wconn.id)
+	wconn.log.Debugf("detached waspconn")
 }
 
 func (wconn *WaspConnector) subscribe(addr *address.Address) {
@@ -127,7 +130,7 @@ func (wconn *WaspConnector) processTransactionFromNode(vtx *transaction.Transact
 		return
 	}
 	if err := wconn.sendTransactionToWasp(vtx); err != nil {
-		log.Errorf("failed to send transaction to %s", wconn.id)
+		wconn.log.Errorf("failed to send transaction")
 	}
 }
 

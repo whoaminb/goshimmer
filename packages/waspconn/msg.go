@@ -23,8 +23,8 @@ const (
 )
 
 type WaspPingMsg struct {
-	id        uint32
-	timestamp int64
+	Id        uint32
+	Timestamp int64
 }
 
 type WaspToNodeTransactionMsg struct {
@@ -148,24 +148,24 @@ func DecodeMsg(data []byte, waspSide bool) (interface{}, error) {
 }
 
 func (msg *WaspPingMsg) Write(w io.Writer) error {
-	if err := WriteUint32(w, msg.id); err != nil {
+	if err := WriteUint32(w, msg.Id); err != nil {
 		return err
 	}
-	if err := WriteUint64(w, uint64(msg.timestamp)); err != nil {
+	if err := WriteUint64(w, uint64(msg.Timestamp)); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (msg *WaspPingMsg) Read(r io.Reader) error {
-	if err := ReadUint32(r, &msg.id); err != nil {
+	if err := ReadUint32(r, &msg.Id); err != nil {
 		return err
 	}
 	var ts uint64
 	if err := ReadUint64(r, &ts); err != nil {
 		return err
 	}
-	msg.timestamp = int64(ts)
+	msg.Timestamp = int64(ts)
 	return nil
 }
 

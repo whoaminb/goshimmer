@@ -9,10 +9,16 @@ func (wconn *WaspConnector) processMsgDataFromWasp(data []byte) {
 	var msg interface{}
 	var err error
 	if msg, err = waspconn.DecodeMsg(data, false); err != nil {
-		log.Errorf("DecodeMsg id %s, error: %v", wconn.id, err)
+		wconn.log.Errorf("DecodeMsg: %v", err)
 		return
 	}
 	switch msgt := msg.(type) {
+	case *waspconn.WaspPingMsg:
+		wconn.log.Infof("PING %d received", msgt.Id)
+		if err := wconn.sendMsgToWasp(msgt); err != nil {
+			wconn.log.Errorf("responding to ping: %v", err)
+		}
+
 	case *waspconn.WaspToNodeTransactionMsg:
 		// TODO post value transaction to the tangle
 

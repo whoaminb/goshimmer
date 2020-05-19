@@ -58,7 +58,7 @@ func runPlugin(_ *node.Plugin) {
 					return
 				}
 				log.Debugf("accepted connection from %s", conn.RemoteAddr().String())
-				Run(conn)
+				Run(conn, log)
 			}
 		}()
 
