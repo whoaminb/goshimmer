@@ -2,6 +2,7 @@ package shutdown
 
 const (
 	PriorityDatabase = iota
+	PriorityWaspConn
 	PriorityFPC
 	PriorityTangle
 	PriorityMissingMessagesMonitoring

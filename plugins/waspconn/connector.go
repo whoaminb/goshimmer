@@ -4,11 +4,14 @@ import (
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
+	"github.com/iotaledger/goshimmer/packages/shutdown"
 	"github.com/iotaledger/hive.go/daemon"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/hive.go/netutil/buffconn"
+	"io"
 	"net"
+	"strings"
 )
 
 type WaspConnector struct {
@@ -33,15 +36,16 @@ func Run(conn net.Conn, log *logger.Logger) {
 	err := daemon.BackgroundWorker(wconn.id, func(shutdownSignal <-chan struct{}) {
 		select {
 		case <-shutdownSignal:
-
-			wconn.log.Infof("shutdown")
+			wconn.log.Infof("shutdown signal received")
+			_ = wconn.bconn.Close()
 
 		case <-wconn.exitConnChan:
 			wconn.log.Infof("closing..")
+			_ = wconn.bconn.Close()
 		}
 
 		go wconn.detach()
-	})
+	}, shutdown.PriorityWaspConn)
 
 	if err != nil {
 		close(wconn.exitConnChan)
@@ -76,7 +80,9 @@ func (wconn *WaspConnector) attach() {
 	// read connection thread
 	go func() {
 		if err := wconn.bconn.Read(); err != nil {
-			wconn.log.Errorf("error while reading socket: %v", err)
+			if err != io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
+				wconn.log.Warnw("Permanent error", "err", err)
+			}
 		}
 		close(wconn.exitConnChan)
 	}()

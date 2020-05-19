@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
+	"github.com/iotaledger/goshimmer/packages/shutdown"
 	"github.com/iotaledger/goshimmer/plugins/config"
 	"github.com/iotaledger/hive.go/daemon"
 	"github.com/iotaledger/hive.go/events"
@@ -66,10 +67,10 @@ func runPlugin(_ *node.Plugin) {
 
 		<-shutdownSignal
 
-		log.Infof("Stopping WaspConn listener..")
-		_ = listener.Close()
-		log.Infof("Stopping WaspConn listener.. Done")
-	})
+		//log.Infof("Stopping WaspConn listener..")
+		//_ = listener.Close()
+		//log.Infof("Stopping WaspConn listener.. Done")
+	}, shutdown.PriorityWaspConn)
 	if err != nil {
 		log.Errorf("failed to start WaspConn daemon: %v", err)
 	}
