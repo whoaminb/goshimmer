@@ -21,7 +21,7 @@ var (
 	transactions     = make(map[transaction.ID]*transaction.Transaction)
 	utxo             = make(map[transaction.OutputID]bool)
 	utxoByAddress    = make(map[address.Address][]transaction.ID)
-	mutexdb          sync.Mutex
+	mutexdb          sync.RWMutex
 	genesisSigScheme signaturescheme.SignatureScheme
 	genesisAddress   address.Address
 )
@@ -62,6 +62,13 @@ func init() {
 }
 
 func AddTransaction(tx *transaction.Transaction) error {
+	if !checkInputsOutputs(tx) {
+		return fmt.Errorf("wrong balance between inputs and outputs")
+	}
+	if !tx.SignaturesValid() {
+		return fmt.Errorf("invalid signature")
+	}
+
 	mutexdb.Lock()
 	defer mutexdb.Unlock()
 
@@ -110,4 +117,82 @@ func AddTransaction(tx *transaction.Transaction) error {
 	})
 	transactions[tx.ID()] = tx
 	return nil
+}
+
+func GetTransaction(id transaction.ID) (*transaction.Transaction, bool) {
+	mutexdb.RLock()
+	defer mutexdb.RUnlock()
+
+	tx, ok := transactions[id]
+	return tx, ok
+}
+
+func MustGetTransaction(id transaction.ID) *transaction.Transaction {
+	tx, ok := GetTransaction(id)
+	if !ok {
+		panic(fmt.Sprintf("tx id doesn't exist: %s", id.String()))
+	}
+	return tx
+}
+
+func GetAddressOutputs(addr address.Address) map[transaction.OutputID][]*balance.Balance {
+	mutexdb.RLock()
+	defer mutexdb.RUnlock()
+
+	ret := make(map[transaction.OutputID][]*balance.Balance)
+
+	txIds, ok := utxoByAddress[addr]
+	if !ok || len(txIds) == 0 {
+		return nil
+	}
+	for _, txid := range txIds {
+		txInp := MustGetTransaction(txid)
+		bals, ok := txInp.Outputs().Get(addr)
+		if !ok {
+			panic("output does not exist")
+		}
+		ret[transaction.NewOutputID(addr, txid)] = bals.([]*balance.Balance)
+	}
+	return ret
+}
+
+func TakeIotasFromGenesis(amount int64, targetAddress address.Address) (*transaction.Transaction, error) {
+	genesisOutputs := GetAddressOutputs(genesisAddress)
+	oids := make([]transaction.OutputID, 0)
+	sum := int64(0)
+	for oid, bals := range genesisOutputs {
+		containsIotas := false
+		for _, b := range bals {
+			if b.Color() == balance.ColorIOTA {
+				sum += b.Value()
+				containsIotas = true
+			}
+		}
+		if containsIotas {
+			oids = append(oids, oid)
+		}
+		if sum >= amount {
+			break
+		}
+	}
+	inputs := transaction.NewInputs(oids...)
+
+	out := map[address.Address][]*balance.Balance{targetAddress: {balance.New(balance.ColorIOTA, amount)}}
+	if sum > amount {
+		out[genesisAddress] = []*balance.Balance{balance.New(balance.ColorIOTA, sum-amount)}
+	}
+
+	outputs := transaction.NewOutputs(out)
+
+	tx := transaction.New(inputs, outputs)
+	if !checkInputsOutputs(tx) {
+		panic("something wrong with inouts/outputs")
+	}
+
+	tx.Sign(genesisSigScheme)
+
+	if !tx.SignaturesValid() {
+		panic("something wrong with signatures")
+	}
+	return tx, nil
 }

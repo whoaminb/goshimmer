@@ -4,85 +4,82 @@ import (
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
-	"math"
 )
 
-func checkTransactionOutputs(inputBalances map[balance.Color]int64, outputs *transaction.Outputs) bool {
-	// create a variable to keep track of outputs that create a new color
-	var newlyColoredCoins int64
-	var uncoloredCoins int64
+func collectInputBalances(tx *transaction.Transaction) (map[balance.Color]int64, int64, bool) {
+	ret := make(map[balance.Color]int64)
+	retsum := int64(0)
 
-	// iterate through outputs and check them one by one
-	aborted := !outputs.ForEach(func(address address.Address, balances []*balance.Balance) bool {
-		for _, outputBalance := range balances {
-			// abort if the output creates a negative or empty output
-			if outputBalance.Value() <= 0 {
-				return false
-			}
-
-			// sidestep logic if we have a newly colored output (we check the supply later)
-			if outputBalance.Color() == balance.ColorNew {
-				// catch overflows
-				if newlyColoredCoins > math.MaxInt64-outputBalance.Value() {
-					return false
-				}
-
-				newlyColoredCoins += outputBalance.Value()
-
-				continue
-			}
-
-			// sidestep logic if we have a newly colored output (we check the supply later)
-			if outputBalance.Color() == balance.ColorIOTA {
-				// catch overflows
-				if uncoloredCoins > math.MaxInt64-outputBalance.Value() {
-					return false
-				}
-
-				uncoloredCoins += outputBalance.Value()
-
-				continue
-			}
-
-			// check if the used color does not exist in our supply
-			availableBalance, spentColorExists := inputBalances[outputBalance.Color()]
-			if !spentColorExists {
-				return false
-			}
-
-			// abort if we spend more coins of the given color than we have
-			if availableBalance < outputBalance.Value() {
-				return false
-			}
-
-			// subtract the spent coins from the supply of this color
-			inputBalances[outputBalance.Color()] -= outputBalance.Value()
-
-			// cleanup empty map entries (we have exhausted our funds)
-			if inputBalances[outputBalance.Color()] == 0 {
-				delete(inputBalances, outputBalance.Color())
-			}
+	abort := tx.Inputs().ForEach(func(outputId transaction.OutputID) bool {
+		txInp, ok := GetTransaction(outputId.TransactionID())
+		if !ok {
+			return true
 		}
-
-		return true
+		balances, ok := txInp.Outputs().Get(outputId.Address())
+		if !ok {
+			return true
+		}
+		for _, bal := range balances.([]*balance.Balance) {
+			if _, ok := ret[bal.Color()]; !ok {
+				ret[bal.Color()] = 0
+			}
+			col := bal.Color()
+			if col == balance.ColorNew {
+				col = (balance.Color)(txInp.ID())
+			}
+			ret[bal.Color()] = ret[col] + bal.Value()
+			retsum += bal.Value()
+		}
+		return false
 	})
+	if abort {
+		return nil, 0, false
+	}
+	return ret, retsum, true
+}
 
-	// abort if the previous checks failed
-	if aborted {
+func collectOutputBalances(tx *transaction.Transaction) (map[balance.Color]int64, int64) {
+	ret := make(map[balance.Color]int64)
+	retsum := int64(0)
+
+	tx.Outputs().ForEach(func(_ address.Address, balances []*balance.Balance) bool {
+		for _, bal := range balances {
+			if _, ok := ret[bal.Color()]; !ok {
+				ret[bal.Color()] = 0
+			}
+			ret[bal.Color()] = ret[bal.Color()] + bal.Value()
+			retsum += bal.Value()
+		}
+		return false
+	})
+	return ret, retsum
+}
+
+func checkInputsOutputs(tx *transaction.Transaction) bool {
+	inbals, insum, ok := collectInputBalances(tx)
+	if !ok {
+		return false
+	}
+	outbals, outsum := collectOutputBalances(tx)
+	if insum != outsum {
 		return false
 	}
 
-	// determine the unspent inputs
-	var unspentCoins int64
-	for _, unspentBalance := range inputBalances {
-		// catch overflows
-		if unspentCoins > math.MaxInt64-unspentBalance {
+	for col, inb := range inbals {
+		if !(col != balance.ColorNew) {
+			panic("assertion failed: col != balance.ColorNew")
+		}
+		if col == balance.ColorIOTA {
+			continue
+		}
+		outb, ok := outbals[col]
+		if !ok {
+			continue
+		}
+		if outb > inb {
+			// colored supply can't be inflated
 			return false
 		}
-
-		unspentCoins += unspentBalance
 	}
-
-	// the outputs are valid if they spend all consumed funds
-	return unspentCoins == newlyColoredCoins+uncoloredCoins
+	return true
 }
