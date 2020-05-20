@@ -10,14 +10,17 @@ func collectInputBalances(tx *transaction.Transaction) (map[balance.Color]int64,
 	ret := make(map[balance.Color]int64)
 	retsum := int64(0)
 
-	abort := tx.Inputs().ForEach(func(outputId transaction.OutputID) bool {
+	fail := false
+	tx.Inputs().ForEach(func(outputId transaction.OutputID) bool {
 		txInp, ok := GetTransaction(outputId.TransactionID())
 		if !ok {
-			return true
+			fail = true
+			return false
 		}
 		balances, ok := txInp.Outputs().Get(outputId.Address())
 		if !ok {
-			return true
+			fail = true
+			return false
 		}
 		for _, bal := range balances.([]*balance.Balance) {
 			if _, ok := ret[bal.Color()]; !ok {
@@ -30,9 +33,9 @@ func collectInputBalances(tx *transaction.Transaction) (map[balance.Color]int64,
 			ret[bal.Color()] = ret[col] + bal.Value()
 			retsum += bal.Value()
 		}
-		return false
+		return true
 	})
-	if abort {
+	if fail {
 		return nil, 0, false
 	}
 	return ret, retsum, true
@@ -50,7 +53,7 @@ func collectOutputBalances(tx *transaction.Transaction) (map[balance.Color]int64
 			ret[bal.Color()] = ret[bal.Color()] + bal.Value()
 			retsum += bal.Value()
 		}
-		return false
+		return true
 	})
 	return ret, retsum
 }
