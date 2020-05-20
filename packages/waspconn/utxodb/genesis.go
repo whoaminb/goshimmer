@@ -14,6 +14,7 @@ const (
 	genesisPrivateKeyStr = "1pK9KraR4YTSHh3bq7hrigFSyq4HgWufhRyME84DPbwWpcoF1zwq6J1zaeyYUb8ut6ia9uQ9B9ughrpj2aZ7CMU"
 	genesisPublicKeyStr  = "4f1W4o6PBKXXFsMHRcndYabpmaXPTdNNmtnV2NkfHnAa"
 	supply               = int64(10 * 1000 * 1000 * 1000)
+	ownerAmount          = 1000 * 1000 * 1000
 
 	ownerPrivKey1 = "2sHwx4pBsAxK5SV8Nurphsgu6XpRE2ZpBxJQ87ggdoU34NAQ5RPM6u9K8oL4UdbYgv1pRiHNHCsWipbY1TvEuXz6"
 	ownerPubKey1  = "C3XgXzR6dVCsnXYqxJC5WgMEQJUDqeChUMKY9Tuvfoux"
@@ -73,8 +74,7 @@ func init() {
 	utxo[transaction.NewOutputID(GetGenesisAddress(), genesisTxId)] = true
 	utxoByAddress[GetGenesisAddress()] = []transaction.ID{genesisTxId}
 
-	fmt.Printf("UTXODB initialized. Genesis: address = %s, tx id = %s supply = %d\n",
-		GetGenesisAddress().String(), GetGenesisTransaction().ID().String(), GetSupply())
+	createTestOwners()
 }
 
 func GetSupply() int64 {
@@ -85,13 +85,14 @@ func GetGenesisSigScheme() signaturescheme.SignatureScheme {
 	return knownSigSchemes[GetGenesisAddress()]
 }
 
-func GetGenesisTransaction() *transaction.Transaction {
-	ret, ok := GetTransaction(genesisTxId)
-	if !ok {
-		panic("genesis tx not found")
-	}
-	return ret
-}
+//
+//func GetGenesisTransaction() *transaction.Transaction {
+//	ret, ok := GetTransaction(genesisTxId)
+//	if !ok {
+//		panic("genesis tx not found")
+//	}
+//	return ret
+//}
 
 func GetGenesisAddress() address.Address {
 	return GetAddress(0)
@@ -137,4 +138,33 @@ func createSigScheme(privKeyStr, pubKeyStr, addressStr string) signaturescheme.S
 		panic("addr != ret.Address()")
 	}
 	return ret
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+func createTestOwners() {
+	tx, err := TransferIotas(ownerAmount, GetGenesisAddress(), GetAddress(1))
+	must(err)
+	err = AddTransaction(tx)
+	must(err)
+
+	tx, err = TransferIotas(ownerAmount, GetGenesisAddress(), GetAddress(2))
+	must(err)
+	err = AddTransaction(tx)
+	must(err)
+
+	tx, err = TransferIotas(ownerAmount, GetGenesisAddress(), GetAddress(3))
+	must(err)
+	err = AddTransaction(tx)
+	must(err)
+
+	stats := GetLedgerStats()
+	fmt.Println("testing UTXODB initialized:")
+	for addr, st := range stats {
+		fmt.Printf("%s: balance %d, num outputs %d\n", addr.String(), st.Total, st.NumOutputs)
+	}
 }

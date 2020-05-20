@@ -1,8 +1,6 @@
 package utxodb
 
 import (
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/magiconair/properties/assert"
 	"testing"
 )
@@ -22,13 +20,14 @@ func TestKnowAddresses(t *testing.T) {
 
 func TestGenesis(t *testing.T) {
 	gout := GetAddressOutputs(GetGenesisSigScheme().Address())
-	expectedOutputId := transaction.NewOutputID(GetGenesisSigScheme().Address(), GetGenesisTransaction().ID())
-	genBals, ok := gout[expectedOutputId]
-	assert.Equal(t, ok, true)
-	assert.Equal(t, len(genBals), 1)
-	genBal := genBals[0]
-	assert.Equal(t, genBal.Color(), balance.ColorIOTA)
-	assert.Equal(t, genBal.Value(), GetSupply())
+	total := int64(0)
+	for oid := range gout {
+		sum, err := getOutputTotal(oid)
+		assert.Equal(t, err, nil)
+		total += sum
+	}
+	assert.Equal(t, total, supply-3*ownerAmount)
+	checkLedgerBalance()
 }
 
 func TestTransfer(t *testing.T) {
