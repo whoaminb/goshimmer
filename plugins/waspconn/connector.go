@@ -5,6 +5,7 @@ import (
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/iotaledger/goshimmer/packages/shutdown"
+	"github.com/iotaledger/goshimmer/packages/waspconn/utxodb"
 	"github.com/iotaledger/hive.go/daemon"
 	"github.com/iotaledger/hive.go/events"
 	"github.com/iotaledger/hive.go/logger"
@@ -142,9 +143,34 @@ func (wconn *WaspConnector) processTransactionFromNode(vtx *transaction.Transact
 
 // find transaction async, parse it to SCTransaction and send to Wasp
 func (wconn *WaspConnector) getTransaction(txid *transaction.ID) {
-	// TODO
+	tx, ok := utxodb.GetTransaction(*txid)
+	if !ok {
+		wconn.log.Debugf("!!!! utxodb.GetTransaction %s : no found", txid.String())
+		return
+	}
+	if err := wconn.sendTransactionToWasp(tx); err != nil {
+		wconn.log.Debugf("!!!! sendTransactionToWasp: %v", err)
+		return
+	}
 }
 
 func (wconn *WaspConnector) getAddressBalance(addr *address.Address) {
-	// TODO
+	outputs := utxodb.GetAddressOutputs(*addr)
+	if len(outputs) == 0 {
+		return
+	}
+	ret := make(map[transaction.ID][]*balance.Balance)
+	for outp, bals := range outputs {
+		ret[outp.TransactionID()] = bals
+	}
+	if err := wconn.sendBalancesToWasp(addr, ret); err != nil {
+		wconn.log.Debugf("sendBalancesToWasp: %v", err)
+	}
+}
+
+// find transaction async, parse it to SCTransaction and send to Wasp
+func (wconn *WaspConnector) postTransaction(tx *transaction.Transaction) {
+	if err := utxodb.AddTransaction(tx); err != nil {
+		wconn.log.Debugf("!!!! utxodb.AddTransaction %s : %v", tx.ID().String(), err)
+	}
 }

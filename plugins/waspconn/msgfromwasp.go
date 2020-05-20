@@ -20,7 +20,7 @@ func (wconn *WaspConnector) processMsgDataFromWasp(data []byte) {
 		}
 
 	case *waspconn.WaspToNodeTransactionMsg:
-		// TODO post value transaction to the tangle
+		wconn.postTransaction(msgt.Tx)
 
 	case *waspconn.WaspToNodeSubscribeMsg:
 		for _, addr := range msgt.Addresses {
