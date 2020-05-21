@@ -20,6 +20,7 @@ func (wconn *WaspConnector) processMsgDataFromWasp(data []byte) {
 		}
 
 	case *waspconn.WaspToNodeTransactionMsg:
+		wconn.log.Infof("'WaspToNodeTransactionMsg' received: txid %s", msgt.Tx.ID().String())
 		wconn.postTransaction(msgt.Tx)
 
 	case *waspconn.WaspToNodeSubscribeMsg:

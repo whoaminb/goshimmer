@@ -143,9 +143,11 @@ func (wconn *WaspConnector) processTransactionFromNode(vtx *transaction.Transact
 
 // find transaction async, parse it to SCTransaction and send to Wasp
 func (wconn *WaspConnector) getTransaction(txid *transaction.ID) {
+	wconn.log.Debugf("requested transaction id = %s", txid.String())
+
 	tx, ok := utxodb.GetTransaction(*txid)
 	if !ok {
-		wconn.log.Debugf("!!!! utxodb.GetTransaction %s : no found", txid.String())
+		wconn.log.Debugf("!!!! utxodb.GetTransaction %s : not found", txid.String())
 		return
 	}
 	if err := wconn.sendTransactionToWasp(tx); err != nil {
@@ -172,5 +174,7 @@ func (wconn *WaspConnector) getAddressBalance(addr *address.Address) {
 func (wconn *WaspConnector) postTransaction(tx *transaction.Transaction) {
 	if err := utxodb.AddTransaction(tx); err != nil {
 		wconn.log.Debugf("!!!! utxodb.AddTransaction %s : %v", tx.ID().String(), err)
+	} else {
+		wconn.log.Debugf("++++ Added transaction  %s", tx.ID().String())
 	}
 }
