@@ -7,9 +7,11 @@ import (
 )
 
 func TestGenOwnerAddress(t *testing.T) {
-	keyPair := ed25519.GenerateKeyPair()
-	t.Logf("ED25519 Private key = %s", keyPair.PrivateKey.String())
-	t.Logf("ED25519 Public key = %s", keyPair.PublicKey.String())
-	sigscheme := signaturescheme.ED25519(keyPair)
-	t.Logf("ED25519 Address = %s", sigscheme.Address().String())
+	for i := 4; i <= 10; i++ {
+		keyPair := ed25519.GenerateKeyPair()
+		t.Logf("ownerPrivKey%d = \"%s\"", i, keyPair.PrivateKey.String())
+		t.Logf("ownerPubKey%d = \"%s\"", i, keyPair.PublicKey.String())
+		sigscheme := signaturescheme.ED25519(keyPair)
+		t.Logf("ownerAddress%d = \"%s\"", i, sigscheme.Address().String())
+	}
 }

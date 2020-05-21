@@ -7,7 +7,9 @@ import (
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 )
 
-func TransferIotas(amount int64, source, target address.Address) (*transaction.Transaction, error) {
+func DistributeIotas(amountEach int64, source address.Address, targets []address.Address) (*transaction.Transaction, error) {
+	amount := amountEach * int64(len(targets))
+
 	sourceOutputs := GetAddressOutputs(source)
 	oids := make([]transaction.OutputID, 0)
 	sum := int64(0)
@@ -27,11 +29,14 @@ func TransferIotas(amount int64, source, target address.Address) (*transaction.T
 		}
 	}
 	if sum < amount {
-		return nil, fmt.Errorf("amount is too big")
+		return nil, fmt.Errorf("not enough input balance")
 	}
 	inputs := transaction.NewInputs(oids...)
 
-	out := map[address.Address][]*balance.Balance{target: {balance.New(balance.ColorIOTA, amount)}}
+	out := make(map[address.Address][]*balance.Balance)
+	for _, taddr := range targets {
+		out[taddr] = []*balance.Balance{balance.New(balance.ColorIOTA, amountEach)}
+	}
 	if sum > amount {
 		out[GetGenesisAddress()] = []*balance.Balance{balance.New(balance.ColorIOTA, sum-amount)}
 	}
