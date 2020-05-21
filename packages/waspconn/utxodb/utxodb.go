@@ -18,17 +18,17 @@ var (
 
 func AddTransaction(tx *transaction.Transaction) error {
 	if !checkInputsOutputs(tx) {
-		return fmt.Errorf("wrong balance between inputs and outputs")
+		return fmt.Errorf("wrong balance between inputs and outputs =  %s", tx.ID().String())
 	}
 	if !tx.SignaturesValid() {
-		return fmt.Errorf("invalid signature")
+		return fmt.Errorf("invalid signature txid = %s", tx.ID().String())
 	}
 
 	mutexdb.Lock()
 	defer mutexdb.Unlock()
 
 	if _, ok := transactions[tx.ID()]; ok {
-		return fmt.Errorf("duplicate transaction")
+		return fmt.Errorf("duplicate transaction txid = %s", tx.ID().String())
 	}
 
 	var err error
@@ -36,13 +36,13 @@ func AddTransaction(tx *transaction.Transaction) error {
 	// check if outputs exist
 	tx.Inputs().ForEach(func(outputId transaction.OutputID) bool {
 		if _, ok := utxo[outputId]; !ok {
-			err = fmt.Errorf("output doesn't exist")
+			err = fmt.Errorf("output doesn't exist txid = %s", tx.ID().String())
 			return true
 		}
 		return false
 	})
 	if err != nil {
-		return fmt.Errorf("invalid or conflicting inputs: %v", err)
+		return fmt.Errorf("invalid or conflicting inputs: '%v' txid %s", err, tx.ID().String())
 	}
 
 	// delete inputs from utxo ledger
