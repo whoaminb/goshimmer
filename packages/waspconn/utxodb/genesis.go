@@ -119,7 +119,7 @@ func init() {
 	}
 
 	stats := GetLedgerStats()
-	fmt.Printf("UTXODB initialized:\ntotal supply = %di\nGenesis + %d predefined addresses with %di each\n",
+	fmt.Printf("UTXODB initialized:\nTotal supply = %di\nGenesis + %d predefined addresses with %di each\n",
 		supply, len(knownAddresses)-1, ownerAmount)
 	fmt.Println("Balances:")
 	for addr, st := range stats {
