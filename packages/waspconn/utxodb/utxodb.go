@@ -17,8 +17,8 @@ var (
 )
 
 func AddTransaction(tx *transaction.Transaction) error {
-	if !checkInputsOutputs(tx) {
-		return fmt.Errorf("wrong balance between inputs and outputs =  %s", tx.ID().String())
+	if err := CheckInputsOutputs(tx); err != nil {
+		return fmt.Errorf("%v: txid %s", err, tx.ID().String())
 	}
 	if !tx.SignaturesValid() {
 		return fmt.Errorf("invalid signature txid = %s", tx.ID().String())

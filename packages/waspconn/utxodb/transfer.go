@@ -44,8 +44,8 @@ func DistributeIotas(amountEach int64, source address.Address, targets []address
 	outputs := transaction.NewOutputs(out)
 
 	tx := transaction.New(inputs, outputs)
-	if !checkInputsOutputs(tx) {
-		panic("something wrong with inputs/outputs")
+	if err := CheckInputsOutputs(tx); err != nil {
+		panic(err)
 	}
 
 	tx.Sign(GetSigScheme(source))

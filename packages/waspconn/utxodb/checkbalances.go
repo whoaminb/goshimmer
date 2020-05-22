@@ -1,6 +1,7 @@
 package utxodb
 
 import (
+	"errors"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
@@ -58,19 +59,19 @@ func collectOutputBalances(tx *transaction.Transaction) (map[balance.Color]int64
 	return ret, retsum
 }
 
-func checkInputsOutputs(tx *transaction.Transaction) bool {
+func CheckInputsOutputs(tx *transaction.Transaction) error {
 	inbals, insum, ok := collectInputBalances(tx)
 	if !ok {
-		return false
+		return errors.New("wrong inputs")
 	}
 	outbals, outsum := collectOutputBalances(tx)
 	if insum != outsum {
-		return false
+		return errors.New("unequal totals")
 	}
 
 	for col, inb := range inbals {
 		if !(col != balance.ColorNew) {
-			panic("assertion failed: col != balance.ColorNew")
+			return errors.New("assertion failed: col != balance.ColorNew")
 		}
 		if col == balance.ColorIOTA {
 			continue
@@ -81,8 +82,8 @@ func checkInputsOutputs(tx *transaction.Transaction) bool {
 		}
 		if outb > inb {
 			// colored supply can't be inflated
-			return false
+			return errors.New("colored supply can't be inflated")
 		}
 	}
-	return true
+	return nil
 }
