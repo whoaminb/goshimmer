@@ -174,7 +174,10 @@ func (wconn *WaspConnector) getAddressBalance(addr *address.Address) {
 func (wconn *WaspConnector) postTransaction(tx *transaction.Transaction) {
 	if err := utxodb.AddTransaction(tx); err != nil {
 		wconn.log.Debugf("!!!! utxodb.AddTransaction %s : %v", tx.ID().String(), err)
-	} else {
-		wconn.log.Debugf("++++ Added transaction  %s", tx.ID().String())
+		return
 	}
+	wconn.log.Debugf("++++ Added transaction  %s", tx.ID().String())
+
+	// forward it to wasps. Temporary for testing TODO
+	EventValueTransactionReceived.Trigger(tx)
 }

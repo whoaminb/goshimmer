@@ -2,25 +2,27 @@ package utxodb
 
 import (
 	"errors"
+	"fmt"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 )
 
-func collectInputBalances(tx *transaction.Transaction) (map[balance.Color]int64, int64, bool) {
+func collectInputBalances(tx *transaction.Transaction) (map[balance.Color]int64, int64, error) {
 	ret := make(map[balance.Color]int64)
 	retsum := int64(0)
 
-	fail := false
+	var err error
 	tx.Inputs().ForEach(func(outputId transaction.OutputID) bool {
 		txInp, ok := GetTransaction(outputId.TransactionID())
 		if !ok {
-			fail = true
+			err = fmt.Errorf("can't find txid %s", outputId.TransactionID().String())
 			return false
 		}
 		balances, ok := txInp.Outputs().Get(outputId.Address())
 		if !ok {
-			fail = true
+			err = fmt.Errorf("can't find address %s among outputs of txid %s",
+				outputId.Address().String(), outputId.TransactionID().String())
 			return false
 		}
 		for _, bal := range balances.([]*balance.Balance) {
@@ -36,10 +38,10 @@ func collectInputBalances(tx *transaction.Transaction) (map[balance.Color]int64,
 		}
 		return true
 	})
-	if fail {
-		return nil, 0, false
+	if err != nil {
+		return nil, 0, err
 	}
-	return ret, retsum, true
+	return ret, retsum, nil
 }
 
 func collectOutputBalances(tx *transaction.Transaction) (map[balance.Color]int64, int64) {
@@ -60,9 +62,9 @@ func collectOutputBalances(tx *transaction.Transaction) (map[balance.Color]int64
 }
 
 func CheckInputsOutputs(tx *transaction.Transaction) error {
-	inbals, insum, ok := collectInputBalances(tx)
-	if !ok {
-		return errors.New("wrong inputs")
+	inbals, insum, err := collectInputBalances(tx)
+	if err != nil {
+		return fmt.Errorf("CheckInputsOutputs: wrong inputs: %v", err)
 	}
 	outbals, outsum := collectOutputBalances(tx)
 	if insum != outsum {

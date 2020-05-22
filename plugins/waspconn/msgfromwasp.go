@@ -14,13 +14,13 @@ func (wconn *WaspConnector) processMsgDataFromWasp(data []byte) {
 	}
 	switch msgt := msg.(type) {
 	case *waspconn.WaspPingMsg:
-		wconn.log.Infof("PING %d received", msgt.Id)
+		wconn.log.Debugf("PING %d received", msgt.Id)
 		if err := wconn.sendMsgToWasp(msgt); err != nil {
 			wconn.log.Errorf("responding to ping: %v", err)
 		}
 
 	case *waspconn.WaspToNodeTransactionMsg:
-		wconn.log.Infof("'WaspToNodeTransactionMsg' received: txid %s", msgt.Tx.ID().String())
+		wconn.log.Debugf("'WaspToNodeTransactionMsg' received: txid %s", msgt.Tx.ID().String())
 		wconn.postTransaction(msgt.Tx)
 
 	case *waspconn.WaspToNodeSubscribeMsg:
