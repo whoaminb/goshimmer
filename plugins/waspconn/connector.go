@@ -5,6 +5,7 @@ import (
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/iotaledger/goshimmer/packages/shutdown"
+	"github.com/iotaledger/goshimmer/packages/waspconn"
 	"github.com/iotaledger/goshimmer/packages/waspconn/utxodb"
 	"github.com/iotaledger/hive.go/daemon"
 	"github.com/iotaledger/hive.go/events"
@@ -161,10 +162,7 @@ func (wconn *WaspConnector) getAddressBalance(addr *address.Address) {
 	if len(outputs) == 0 {
 		return
 	}
-	ret := make(map[transaction.ID][]*balance.Balance)
-	for outp, bals := range outputs {
-		ret[outp.TransactionID()] = bals
-	}
+	ret := waspconn.OutputsToBalances(outputs)
 	if err := wconn.sendBalancesToWasp(addr, ret); err != nil {
 		wconn.log.Debugf("sendBalancesToWasp: %v", err)
 	}

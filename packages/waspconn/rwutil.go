@@ -2,6 +2,8 @@ package waspconn
 
 import (
 	"encoding/binary"
+	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
+	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/pkg/errors"
 	"io"
 	"time"
@@ -167,4 +169,26 @@ func ReadBytes32(r io.Reader) ([]byte, error) {
 		return nil, err
 	}
 	return ret, nil
+}
+
+func ReadTransactionId(r io.Reader, txid *transaction.ID) error {
+	n, err := r.Read(txid[:])
+	if err != nil {
+		return err
+	}
+	if n != transaction.IDLength {
+		return errors.New("error while reading txid")
+	}
+	return nil
+}
+
+func ReadColor(r io.Reader, color *balance.Color) error {
+	n, err := r.Read(color[:])
+	if err != nil {
+		return err
+	}
+	if n != balance.ColorLength {
+		return errors.New("error while reading color")
+	}
+	return nil
 }

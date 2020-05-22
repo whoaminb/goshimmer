@@ -316,13 +316,9 @@ func ReadBalances(r io.Reader) (map[transaction.ID][]*balance.Balance, error) {
 	}
 	ret := make(map[transaction.ID][]*balance.Balance, size)
 	for i := uint16(0); i < size; i++ {
-		txid := new(transaction.ID)
-		n, err := r.Read(txid.Bytes())
-		if err != nil {
+		var txid transaction.ID
+		if err := ReadTransactionId(r, &txid); err != nil {
 			return nil, err
-		}
-		if n != transaction.IDLength {
-			return nil, fmt.Errorf("error while decoding 'recv balance' message")
 		}
 		var numBals uint16
 		if err := ReadUint16(r, &numBals); err != nil {
@@ -331,12 +327,8 @@ func ReadBalances(r io.Reader) (map[transaction.ID][]*balance.Balance, error) {
 		lst := make([]*balance.Balance, numBals)
 		for i := range lst {
 			var color balance.Color
-			n, err := r.Read(color[:])
-			if err != nil {
+			if err := ReadColor(r, &color); err != nil {
 				return nil, err
-			}
-			if n != balance.ColorLength {
-				return nil, fmt.Errorf("error while decoding 'recv balance' message")
 			}
 			var value uint64
 			if err := ReadUint64(r, &value); err != nil {
@@ -344,7 +336,33 @@ func ReadBalances(r io.Reader) (map[transaction.ID][]*balance.Balance, error) {
 			}
 			lst[i] = balance.New(color, int64(value))
 		}
-		ret[*txid] = lst
+		ret[txid] = lst
 	}
 	return ret, nil
+}
+
+func OutputsToBalances(outs map[transaction.OutputID][]*balance.Balance) map[transaction.ID][]*balance.Balance {
+	ret := make(map[transaction.ID][]*balance.Balance)
+	var niltxid transaction.ID
+
+	for outp, bals := range outs {
+		if outp.TransactionID() == niltxid {
+			panic("outp.TransactionID() == niltxid")
+		}
+		ret[outp.TransactionID()] = bals
+	}
+	return ret
+}
+
+func BalancesToOutputs(addr address.Address, bals map[transaction.ID][]*balance.Balance) map[transaction.OutputID][]*balance.Balance {
+	ret := make(map[transaction.OutputID][]*balance.Balance)
+	var niltxid transaction.ID
+
+	for txid, bal := range bals {
+		if txid == niltxid {
+			panic("txid == niltxid")
+		}
+		ret[transaction.NewOutputID(addr, txid)] = bal
+	}
+	return ret
 }

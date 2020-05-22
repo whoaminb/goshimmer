@@ -116,7 +116,11 @@ func getAddressOutputs(addr address.Address) map[transaction.OutputID][]*balance
 	if !ok || len(txIds) == 0 {
 		return nil
 	}
+	var nilid transaction.ID
 	for _, txid := range txIds {
+		if txid == nilid {
+			panic("txid == nilid")
+		}
 		txInp := mustGetTransaction(txid)
 		bals, ok := txInp.Outputs().Get(addr)
 		if !ok {
