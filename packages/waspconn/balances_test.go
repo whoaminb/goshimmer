@@ -27,5 +27,4 @@ func TestBalances(t *testing.T) {
 	assert.Equal(t, err, nil)
 
 	_ = BalancesToOutputs(addr, balsBack)
-
 }

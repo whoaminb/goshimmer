@@ -124,6 +124,7 @@ func (wconn *WaspConnector) isSubscribed(addr *address.Address) bool {
 // Forward to wasp if subscribed
 func (wconn *WaspConnector) processTransactionFromNode(vtx *transaction.Transaction) {
 	// determine if transaction contains any of subscribed addresses in its outputs
+	wconn.log.Debugw("processTransactionFromNode", "txid", vtx.ID().String())
 
 	isSubscribed := false
 	vtx.Outputs().ForEach(func(addr address.Address, _ []*balance.Balance) bool {
@@ -134,6 +135,7 @@ func (wconn *WaspConnector) processTransactionFromNode(vtx *transaction.Transact
 		return true
 	})
 	if !isSubscribed {
+		wconn.log.Debugw("not subscribed", "txid", vtx.ID().String())
 		// dismiss unsubscribe transaction
 		return
 	}

@@ -2,6 +2,7 @@ package waspconn
 
 import (
 	"encoding/binary"
+	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/pkg/errors"
@@ -189,6 +190,17 @@ func ReadColor(r io.Reader, color *balance.Color) error {
 	}
 	if n != balance.ColorLength {
 		return errors.New("error while reading color")
+	}
+	return nil
+}
+
+func ReadAddress(r io.Reader, addr *address.Address) error {
+	n, err := r.Read(addr[:])
+	if err != nil {
+		return err
+	}
+	if n != address.Length {
+		return errors.New("error while reading address")
 	}
 	return nil
 }

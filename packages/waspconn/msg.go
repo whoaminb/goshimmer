@@ -188,7 +188,7 @@ func (msg *WaspToNodeSubscribeMsg) Write(w io.Writer) error {
 		return err
 	}
 	for _, addr := range msg.Addresses {
-		if _, err := w.Write(addr.Bytes()); err != nil {
+		if _, err := w.Write(addr[:]); err != nil {
 			return err
 		}
 	}
@@ -202,12 +202,8 @@ func (msg *WaspToNodeSubscribeMsg) Read(r io.Reader) error {
 	}
 	msg.Addresses = make([]address.Address, size)
 	for i := range msg.Addresses {
-		n, err := r.Read(msg.Addresses[i][:])
-		if err != nil {
+		if err := ReadAddress(r, &msg.Addresses[i]); err != nil {
 			return err
-		}
-		if n != balance.ColorLength {
-			return fmt.Errorf("error while reading 'subscribe' message")
 		}
 	}
 	if err := ReadBoolByte(r, &msg.PullBacklog); err != nil {
