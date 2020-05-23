@@ -160,11 +160,16 @@ func (wconn *WaspConnector) getTransaction(txid *transaction.ID) {
 }
 
 func (wconn *WaspConnector) getAddressBalance(addr *address.Address) {
+	wconn.log.Debugf("getBalances request for address: %s", addr.String())
+
 	outputs := utxodb.GetAddressOutputs(*addr)
 	if len(outputs) == 0 {
 		return
 	}
 	ret := waspconn.OutputsToBalances(outputs)
+
+	wconn.log.Debugf("sending balances to wasp: %s    %+v", addr.String(), ret)
+
 	if err := wconn.sendBalancesToWasp(addr, ret); err != nil {
 		wconn.log.Debugf("sendBalancesToWasp: %v", err)
 	}

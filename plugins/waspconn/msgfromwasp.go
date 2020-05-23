@@ -20,11 +20,11 @@ func (wconn *WaspConnector) processMsgDataFromWasp(data []byte) {
 		}
 
 	case *waspconn.WaspToNodeTransactionMsg:
-		wconn.log.Debugf("'WaspToNodeTransactionMsg' received: txid %s", msgt.Tx.ID().String())
+		//wconn.log.Debugf("'WaspToNodeTransactionMsg' received: txid %s", msgt.Tx.ID().String())
 		wconn.postTransaction(msgt.Tx)
 
 	case *waspconn.WaspToNodeSubscribeMsg:
-		wconn.log.Debugf("WaspToNodeSubscribeMsg: %+v", msgt.Addresses)
+		//wconn.log.Debugf("WaspToNodeSubscribeMsg: %+v", msgt.Addresses)
 		for _, addr := range msgt.Addresses {
 			wconn.subscribe(&addr)
 		}
