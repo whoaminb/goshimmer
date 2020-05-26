@@ -1,7 +1,9 @@
 package transaction
 
 import (
+	"bytes"
 	"github.com/iotaledger/hive.go/marshalutil"
+	"sort"
 
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/goshimmer/packages/binary/datastructure/orderedmap"
@@ -16,12 +18,16 @@ type Outputs struct {
 
 // NewOutputs is the constructor of the Outputs struct and creates the list of Outputs from the given details.
 func NewOutputs(outputs map[address.Address][]*balance.Balance) (result *Outputs) {
+	// sorting outputs first before adding to the ordered map to have a deterministic order
 	toSort := make([]address.Address, 0, len(outputs))
 	for a := range outputs {
 		toSort = append(toSort, a)
 	}
 	address.Sort(toSort)
 
+	sort.Slice(toSort, func(i, j int) bool {
+		return bytes.Compare(toSort[i][:], toSort[j][:]) < 0
+	})
 	result = &Outputs{orderedmap.New()}
 	for _, addr := range toSort {
 		result.Add(addr, outputs[addr])
