@@ -1,6 +1,7 @@
 package utxodb
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address/signaturescheme"
@@ -8,6 +9,7 @@ import (
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/iotaledger/hive.go/crypto/ed25519"
 	"github.com/mr-tron/base58"
+	"sort"
 )
 
 const (
@@ -121,9 +123,17 @@ func init() {
 	stats := GetLedgerStats()
 	fmt.Printf("UTXODB initialized:\nTotal supply = %di\nGenesis + %d predefined addresses with %di each\n",
 		supply, len(knownAddresses)-1, ownerAmount)
+	sorted := make([]address.Address, 0, len(stats))
+	for a := range stats {
+		sorted = append(sorted, a)
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		return bytes.Compare(sorted[i][:], sorted[j][:]) < 0
+	})
+
 	fmt.Println("Balances:")
-	for addr, st := range stats {
-		fmt.Printf("%s: balance %d, num outputs %d\n", addr.String(), st.Total, st.NumOutputs)
+	for _, addr := range sorted {
+		fmt.Printf("%s: balance %d, num outputs %d\n", addr.String(), stats[addr].Total, stats[addr].NumOutputs)
 	}
 }
 
